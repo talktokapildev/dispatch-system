@@ -1,13 +1,35 @@
-import { Expo, ExpoPushMessage, ExpoPushTicket } from "expo-server-sdk";
+// expo-server-sdk v6+ is ESM-only. Since this backend compiles to CommonJS
+// we must use dynamic import() — top-level `import` would be compiled to
+// require() by tsc and crash with ERR_REQUIRE_ESM at runtime.
 import { PrismaClient } from "@prisma/client";
 
+// Type-only imports are fine — they're erased at compile time
+type ExpoType = import("expo-server-sdk").Expo;
+type ExpoPushMessageType = import("expo-server-sdk").ExpoPushMessage;
+type ExpoPushTicketType = import("expo-server-sdk").ExpoPushTicket;
+
+// Lazy singleton so we only pay the dynamic import cost once
+let _expo: ExpoType | null = null;
+let _ExpoClass: typeof import("expo-server-sdk").Expo | null = null;
+
+async function getExpo(): Promise<{
+  expo: ExpoType;
+  Expo: typeof import("expo-server-sdk").Expo;
+}> {
+  if (_expo && _ExpoClass) return { expo: _expo, Expo: _ExpoClass };
+  const mod = await import("expo-server-sdk");
+  _ExpoClass = mod.Expo;
+  _expo = new mod.Expo();
+  return { expo: _expo, Expo: _ExpoClass };
+}
+
 export class NotificationService {
-  private expo: Expo;
   private prisma: PrismaClient;
 
   constructor(prisma: PrismaClient) {
-    this.expo = new Expo();
     this.prisma = prisma;
+    // Eagerly warm up the dynamic import so the first notification isn't slow
+    getExpo().catch(() => {});
   }
 
   // ── Send to a specific user (looks up all their registered tokens) ─────────
@@ -21,7 +43,9 @@ export class NotificationService {
 
     if (!tokens.length) return;
 
-    const messages: ExpoPushMessage[] = tokens
+    const { expo, Expo } = await getExpo();
+
+    const messages: ExpoPushMessageType[] = tokens
       .filter((t) => Expo.isExpoPushToken(t.token))
       .map((t) => ({
         to: t.token,
@@ -29,27 +53,24 @@ export class NotificationService {
         title: notification.title,
         body: notification.body,
         data: notification.data ?? {},
-        // iOS badge count — set to 1 for any unread notification
         badge: 1,
-        // Android channel (configure in app for custom sound/vibration)
         channelId: "default",
       }));
 
     if (!messages.length) return;
 
-    const chunks = this.expo.chunkPushNotifications(messages);
+    const chunks = expo.chunkPushNotifications(messages);
 
     for (const chunk of chunks) {
       try {
-        const tickets: ExpoPushTicket[] =
-          await this.expo.sendPushNotificationsAsync(chunk);
-        // Log any errors — in production you'd handle receipts for delivery confirmation
+        const tickets: ExpoPushTicketType[] =
+          await expo.sendPushNotificationsAsync(chunk);
         for (const ticket of tickets) {
           if (ticket.status === "error") {
             console.error(
               "[Push] Ticket error:",
               ticket.message,
-              ticket.details
+              (ticket as any).details
             );
           }
         }
@@ -59,7 +80,7 @@ export class NotificationService {
     }
   }
 
-  // ── Convenience methods for each notification type ─────────────────────────
+  // ── Convenience methods ────────────────────────────────────────────────────
 
   async notifyDriverAssigned(
     passengerUserId: string,
@@ -126,7 +147,6 @@ export class NotificationService {
     });
   }
 
-  // Background job offer alert — fires if driver's app is in background
   async notifyNewJobOffer(driverUserId: string, pickup: string, fare: number) {
     await this.sendToUser(driverUserId, {
       title: "🚖 New job offer",
