@@ -1,0 +1,527 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  ADMIN
+  DISPATCHER
+  CORPORATE_ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  DRIVER_ASSIGNED
+  DRIVER_EN_ROUTE
+  DRIVER_ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingType {
+  ASAP
+  PREBOOKED
+  AIRPORT_PICKUP
+  AIRPORT_DROPOFF
+  CORPORATE
+}
+
+enum PricingType {
+  FIXED
+  METERED
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+  APPLE_PAY
+  GOOGLE_PAY
+  ACCOUNT
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORISED
+  CAPTURED
+  REFUNDED
+  FAILED
+  CASH
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_JOB
+  BREAK
+}
+
+enum VehicleClass {
+  STANDARD
+  EXECUTIVE
+  MPV
+  MINIBUS
+}
+
+enum DocumentType {
+  PCO_LICENSE
+  DRIVING_LICENSE
+  VEHICLE_INSURANCE
+  MOT_CERTIFICATE
+  V5C_LOGBOOK
+  DBS_CHECK
+  PROFILE_PHOTO
+  VEHICLE_PHOTO
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum CorporateInvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+// ─────────────────────────────────────────
+// CORE USER
+// ─────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  phone         String    @unique
+  email         String?   @unique
+  firstName     String
+  lastName      String
+  role          UserRole
+  isActive      Boolean   @default(true)
+  isVerified    Boolean   @default(false)
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  passenger     Passenger?
+  driver        Driver?
+  adminProfile  AdminProfile?
+  otpCodes      OtpCode[]
+  refreshTokens RefreshToken[]
+
+  @@index([phone])
+  @@index([email])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// PASSENGER
+// ─────────────────────────────────────────
+
+model Passenger {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  stripeCustomerId  String?
+  savedAddresses    Json      @default("[]")
+  corporateAccountId String?
+  totalRides        Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id])
+  corporateAccount  CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
+  bookings          Booking[]
+  paymentMethods    SavedPaymentMethod[]
+
+  @@index([userId])
+}
+
+model SavedPaymentMethod {
+  id                String    @id @default(uuid())
+  passengerId       String
+  stripePaymentMethodId String
+  brand             String
+  last4             String
+  expiryMonth       Int
+  expiryYear        Int
+  isDefault         Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+
+  passenger         Passenger @relation(fields: [passengerId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// DRIVER
+// ─────────────────────────────────────────
+
+model Driver {
+  id                  String       @id @default(uuid())
+  userId              String       @unique
+  pcoBadgeNumber      String       @unique
+  pcoLicenseExpiry    DateTime
+  drivingLicenseNumber String
+  status              DriverStatus @default(OFFLINE)
+  currentLatitude     Float?
+  currentLongitude    Float?
+  currentBearing      Float?
+  lastLocationAt      DateTime?
+  rating              Float        @default(5.0)
+  totalJobs           Int          @default(0)
+  stripeAccountId     String?
+  onboardingComplete  Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  user                User         @relation(fields: [userId], references: [id])
+  vehicle             Vehicle?
+  documents           DriverDocument[]
+  bookings            Booking[]
+  earnings            DriverEarning[]
+  breaks              DriverBreak[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Vehicle {
+  id              String       @id @default(uuid())
+  driverId        String       @unique
+  make            String
+  model           String
+  year            Int
+  colour          String
+  licensePlate    String       @unique
+  class           VehicleClass @default(STANDARD)
+  seats           Int          @default(4)
+  motExpiry       DateTime
+  insuranceExpiry DateTime
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  driver          Driver       @relation(fields: [driverId], references: [id])
+}
+
+model DriverDocument {
+  id          String         @id @default(uuid())
+  driverId    String
+  type        DocumentType
+  status      DocumentStatus @default(PENDING)
+  fileUrl     String
+  expiryDate  DateTime?
+  notes       String?
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  driver      Driver         @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@index([status])
+  @@index([expiryDate])
+}
+
+model DriverBreak {
+  id        String   @id @default(uuid())
+  driverId  String
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  driver    Driver   @relation(fields: [driverId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// ADMIN
+// ─────────────────────────────────────────
+
+model AdminProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  permissions Json     @default("[]")
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// CORPORATE ACCOUNTS
+// ─────────────────────────────────────────
+
+model CorporateAccount {
+  id                String                  @id @default(uuid())
+  companyName       String
+  contactName       String
+  contactEmail      String
+  contactPhone      String
+  address           String
+  invoicingEmail    String
+  paymentTermsDays  Int                     @default(30)
+  creditLimit       Float                   @default(0)
+  currentBalance    Float                   @default(0)
+  isActive          Boolean                 @default(true)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  passengers        Passenger[]
+  bookings          Booking[]
+  invoices          CorporateInvoice[]
+
+  @@index([companyName])
+}
+
+model CorporateInvoice {
+  id                 String                @id @default(uuid())
+  corporateAccountId String
+  invoiceNumber      String                @unique
+  periodFrom         DateTime
+  periodTo           DateTime
+  totalAmount        Float
+  status             CorporateInvoiceStatus @default(DRAFT)
+  dueDate            DateTime
+  paidAt             DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  corporateAccount   CorporateAccount      @relation(fields: [corporateAccountId], references: [id])
+  bookings           Booking[]
+
+  @@index([corporateAccountId])
+}
+
+// ─────────────────────────────────────────
+// BOOKINGS
+// ─────────────────────────────────────────
+
+model Booking {
+  id                  String        @id @default(uuid())
+  reference           String        @unique
+  passengerId         String
+  driverId            String?
+  corporateAccountId  String?
+  corporateInvoiceId  String?
+
+  type                BookingType
+  status              BookingStatus @default(PENDING)
+
+  // Locations
+  pickupAddress       String
+  pickupLatitude      Float
+  pickupLongitude     Float
+  dropoffAddress      String
+  dropoffLatitude     Float
+  dropoffLongitude    Float
+  stops               Json          @default("[]") // intermediate stops
+
+  // Timing
+  scheduledAt         DateTime?     // null = ASAP
+  dispatchedAt        DateTime?
+  driverAcceptedAt    DateTime?
+  driverArrivedAt     DateTime?
+  tripStartedAt       DateTime?
+  completedAt         DateTime?
+
+  // Pricing
+  pricingType         PricingType   @default(FIXED)
+  estimatedFare       Float
+  actualFare          Float?
+  surgeMultiplier     Float         @default(1.0)
+  driverEarning       Float?
+  platformFee         Float?
+
+  // Payment
+  paymentMethod       PaymentMethod @default(CARD)
+  paymentStatus       PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?
+
+  // Flight details (airport jobs)
+  flightNumber        String?
+  flightArrivalTime   DateTime?
+  terminal            String?
+
+  // Misc
+  passengerCount      Int           @default(1)
+  notes               String?
+  operatorNotes       String?       // Private notes visible only to operator
+  cancellationReason  String?
+  rating              Int?
+  feedback            String?
+  dispatchAttempts    Int           @default(0)
+
+  // Quick-win fields
+  pickupZone          String?       // Zone label for pickup area
+  dropoffZone         String?       // Zone label for dropoff area
+  fixedPriceOverride  Float?        // Manual price override by operator
+  isOnHold            Boolean       @default(false)
+  allocationTime      DateTime?     // Delay dispatch until this time
+  requiredCarFeatures Json          @default("[]") // e.g. ["baby_seat","wheelchair"]
+  requiredDriverFeatures Json       @default("[]") // e.g. ["female_driver","speaks_arabic"]
+  department          String?       // Corporate department
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  passenger           Passenger     @relation(fields: [passengerId], references: [id])
+  driver              Driver?       @relation(fields: [driverId], references: [id])
+  corporateAccount    CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
+  corporateInvoice    CorporateInvoice? @relation(fields: [corporateInvoiceId], references: [id])
+  statusHistory       BookingStatusHistory[]
+  receipt             Receipt?
+
+  @@index([passengerId])
+  @@index([driverId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([reference])
+}
+
+model BookingStatusHistory {
+  id        String        @id @default(uuid())
+  bookingId String
+  status    BookingStatus
+  note      String?
+  createdAt DateTime      @default(now())
+
+  booking   Booking       @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId])
+}
+
+model Receipt {
+  id                    String   @id @default(uuid())
+  bookingId             String   @unique
+  receiptNumber         String   @unique
+  operatorName          String
+  operatorLicenseNumber String
+  driverName            String
+  driverPcoBadge        String
+  vehiclePlate          String
+  vehicleDescription    String
+  pickupAddress         String
+  dropoffAddress        String
+  tripDistance          Float?
+  tripDuration          Int?     // seconds
+  fareBreakdown         Json
+  totalAmount           Float
+  paymentMethod         String
+  issuedAt              DateTime @default(now())
+
+  booking               Booking  @relation(fields: [bookingId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// PRICING
+// ─────────────────────────────────────────
+
+model PricingZone {
+  id            String       @id @default(uuid())
+  name          String
+  description   String?
+  isDefault     Boolean      @default(false)
+  vehicleClass  VehicleClass @default(STANDARD)
+
+  // Fixed pricing
+  baseFare      Float        @default(3.50)
+  perMile       Float        @default(2.00)
+  perMinute     Float        @default(0.25)
+  minimumFare   Float        @default(5.00)
+
+  // Airport supplements
+  airportPickupSupplement Float @default(0)
+  airportDropoffSupplement Float @default(0)
+
+  // Time supplements
+  nightSupplement Float      @default(0)    // % extra
+  weekendSupplement Float    @default(0)    // % extra
+  bankHolidaySupplement Float @default(0)  // % extra
+
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+// ─────────────────────────────────────────
+// DRIVER EARNINGS
+// ─────────────────────────────────────────
+
+model DriverEarning {
+  id          String   @id @default(uuid())
+  driverId    String
+  bookingId   String   @unique
+  grossAmount Float
+  platformFee Float
+  netAmount   Float
+  paidOut     Boolean  @default(false)
+  paidOutAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  driver      Driver   @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@index([paidOut])
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  data      Json?
+  read      Boolean  @default(false)
+  sentAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String
+  platform  String   // ios | android
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, token])
+  @@index([userId])
+}

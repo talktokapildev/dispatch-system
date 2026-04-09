@@ -1,0 +1,296 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Light mode (default) ── */
+  :root {
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --card-hover: #f8fafc;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --input-bg: #f8fafc;
+    --input-border: #cbd5e1;
+    --scrollbar: #cbd5e1;
+    --sidebar-bg: #f8fafc; /* slightly slate so it reads distinct from white cards */
+    --table-hover: rgba(0, 0, 0, 0.03);
+    --white: #0f172a; /* "white" text → dark in light mode */
+    --muted: #475569;
+  }
+
+  /* ── Dark mode ── */
+  html.dark {
+    --bg: #090d14;
+    --card: #0f1623;
+    --card-hover: #111827;
+    --border: #1e2d42;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --input-bg: #0a0f1a;
+    --input-border: #1e2d42;
+    --scrollbar: #1e2d42;
+    --sidebar-bg: #0f1623;
+    --table-hover: rgba(255, 255, 255, 0.02);
+    --white: #e2e8f0; /* "white" text → light in dark mode */
+    --muted: #64748b;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  /* ── Fix hardcoded Tailwind text colours in light mode ──────────────────────
+     Only the neutral/white scale needs overriding — these are "invisible" on
+     a light background without the fix.  Brand, status, and semantic colours
+     are intentional and must NOT be overridden.
+  */
+  :root .text-white {
+    color: var(--white) !important;
+  }
+  :root .text-slate-50 {
+    color: #1e293b !important;
+  }
+  :root .text-slate-100 {
+    color: #1e293b !important;
+  }
+  :root .text-slate-200 {
+    color: #1e293b !important;
+  }
+  :root .text-slate-300 {
+    color: #334155 !important;
+  }
+  :root .text-slate-400 {
+    color: #475569 !important;
+  }
+  :root .text-slate-500 {
+    color: #64748b !important;
+  }
+  :root .text-slate-600 {
+    color: #475569 !important;
+  }
+
+  /* ── Brand & status colours: no override — Tailwind handles them as-is ──── */
+  /* NOTE: brand-400 = #ff9a30 (orange), green-400 = #4ade80, blue-400 = #60a5fa  */
+  /* They read well against both the white card and the slate sidebar.            */
+
+  /* Slightly richer brand tones in light mode for better contrast on white cards */
+  :root .text-brand-400 {
+    color: #e07200 !important;
+  } /* brand-600 — deeper on white */
+  :root .text-brand-500 {
+    color: #b85d00 !important;
+  } /* brand-700 */
+  :root .text-green-400 {
+    color: #16a34a !important;
+  } /* green-600 — much more readable */
+  :root .text-green-500 {
+    color: #15803d !important;
+  }
+  :root .text-blue-400 {
+    color: #2563eb !important;
+  } /* blue-600 */
+  :root .text-blue-500 {
+    color: #1d4ed8 !important;
+  }
+  :root .text-red-400 {
+    color: #dc2626 !important;
+  } /* red-600 */
+  :root .text-red-500 {
+    color: #b91c1c !important;
+  }
+  :root .text-yellow-400 {
+    color: #ca8a04 !important;
+  } /* yellow-600 */
+  :root .text-violet-500 {
+    color: #7c3aed !important;
+  } /* violet-600 */
+  :root .text-indigo-500 {
+    color: #4338ca !important;
+  }
+  :root .text-cyan-400 {
+    color: #0e7490 !important;
+  } /* cyan-700 */
+  :root .text-cyan-600 {
+    color: #0e7490 !important;
+  }
+  :root .text-orange-400 {
+    color: #c2410c !important;
+  } /* orange-700 */
+  :root .text-orange-500 {
+    color: #c2410c !important;
+  }
+  :root .text-amber-400 {
+    color: #d97706 !important;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    @apply rounded-xl;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .btn-primary {
+    /* Exact match to orangeride.co.uk .book-btn */
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-semibold
+           transition-all duration-300 active:scale-95 text-sm;
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    text-decoration: none;
+  }
+  .btn-primary:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  }
+  /* Force white text on ANY solid brand background (buttons, active tabs,
+     booking type selectors, etc.) — overrides both the :root .text-white
+     rule above AND any inline text-black classes in components */
+  .bg-brand-500,
+  .bg-brand-500:hover,
+  .bg-brand-600,
+  .bg-brand-600:hover,
+  .btn-primary,
+  .btn-primary:hover {
+    color: #ffffff !important;
+  }
+
+  .btn-ghost {
+    background: var(--table-hover);
+    border: 1px solid var(--border);
+    color: var(--text);
+    @apply px-4 py-2 rounded-lg transition-all duration-150 text-sm hover:opacity-80;
+  }
+
+  .btn-danger {
+    @apply bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20
+           px-4 py-2 rounded-lg transition-all duration-150 text-sm;
+  }
+
+  .input {
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text);
+    @apply rounded-lg px-3 py-2 text-sm
+           placeholder:text-slate-400 focus:outline-none
+           focus:border-brand-500/60 focus:ring-1 focus:ring-brand-500/30 transition-all w-full;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full inline-block;
+  }
+
+  .table-row {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .table-row:hover {
+    background: var(--table-hover);
+  }
+
+  /* ── Sidebar link ── */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
+           transition-all duration-150 cursor-pointer;
+    color: var(--text-muted);
+    border-left: 2px solid transparent;
+  }
+  .sidebar-link:hover {
+    background: var(--table-hover);
+    color: var(--text);
+  }
+  .sidebar-link.active {
+    @apply text-brand-500 bg-brand-500/10;
+    border-left-color: #ff8c1a; /* brand-500 — OrangeRide orange stripe */
+    padding-left: calc(0.75rem - 2px);
+    font-weight: 600;
+  }
+
+  /* dark mode: use lighter amber so it pops on dark bg */
+  html.dark .sidebar-link.active {
+    @apply text-brand-400;
+    border-left-color: #fbbf24;
+  }
+
+  .info-cell {
+    @apply p-3 rounded-lg;
+    background: var(--card-hover);
+    border: 1px solid var(--border);
+  }
+}
+
+/* ── Status badge colours ── */
+.status-PENDING {
+  @apply bg-yellow-500/15 text-yellow-600;
+}
+.status-CONFIRMED {
+  @apply bg-blue-500/15 text-blue-600;
+}
+.status-DRIVER_ASSIGNED {
+  @apply bg-violet-500/15 text-violet-600;
+}
+.status-DRIVER_EN_ROUTE {
+  @apply bg-indigo-500/15 text-indigo-600;
+}
+.status-DRIVER_ARRIVED {
+  @apply bg-cyan-500/15 text-cyan-700;
+}
+.status-IN_PROGRESS {
+  @apply bg-brand-500/15 text-brand-600;
+}
+.status-COMPLETED {
+  @apply bg-green-500/15 text-green-700;
+}
+.status-CANCELLED {
+  @apply bg-red-500/15 text-red-600;
+}
+.status-NO_SHOW {
+  @apply bg-slate-500/15 text-slate-600;
+}
+
+/* ── Driver status badge colours ── */
+.driver-OFFLINE {
+  @apply bg-slate-500/15 text-slate-600;
+}
+.driver-AVAILABLE {
+  @apply bg-green-500/15 text-green-700;
+}
+.driver-ON_JOB {
+  @apply bg-brand-500/15 text-brand-600;
+}
+.driver-BREAK {
+  @apply bg-orange-500/15 text-orange-600;
+}

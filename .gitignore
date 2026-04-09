@@ -1,0 +1,19 @@
+# dependencies
+**/node_modules/
+
+# env files
+**/.env
+**/.env.*
+!.env.example
+
+# build output
+**/.next/
+**/dist/
+**/build/
+**/.expo/
+
+# logs
+*.log
+
+# system
+.DS_Store
