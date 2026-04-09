@@ -1,28 +1,7 @@
 import { clsx } from "clsx";
 import { LucideIcon, TrendingUp, TrendingDown } from "lucide-react";
 
-// ─── Accent → actual hex (used for inline border + icon bg tints) ───────────
-// We can't use dynamic Tailwind class names at runtime so we map explicitly.
-const ACCENT_HEX: Record<string, string> = {
-  "text-brand-400": "#f59e0b",
-  "text-brand-500": "#f59e0b",
-  "text-green-400": "#22c55e",
-  "text-green-500": "#22c55e",
-  "text-blue-400": "#3b82f6",
-  "text-blue-500": "#3b82f6",
-  "text-red-400": "#ef4444",
-  "text-red-500": "#ef4444",
-  "text-yellow-400": "#eab308",
-  "text-violet-400": "#8b5cf6",
-  "text-violet-500": "#8b5cf6",
-  "text-indigo-400": "#6366f1",
-  "text-indigo-500": "#6366f1",
-  "text-cyan-400": "#06b6d4",
-  "text-orange-400": "#f97316",
-  "text-orange-500": "#f97316",
-};
-
-// ─── Badge ───────────────────────────────────────────────────────────────────
+// ─── Badge ───
 export function Badge({
   status,
   label,
@@ -56,7 +35,7 @@ export function DriverBadge({ status }: { status: string }) {
   );
 }
 
-// ─── Stat card ───────────────────────────────────────────────────────────────
+// ─── Stat card ───
 interface StatCardProps {
   label: string;
   value: string | number;
@@ -74,12 +53,8 @@ export function StatCard({
   accent = "text-brand-400",
   sub,
 }: StatCardProps) {
-  const hex = ACCENT_HEX[accent] ?? "#f59e0b";
-  const bg12 = hex + "18"; // ~10% opacity tint for icon container
-  const borderL = hex; // solid left accent stripe
-
   return (
-    <div className="card p-5" style={{ borderLeft: `3px solid ${borderL}` }}>
+    <div className="card p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">
@@ -88,10 +63,7 @@ export function StatCard({
           <p className={clsx("text-2xl font-bold mt-1", accent)}>{value}</p>
           {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
         </div>
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: bg12 }}
-        >
+        <div className="w-10 h-10 rounded-xl bg-[var(--table-hover)] flex items-center justify-center">
           <Icon size={18} className={accent} />
         </div>
       </div>
@@ -110,7 +82,7 @@ export function StatCard({
   );
 }
 
-// ─── Section header ──────────────────────────────────────────────────────────
+// ─── Section header ───
 export function SectionHeader({
   title,
   subtitle,
@@ -133,7 +105,7 @@ export function SectionHeader({
   );
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
+// ─── Empty state ───
 export function EmptyState({
   icon: Icon,
   title,
@@ -154,7 +126,7 @@ export function EmptyState({
   );
 }
 
-// ─── Loading spinner ─────────────────────────────────────────────────────────
+// ─── Loading spinner ───
 export function Spinner({ size = 16 }: { size?: number }) {
   return (
     <svg
@@ -182,7 +154,7 @@ export function Spinner({ size = 16 }: { size?: number }) {
   );
 }
 
-// ─── Table ───────────────────────────────────────────────────────────────────
+// ─── Table ───
 export function Table({
   headers,
   children,
@@ -228,7 +200,7 @@ export function Table({
   );
 }
 
-// ─── Modal ───────────────────────────────────────────────────────────────────
+// ─── Modal ───
 export function Modal({
   open,
   onClose,
@@ -237,7 +209,7 @@ export function Modal({
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
 }) {
   if (!open) return null;
@@ -263,7 +235,7 @@ export function Modal({
   );
 }
 
-// ─── Pagination ──────────────────────────────────────────────────────────────
+// ─── Pagination ───
 export function Pagination({
   page,
   totalPages,
