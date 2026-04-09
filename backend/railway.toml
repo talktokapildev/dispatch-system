@@ -1,11 +1,11 @@
 [build]
 builder = "nixpacks"
-
+ 
 [deploy]
-# Runs BEFORE the new version goes live — applies any pending DB migrations safely
-releaseCommand = "npx prisma migrate deploy"
+releaseCommand = "npx prisma db push"
 startCommand = "node dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+ 
