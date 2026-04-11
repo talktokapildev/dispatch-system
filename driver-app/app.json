@@ -1,0 +1,75 @@
+{
+  "expo": {
+    "name": "OrangeRide Driver",
+    "newArchEnabled": false,
+    "slug": "orangeride-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#090d14"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.orangeride.driver",
+      "buildNumber": "2",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
+        "NSLocationAlwaysUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs.",
+        "NSCameraUsageDescription": "OrangeRide Driver needs camera access to upload your TfL compliance documents.",
+        "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "backgroundModes": [
+        "location",
+        "location"
+      ],
+      "config": {
+        "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#090d14"
+      },
+      "package": "com.orangeride.driver",
+      "versionCode": 2,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "VIBRATE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
+        }
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow OrangeRide Driver to use your location for job tracking."
+        }
+      ],
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6008b8f2-8987-4f2d-aa13-57cb6ace1dab"
+      }
+    }
+  }
+}
