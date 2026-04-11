@@ -1,0 +1,41 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": { "simulator": false },
+      "env": { "APP_ENV": "development" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": { "APP_ENV": "production" }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": { "APP_ENV": "production" },
+      "ios": {
+        "image": "latest"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "admin@orangeride.co.uk",
+        "ascAppId": "6762009896",
+        "appleTeamId": "3D9XLLXR4B"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}
