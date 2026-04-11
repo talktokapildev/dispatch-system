@@ -294,8 +294,10 @@ export class DispatchService {
           completedBooking.actualFare ?? completedBooking.estimatedFare;
         const platformFee = Math.round(fare * 0.15 * 100) / 100;
         const net = Math.round((fare - platformFee) * 100) / 100;
-        await this.prisma.driverEarning.create({
-          data: {
+        await this.prisma.driverEarning.upsert({
+          where: { bookingId },
+          update: {},
+          create: {
             driverId,
             bookingId,
             grossAmount: fare,
