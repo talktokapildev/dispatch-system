@@ -22,10 +22,23 @@ const adminLoginSchema = z.object({
   password: z.string().min(8),
 });
 
+// ─── Demo account ─────────────────────────────────────────────────────────────
+// A hardcoded test number that bypasses OTP for App Store review, demos,
+// and onboarding new users without needing Twilio.
+// OTP is always accepted as 123456 for this number only.
+const DEMO_PHONE = "+447700000001";
+const DEMO_OTP = "123456";
+
 export async function authRoutes(fastify: FastifyInstance) {
   // ─── Send OTP ────────────────────────────────────────────────────────────────
   fastify.post("/auth/otp/send", async (request, reply) => {
     const body = sendOtpSchema.parse(request.body);
+
+    // Demo number — skip Redis/Twilio, OTP is always 123456
+    if (body.phone === DEMO_PHONE) {
+      fastify.log.info(`[Demo] OTP send skipped for demo number ${DEMO_PHONE}`);
+      return reply.send({ success: true, message: "OTP sent" });
+    }
 
     const code = Math.random()
       .toString()
@@ -50,16 +63,29 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.post("/auth/otp/verify", async (request, reply) => {
     const body = verifyOtpSchema.parse(request.body);
 
-    const key = RedisKeys.otpCode(body.phone);
-    const storedCode = await fastify.redis.get(key);
-
-    if (!storedCode || storedCode !== body.code) {
+    // ── Demo bypass ───────────────────────────────────────────────────────────
+    // +447700000001 with OTP 123456 always succeeds.
+    // Used for App Store review, demos, and onboarding guests.
+    if (body.phone === DEMO_PHONE && body.code !== DEMO_OTP) {
       return reply
         .status(400)
         .send({ success: false, error: "Invalid or expired OTP" });
     }
 
-    await fastify.redis.del(key);
+    if (body.phone !== DEMO_PHONE) {
+      // Normal flow — check Redis
+      const key = RedisKeys.otpCode(body.phone);
+      const storedCode = await fastify.redis.get(key);
+
+      if (!storedCode || storedCode !== body.code) {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Invalid or expired OTP" });
+      }
+
+      await fastify.redis.del(key);
+    }
+    // ── End demo bypass ───────────────────────────────────────────────────────
 
     // Find or create user
     let user = await fastify.prisma.user.findUnique({
@@ -70,16 +96,23 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     if (!user) {
       // Brand-new phone number → create as PASSENGER with linked Passenger record
+      // For the demo number, seed a realistic display name
+      const isDemoNumber = body.phone === DEMO_PHONE;
       user = await fastify.prisma.user.create({
         data: {
           phone: body.phone,
-          firstName: "",
-          lastName: "",
+          firstName: isDemoNumber ? "Demo" : "",
+          lastName: isDemoNumber ? "Passenger" : "",
           role: "PASSENGER",
           isVerified: true,
           passenger: { create: {} },
         },
       });
+      fastify.log.info(
+        isDemoNumber
+          ? `[Demo] Created demo passenger account for ${DEMO_PHONE}`
+          : `New passenger created for ${body.phone}`
+      );
     } else if (user.role === "PASSENGER") {
       // Existing PASSENGER — ensure Passenger record exists (safety net)
       await fastify.prisma.passenger.upsert({
