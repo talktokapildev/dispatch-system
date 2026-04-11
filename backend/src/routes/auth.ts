@@ -26,7 +26,7 @@ const adminLoginSchema = z.object({
 // A hardcoded test number that bypasses OTP for App Store review, demos,
 // and onboarding new users without needing Twilio.
 // OTP is always accepted as 123456 for this number only.
-const DEMO_PHONE = "+447700000001";
+const DEMO_PHONES = ["+447700000001", "+447700000003"];
 const DEMO_OTP = "123456";
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -35,8 +35,8 @@ export async function authRoutes(fastify: FastifyInstance) {
     const body = sendOtpSchema.parse(request.body);
 
     // Demo number — skip Redis/Twilio, OTP is always 123456
-    if (body.phone === DEMO_PHONE) {
-      fastify.log.info(`[Demo] OTP send skipped for demo number ${DEMO_PHONE}`);
+    if (DEMO_PHONES.includes(body.phone)) {
+      fastify.log.info(`[Demo] OTP send skipped for demo number ${body.phone}`);
       return reply.send({ success: true, message: "OTP sent" });
     }
 
@@ -66,13 +66,13 @@ export async function authRoutes(fastify: FastifyInstance) {
     // ── Demo bypass ───────────────────────────────────────────────────────────
     // +447700000001 with OTP 123456 always succeeds.
     // Used for App Store review, demos, and onboarding guests.
-    if (body.phone === DEMO_PHONE && body.code !== DEMO_OTP) {
+    if (DEMO_PHONES.includes(body.phone) && body.code !== DEMO_OTP) {
       return reply
         .status(400)
         .send({ success: false, error: "Invalid or expired OTP" });
     }
 
-    if (body.phone !== DEMO_PHONE) {
+    if (!DEMO_PHONES.includes(body.phone)) {
       // Normal flow — check Redis
       const key = RedisKeys.otpCode(body.phone);
       const storedCode = await fastify.redis.get(key);
@@ -97,7 +97,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     if (!user) {
       // Brand-new phone number → create as PASSENGER with linked Passenger record
       // For the demo number, seed a realistic display name
-      const isDemoNumber = body.phone === DEMO_PHONE;
+      const isDemoNumber = DEMO_PHONES.includes(body.phone);
       user = await fastify.prisma.user.create({
         data: {
           phone: body.phone,
@@ -110,7 +110,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
       fastify.log.info(
         isDemoNumber
-          ? `[Demo] Created demo passenger account for ${DEMO_PHONE}`
+          ? `[Demo] Created demo passenger account for ${body.phone}`
           : `New passenger created for ${body.phone}`
       );
     } else if (user.role === "PASSENGER") {
