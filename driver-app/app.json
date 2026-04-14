@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.driver",
-      "buildNumber": "2",
+      "buildNumber": "4",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
@@ -24,10 +24,7 @@
         "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "backgroundModes": [
-        "location",
-        "location"
-      ],
+      "backgroundModes": ["location"],
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       }
@@ -38,7 +35,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 2,
+      "versionCode": 4,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -46,9 +43,7 @@
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "VIBRATE",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "VIBRATE"
       ],
       "config": {
         "googleMaps": {
@@ -60,7 +55,11 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow OrangeRide Driver to use your location for job tracking."
+          "locationWhenInUsePermission": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
+          "locationAlwaysAndWhenInUsePermission": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
+          "locationAlwaysPermission": "OrangeRide Driver needs your location in the background to track active jobs.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
       "expo-secure-store",

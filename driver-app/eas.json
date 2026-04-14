@@ -23,6 +23,12 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "android-apk": {
+      "env": { "APP_ENV": "production" },
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

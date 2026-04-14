@@ -97,7 +97,7 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       style: "alwaysDark",
       googlePay: {
         merchantCountryCode: "GB",
-        testEnv: true,
+        testEnv: process.env.APP_ENV !== "production",
         currencyCode: "gbp",
       },
       applePay: {

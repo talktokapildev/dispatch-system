@@ -1,58 +1,131 @@
-import { useState, useRef, useEffect } from 'react'
-import * as Location from 'expo-location'
-import { api } from '../lib/api'
+import { useState, useRef, useEffect } from "react";
+import * as Location from "expo-location";
+import * as TaskManager from "expo-task-manager";
+import { api } from "../lib/api";
+
+const LOCATION_TASK = "background-location-task";
 
 interface Coords {
-  latitude: number
-  longitude: number
+  latitude: number;
+  longitude: number;
 }
 
 interface UseLocationTrackingResult {
-  location: Coords | null
-  locationRef: React.MutableRefObject<Coords | null>
-  getInitialLocation: () => Promise<Coords | null>
+  location: Coords | null;
+  locationRef: React.MutableRefObject<Coords | null>;
+  getInitialLocation: () => Promise<Coords | null>;
 }
 
-export function useLocationTracking(pollInterval = 8_000): UseLocationTrackingResult {
-  const [location, setLocation] = useState<Coords | null>(null)
-  const locationRef = useRef<Coords | null>(null)
-  const intervalRef = useRef<NodeJS.Timeout>()
+// Define the background task OUTSIDE the component (module level)
+TaskManager.defineTask(LOCATION_TASK, async ({ data, error }: any) => {
+  if (error) return;
+  const [loc] = (data as any).locations;
+  try {
+    await api.post("/drivers/location", {
+      latitude: loc.coords.latitude,
+      longitude: loc.coords.longitude,
+      bearing: Math.max(0, loc.coords.heading ?? 0),
+      speed: loc.coords.speed ?? 0,
+    });
+  } catch {}
+});
+
+export function useLocationTracking(
+  pollInterval = 8_000
+): UseLocationTrackingResult {
+  const [location, setLocation] = useState<Coords | null>(null);
+  const locationRef = useRef<Coords | null>(null);
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
 
   const updateLocation = (coords: Coords) => {
-    locationRef.current = coords
-    setLocation(coords)
-  }
+    locationRef.current = coords;
+    setLocation(coords);
+  };
 
   const getInitialLocation = async (): Promise<Coords | null> => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync()
-      if (status !== 'granted') return null
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
-      updateLocation(coords)
-      return coords
-    } catch {
-      return null
-    }
-  }
+      // Step 1: foreground permission first (required before asking background)
+      const { status: fgStatus } =
+        await Location.requestForegroundPermissionsAsync();
+      if (fgStatus !== "granted") return null;
 
+      // Step 2: background permission (triggers "Always" prompt on iOS)
+      const { status: bgStatus } =
+        await Location.requestBackgroundPermissionsAsync();
+      if (bgStatus !== "granted") {
+        console.warn(
+          "Background location not granted — tracking will stop when app is backgrounded"
+        );
+      }
+
+      // Step 3: get current position
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const coords = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      };
+      updateLocation(coords);
+
+      // Step 4: start background location task
+      const isRegistered = await TaskManager.isTaskRegisteredAsync(
+        LOCATION_TASK
+      );
+      if (!isRegistered) {
+        await Location.startLocationUpdatesAsync(LOCATION_TASK, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: pollInterval,
+          distanceInterval: 10, // metres — update if moved 10m
+          foregroundService: {
+            notificationTitle: "OrangeRide Driver",
+            notificationBody: "Location tracking active",
+            notificationColor: "#F97316",
+          },
+          pausesUpdatesAutomatically: false,
+          showsBackgroundLocationIndicator: true, // iOS blue bar
+        });
+      }
+
+      return coords;
+    } catch (e) {
+      console.error("getInitialLocation error:", e);
+      return null;
+    }
+  };
+
+  // Foreground watcher — keeps UI map pin moving while app is open
   useEffect(() => {
-    intervalRef.current = setInterval(async () => {
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-        const newCoords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude }
-        updateLocation(newCoords)
-        await api.post('/drivers/location', {
+    let active = true;
+
+    Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: pollInterval,
+        distanceInterval: 10,
+      },
+      (loc) => {
+        if (!active) return;
+        updateLocation({
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
-          bearing: Math.max(0, loc.coords.heading ?? 0),
-          speed: loc.coords.speed ?? 0,
-        })
-      } catch {}
-    }, pollInterval)
+        });
+      }
+    ).then((sub) => {
+      watchRef.current = sub;
+    });
 
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [])
+    return () => {
+      active = false;
+      watchRef.current?.remove();
+      // Stop background task on unmount (driver went offline)
+      TaskManager.isTaskRegisteredAsync(LOCATION_TASK).then(
+        (registered: any) => {
+          if (registered) Location.stopLocationUpdatesAsync(LOCATION_TASK);
+        }
+      );
+    };
+  }, []);
 
-  return { location, locationRef, getInitialLocation }
+  return { location, locationRef, getInitialLocation };
 }

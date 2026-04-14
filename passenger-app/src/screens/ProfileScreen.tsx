@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuthStore } from "../lib/api";
+import { useAuthStore, api } from "../lib/api";
 import { disconnectSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
@@ -18,6 +19,7 @@ export default function ProfileScreen({ navigation }: any) {
   const { Colors, theme, toggle } = useTheme();
   const { user, logout } = useAuthStore();
   const { unregisterToken } = usePushNotifications();
+  const [deleting, setDeleting] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -26,12 +28,57 @@ export default function ProfileScreen({ navigation }: any) {
         text: "Log Out",
         style: "destructive",
         onPress: async () => {
-          await unregisterToken(); // ← deregister before clearing token
+          await unregisterToken();
           disconnectSocket();
           logout();
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete Account",
+      "This will permanently delete your account and all your ride history. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Account",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Are you sure?",
+              "Your account and all data will be permanently deleted.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Yes, Delete",
+                  style: "destructive",
+                  onPress: confirmDeleteAccount,
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const confirmDeleteAccount = async () => {
+    try {
+      setDeleting(true);
+      await api.delete("/passengers/me");
+      await unregisterToken();
+      disconnectSocket();
+      logout();
+    } catch (err: any) {
+      setDeleting(false);
+      Alert.alert(
+        "Error",
+        err?.response?.data?.error ??
+          "Failed to delete account. Please try again."
+      );
+    }
   };
 
   const s = styles(Colors);
@@ -110,13 +157,31 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={s.card}>
           <Text style={s.cardTitle}>App</Text>
           <InfoRow label="Version" value="1.0.0" />
-          <InfoRow label="Build" value="Phase 3 MVP" />
+          <InfoRow label="Operator" value="OrangeRide (Licence II786)" />
         </View>
 
         {/* Logout */}
         <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <Text style={s.logoutText}>Log Out</Text>
         </TouchableOpacity>
+
+        {/* Delete Account */}
+        <TouchableOpacity
+          style={s.deleteBtn}
+          onPress={handleDeleteAccount}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator color={Colors.danger} size="small" />
+          ) : (
+            <Text style={s.deleteText}>Delete Account</Text>
+          )}
+        </TouchableOpacity>
+
+        <Text style={s.deleteWarning}>
+          Deleting your account is permanent and cannot be undone. All ride
+          history and personal data will be removed.
+        </Text>
 
         <View style={{ height: Spacing.xxl }} />
       </ScrollView>
@@ -193,4 +258,23 @@ const styles = (
       alignItems: "center",
     },
     logoutText: { color: C.danger, fontWeight: "700", fontSize: FontSize.md },
+    deleteBtn: {
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.sm,
+      backgroundColor: "transparent",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.danger + "60",
+      padding: Spacing.md,
+      alignItems: "center",
+    },
+    deleteText: { color: C.danger, fontWeight: "500", fontSize: FontSize.sm },
+    deleteWarning: {
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.md,
+      fontSize: FontSize.xs,
+      color: C.muted,
+      textAlign: "center",
+      lineHeight: 18,
+    },
   });
