@@ -610,4 +610,61 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true });
     }
   );
+
+  // ─── DELETE /passengers/me ─────────────────────────────────────────────────
+  // Hard-deletes the passenger account and all associated data.
+  // Required by Apple App Store Guideline 5.1.1(v)
+  fastify.delete(
+    "/passengers/me",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+
+      const passenger = await getPassenger(userId);
+      if (!passenger) {
+        return reply.status(403).send({ success: false, error: "Not found" });
+      }
+
+      // Cancel active bookings
+      await fastify.prisma.booking.updateMany({
+        where: {
+          passengerId: passenger.id,
+          status: {
+            in: [
+              "PENDING",
+              "CONFIRMED",
+              "DRIVER_ASSIGNED",
+              "DRIVER_EN_ROUTE",
+              "DRIVER_ARRIVED",
+              "IN_PROGRESS",
+            ],
+          },
+        },
+        data: { status: "CANCELLED" },
+      });
+
+      // Delete in FK-safe order
+      await fastify.prisma.bookingStatusHistory.deleteMany({
+        where: { booking: { passengerId: passenger.id } },
+      });
+      await fastify.prisma.receipt.deleteMany({
+        where: { booking: { passengerId: passenger.id } },
+      });
+      await fastify.prisma.booking.deleteMany({
+        where: { passengerId: passenger.id },
+      });
+      await fastify.prisma.savedPaymentMethod.deleteMany({
+        where: { passengerId: passenger.id },
+      });
+      await fastify.prisma.passenger.delete({
+        where: { id: passenger.id },
+      });
+      // OTP codes and refresh tokens
+      await fastify.prisma.otpCode.deleteMany({ where: { userId } });
+      await fastify.prisma.refreshToken.deleteMany({ where: { userId } });
+      await fastify.prisma.user.delete({ where: { id: userId } });
+
+      return reply.send({ success: true, message: "Account deleted" });
+    }
+  );
 }
