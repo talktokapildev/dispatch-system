@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.driver",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
@@ -24,9 +24,7 @@
         "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "backgroundModes": [
-        "location"
-      ],
+      "backgroundModes": ["location"],
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       }
@@ -37,7 +35,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
