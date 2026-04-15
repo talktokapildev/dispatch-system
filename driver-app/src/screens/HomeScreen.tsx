@@ -15,6 +15,8 @@ import { useSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
+import * as Location from "expo-location";
+import * as TaskManager from "expo-task-manager";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -87,6 +89,16 @@ export default function HomeScreen({ navigation }: any) {
     try {
       await api.patch("/drivers/status", { status: newStatus });
       setStatus(newStatus);
+
+      // Stop background location when going offline
+      if (newStatus === "OFFLINE") {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(
+          "background-location-task"
+        );
+        if (isRegistered) {
+          await Location.stopLocationUpdatesAsync("background-location-task");
+        }
+      }
     } catch (err: any) {
       Alert.alert(
         "Error",
