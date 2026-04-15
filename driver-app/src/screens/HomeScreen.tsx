@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,11 +9,12 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Location from "expo-location";
+
 import { api, useAuthStore } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import { useLocationTracking } from "../hooks/useLocationTracking";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -22,7 +23,7 @@ export default function HomeScreen({ navigation }: any) {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
   const [loading, setLoading] = useState(false);
-  const locationInterval = useRef<NodeJS.Timeout>();
+  const { getInitialLocation } = useLocationTracking();
 
   const STATUS_COLORS: Record<string, string> = {
     OFFLINE: Colors.muted,
@@ -41,11 +42,8 @@ export default function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchEarnings();
-    refreshDriverProfile(); // ← add this
+    refreshDriverProfile();
     if (status === "AVAILABLE" || status === "ON_JOB") startLocationTracking();
-    return () => {
-      if (locationInterval.current) clearInterval(locationInterval.current);
-    };
   }, [status]);
 
   const fetchEarnings = async () => {
@@ -74,28 +72,13 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const startLocationTracking = async () => {
-    const { status: locStatus } =
-      await Location.requestForegroundPermissionsAsync();
-    if (locStatus !== "granted") {
+    const coords = await getInitialLocation();
+    if (!coords) {
       Alert.alert(
         "Permission needed",
         "Location permission is required to go online"
       );
-      return;
     }
-    locationInterval.current = setInterval(async () => {
-      try {
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        await api.post("/drivers/location", {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          bearing: Math.max(0, loc.coords.heading ?? 0),
-          speed: loc.coords.speed ?? 0,
-        });
-      } catch {}
-    }, 10_000);
   };
 
   const toggleOnline = async () => {
@@ -104,8 +87,6 @@ export default function HomeScreen({ navigation }: any) {
     try {
       await api.patch("/drivers/status", { status: newStatus });
       setStatus(newStatus);
-      if (newStatus === "OFFLINE" && locationInterval.current)
-        clearInterval(locationInterval.current);
     } catch (err: any) {
       Alert.alert(
         "Error",
