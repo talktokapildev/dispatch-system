@@ -39,7 +39,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.passenger",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
