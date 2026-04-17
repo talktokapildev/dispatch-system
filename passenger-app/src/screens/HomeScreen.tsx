@@ -227,6 +227,7 @@ export default function HomeScreen({ navigation }: any) {
               setPickup(r);
               Keyboard.dismiss();
             }}
+            onClear={() => setPickup(null)}
           />
 
           <TouchableOpacity style={s.myLocBtn} onPress={useMyLocationAsPickup}>
@@ -242,6 +243,7 @@ export default function HomeScreen({ navigation }: any) {
               setDropoff(r);
               Keyboard.dismiss();
             }}
+            onClear={() => setPickup(null)}
           />
         </ScrollView>
 

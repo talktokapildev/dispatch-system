@@ -34,6 +34,7 @@ interface AddressPickerProps {
   placeholder: string;
   value: string;
   onSelect: (result: PlaceResult) => void;
+  onClear?: () => void;
 }
 
 export default function AddressPicker({
@@ -42,17 +43,18 @@ export default function AddressPicker({
   placeholder,
   value,
   onSelect,
+  onClear,
 }: AddressPickerProps) {
   const { Colors } = useTheme();
   const [query, setQuery] = useState(value);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState(false);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = (text: string) => {
     setQuery(text);
-    clearTimeout(debounceRef.current);
+    clearTimeout(debounceRef.current ?? undefined);
     if (text.length < 3) {
       setSuggestions([]);
       return;
@@ -130,6 +132,7 @@ export default function AddressPicker({
             onPress={() => {
               setQuery("");
               setSuggestions([]);
+              onClear?.();
             }}
             style={s.clearBtn}
           >
