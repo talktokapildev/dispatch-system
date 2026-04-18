@@ -113,6 +113,37 @@ export async function driverRoutes(fastify: FastifyInstance) {
 
       if (body.status === DriverStatus.AVAILABLE) {
         await fastify.redis.sadd(RedisKeys.onlineDrivers(), driver.id);
+
+        // ── Check for pending bookings that need a driver ──────────────────
+        // If bookings are waiting (no driver found when they were created),
+        // try to dispatch them now that a new driver is online
+        const pendingBookings = await fastify.prisma.booking.findMany({
+          where: {
+            status: BookingStatus.PENDING,
+            driverId: null,
+            scheduledAt: null, // ASAP only
+          },
+          orderBy: { createdAt: "asc" },
+          take: 5,
+        });
+
+        if (pendingBookings.length > 0) {
+          const { MapsService } = await import("../services/maps.service");
+          const maps = new MapsService();
+          const dispatch = new DispatchService(
+            fastify.prisma,
+            fastify.redis,
+            fastify.io,
+            maps
+          );
+          for (const booking of pendingBookings) {
+            dispatch
+              .dispatchBooking(booking.id)
+              .catch((err) =>
+                fastify.log.error("Re-dispatch on driver online failed:", err)
+              );
+          }
+        }
       } else if (body.status === DriverStatus.OFFLINE) {
         await fastify.redis.srem(RedisKeys.onlineDrivers(), driver.id);
       }
