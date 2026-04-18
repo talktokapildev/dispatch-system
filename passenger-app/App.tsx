@@ -24,7 +24,7 @@ import RideHistoryScreen from "./src/screens/RideHistoryScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 
 const STRIPE_PUBLISHABLE_KEY =
-  "pk_test_51TJsFyJYqn1Y7BmXE5zuKIQSvpF318IVcTT8HH9govGsQcKSt8gBdgoSSV3Hux8F6rDYcuKy7eowOeDhWgkYxej000mDVVUthe";
+  "pk_live_51TJsFkJUpxtjNsXGo8c8VR7eZwVxOZoWHu0dgqTymXBE2URyyt4arseGyd2mzgacY2WcnbHQ5CY3rkIdiWWUrDdj00ZFBQGDnD";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -162,7 +162,7 @@ export default function App() {
         <ThemeProvider>
           <StripeProvider
             publishableKey={STRIPE_PUBLISHABLE_KEY}
-            merchantIdentifier="merchant.com.dispatch.passenger"
+            merchantIdentifier="merchant.com.orangeride.passenger"
           >
             <RootNavigator />
           </StripeProvider>

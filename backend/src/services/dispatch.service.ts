@@ -317,21 +317,19 @@ export class DispatchService {
         completedBooking?.paymentMethod === "CARD"
       ) {
         try {
-          const { StripeService } = require("../services/stripe.service");
-          const stripe = new StripeService();
+          const { StripeService, capturePaymentIntentByMode } = await import(
+            "../services/stripe.service"
+          );
           const actualPence = StripeService.toPence(
             completedBooking.actualFare ?? completedBooking.estimatedFare
           );
-          // Add fee before capture
           const feePence = StripeService.calculateStripeFee(actualPence);
-          await stripe.capturePaymentIntent(
+          await capturePaymentIntentByMode(
             completedBooking.stripePaymentIntentId,
             actualPence + feePence
           );
         } catch (err) {
           console.error("[Stripe] Capture failed:", err);
-          // Don't block trip completion if payment capture fails
-          // Handle manually via Stripe dashboard
         }
       }
     }

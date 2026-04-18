@@ -525,7 +525,10 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       }
 
       const { StripeService } = await import("../services/stripe.service");
-      const stripe = new StripeService();
+      const passengerUser = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+      });
+      const stripe = new StripeService(passengerUser?.phone ?? "");
 
       // Add Stripe fee to amount (1.5% + 20p)
       const basePence = StripeService.toPence(booking.estimatedFare);
@@ -563,22 +566,31 @@ export async function passengerRoutes(fastify: FastifyInstance) {
     "/passengers/payment-intent",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
+      const { userId } = request.user;
       const { estimatedFare, currency = "gbp" } = request.body as {
         estimatedFare: number;
         currency?: string;
       };
 
       const { StripeService } = await import("../services/stripe.service");
-      const stripe = new StripeService();
+      const passengerUser = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+      });
+      const stripe = new StripeService(passengerUser?.phone ?? "");
 
       const basePence = StripeService.toPence(estimatedFare);
       const feePence = StripeService.calculateStripeFee(basePence);
       const totalPence = basePence + feePence;
 
-      const { clientSecret, paymentIntentId } =
+      const { clientSecret, paymentIntentId, stripeMode } =
         await stripe.createPaymentIntent(totalPence, currency, {
           estimatedFare: estimatedFare.toString(),
         });
+
+      const stripePublishableKey =
+        stripeMode === "test"
+          ? process.env.STRIPE_TEST_PUBLIC_KEY!
+          : process.env.STRIPE_LIVE_PUBLIC_KEY!;
 
       return reply.send({
         success: true,
@@ -586,6 +598,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           clientSecret,
           paymentIntentId,
           totalAmount: StripeService.toPounds(totalPence),
+          stripePublishableKey,
         },
       });
     }
@@ -597,11 +610,19 @@ export async function passengerRoutes(fastify: FastifyInstance) {
     "/passengers/payment-intent/:id",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
+      const { userId } = request.user;
       const { id } = request.params as { id: string };
 
       try {
-        const { StripeService } = await import("../services/stripe.service");
-        const stripe = new StripeService();
+        const { StripeService, cancelPaymentIntentByMode } = await import(
+          "../services/stripe.service"
+        );
+        await cancelPaymentIntentByMode(id);
+        const passengerUser = await fastify.prisma.user.findUnique({
+          where: { id: userId },
+        });
+        const stripe = new StripeService(passengerUser?.phone ?? "");
+
         await stripe.cancelPaymentIntent(id);
       } catch {
         // Silent fail — intent may have already expired
