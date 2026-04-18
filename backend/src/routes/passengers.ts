@@ -26,6 +26,8 @@ const createBookingSchema = z.object({
   passengerCount: z.number().int().min(1).max(8).default(1),
   notes: z.string().max(500).optional(),
   scheduledAt: z.string().datetime().optional(),
+  paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "CARD"]).default("CASH"),
+  stripePaymentIntentId: z.string().optional(),
 });
 
 const rateSchema = z.object({
@@ -123,7 +125,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           dropoffLatitude: body.dropoffLatitude,
           dropoffLongitude: body.dropoffLongitude,
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-          paymentMethod: PaymentMethod.CARD,
+          paymentMethod: body.paymentMethod as PaymentMethod,
+          stripePaymentIntentId: body.stripePaymentIntentId ?? null,
           pricingType: PricingType.FIXED,
           estimatedFare: estimate.total,
           passengerCount: body.passengerCount,

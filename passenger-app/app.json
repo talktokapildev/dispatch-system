@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.passenger",
-      "buildNumber": "12",
+      "buildNumber": "13",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.orangeride.passenger"
