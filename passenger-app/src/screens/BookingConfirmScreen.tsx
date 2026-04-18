@@ -21,7 +21,7 @@ const OPERATOR_BANK = {
   accountNo: "11762260",
 };
 
-type PaymentMethod = "CASH" | "BANK_TRANSFER" | "CARD";
+type PaymentMethod = "CASH" | "CARD";
 
 const PAYMENT_OPTIONS = [
   {
@@ -29,13 +29,6 @@ const PAYMENT_OPTIONS = [
     icon: "💵",
     label: "Cash",
     sublabel: "Pay your driver directly",
-    free: true,
-  },
-  {
-    id: "BANK_TRANSFER" as PaymentMethod,
-    icon: "🏦",
-    label: "Bank Transfer",
-    sublabel: "Faster Payments — arrives instantly",
     free: true,
   },
   {
@@ -302,29 +295,6 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
             );
           })}
         </View>
-
-        {/* Bank transfer preview */}
-        {selectedPayment === "BANK_TRANSFER" && (
-          <View
-            style={[
-              s.card,
-              {
-                backgroundColor: Colors.info + "08",
-                borderColor: Colors.info + "30",
-              },
-            ]}
-          >
-            <Text style={[s.cardTitle, { color: Colors.info }]}>
-              🏦 Bank Transfer Details
-            </Text>
-            <Text style={s.bankText}>
-              You'll see full bank details after your trip completes.
-            </Text>
-            <Text style={s.bankText}>
-              Use your booking reference as the payment reference.
-            </Text>
-          </View>
-        )}
 
         {/* Card info note */}
         {selectedPayment === "CARD" && (

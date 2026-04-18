@@ -26,7 +26,7 @@ const createBookingSchema = z.object({
   passengerCount: z.number().int().min(1).max(8).default(1),
   notes: z.string().max(500).optional(),
   scheduledAt: z.string().datetime().optional(),
-  paymentMethod: z.enum(["CASH", "BANK_TRANSFER", "CARD"]).default("CASH"),
+  paymentMethod: z.enum(["CASH", "CARD"]).default("CASH"),
   stripePaymentIntentId: z.string().optional(),
 });
 
