@@ -17,14 +17,16 @@ import LoginScreen from "./src/screens/LoginScreen";
 import ProfileSetupScreen from "./src/screens/ProfileSetupScreen";
 import HomeScreen from "./src/screens/HomeScreen";
 import BookingConfirmScreen from "./src/screens/BookingConfirmScreen";
-//import StripePaymentScreen from "./src/screens/StripePaymentScreen";
 import TrackingScreen from "./src/screens/TrackingScreen";
 import RideCompleteScreen from "./src/screens/RideCompleteScreen";
 import RideHistoryScreen from "./src/screens/RideHistoryScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 
-const STRIPE_PUBLISHABLE_KEY =
+const STRIPE_LIVE_KEY =
   "pk_live_51TJsFkJUpxtjNsXGo8c8VR7eZwVxOZoWHu0dgqTymXBE2URyyt4arseGyd2mzgacY2WcnbHQ5CY3rkIdiWWUrDdj00ZFBQGDnD";
+const STRIPE_TEST_KEY =
+  "pk_test_51TJsFyJYqn1Y7BmXE5zuKIQSvpF318IVcTT8HH9govGsQcKSt8gBdgoSSV3Hux8F6rDYcuKy7eowOeDhWgkYxej000mDVVUthe";
+const STRIPE_TEST_PHONES = ["+447700000001", "+447700000003"];
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -125,11 +127,6 @@ function RootNavigator() {
               name="BookingConfirm"
               component={BookingConfirmScreen}
             />
-            {/* <Stack.Screen
-              name="StripePayment"
-              component={StripePaymentScreen}
-              options={{ presentation: "modal", gestureEnabled: false }}
-            /> */}
             <Stack.Screen
               name="Tracking"
               component={TrackingScreen}
@@ -156,12 +153,20 @@ function RootNavigator() {
 }
 
 export default function App() {
+  const { user } = useAuthStore();
+
+  // Use test Stripe key for demo/test phone numbers, live key for everyone else
+  const stripeKey =
+    user?.phone && STRIPE_TEST_PHONES.includes(user.phone)
+      ? STRIPE_TEST_KEY
+      : STRIPE_LIVE_KEY;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
           <StripeProvider
-            publishableKey={STRIPE_PUBLISHABLE_KEY}
+            publishableKey={stripeKey}
             merchantIdentifier="merchant.com.orangeride.passenger"
           >
             <RootNavigator />

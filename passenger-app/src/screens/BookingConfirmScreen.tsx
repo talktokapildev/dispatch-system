@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useStripe, initStripe } from "@stripe/stripe-react-native";
+import { useStripe } from "@stripe/stripe-react-native";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
@@ -88,12 +88,11 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       estimatedFare: baseFare,
       currency: "gbp",
     });
-    const { clientSecret, paymentIntentId, stripePublishableKey } = piData.data;
-
-    // Re-initialise Stripe with the correct key for this user (live vs test)
-    await initStripe({ publishableKey: stripePublishableKey });
+    const { clientSecret, paymentIntentId } = piData.data;
 
     // 2. Initialise Stripe payment sheet
+    // StripeProvider in App.tsx is already initialised with the correct key
+    // (test key for demo phones, live key for real users)
     const { error: initError } = await initPaymentSheet({
       paymentIntentClientSecret: clientSecret,
       merchantDisplayName: "OrangeRide",

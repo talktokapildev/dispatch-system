@@ -3,7 +3,7 @@
     "name": "OrangeRide",
     "newArchEnabled": false,
     "slug": "orangeride-passenger",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.passenger",
-      "buildNumber": "10",
+      "buildNumber": "12",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.orangeride.passenger"
