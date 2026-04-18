@@ -23,6 +23,19 @@ const statusSchema = z.object({
   status: z.nativeEnum(DriverStatus),
 });
 
+// ── UK timezone helper ─────────────────────────────────────────────────────
+// Converts a YYYY-MM-DD date string to a UTC Date representing the start or
+// end of that day in Europe/London time (handles both GMT and BST automatically)
+function toUKDate(dateStr: string, endOfDay = false): Date {
+  const time = endOfDay ? "T23:59:59" : "T00:00:00";
+  const d = new Date(`${dateStr}${time}`);
+  const ukOffset =
+    new Date(
+      d.toLocaleString("en-US", { timeZone: "Europe/London" })
+    ).getTime() - d.getTime();
+  return new Date(d.getTime() - ukOffset);
+}
+
 export async function driverRoutes(fastify: FastifyInstance) {
   const maps = new MapsService();
   const notifications = new NotificationService(fastify.prisma); // ← NEW
@@ -419,8 +432,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
         ...(from || to
           ? {
               createdAt: {
-                ...(from ? { gte: new Date(from) } : {}),
-                ...(to ? { lte: new Date(to) } : {}),
+                ...(from ? { gte: toUKDate(from) } : {}),
+                ...(to ? { lte: toUKDate(to, true) } : {}),
               },
             }
           : {}),
