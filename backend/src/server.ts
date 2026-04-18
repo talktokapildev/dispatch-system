@@ -17,6 +17,7 @@ import { bookingRoutes } from "./routes/bookings";
 import { driverRoutes } from "./routes/drivers";
 import { adminRoutes } from "./routes/admin";
 import { passengerRoutes } from "./routes/passengers"; // ← NEW
+import { placesRoutes } from "./routes/places";
 
 async function buildServer() {
   const fastify = Fastify({
@@ -56,6 +57,7 @@ async function buildServer() {
   await fastify.register(driverRoutes, { prefix });
   await fastify.register(adminRoutes, { prefix });
   await fastify.register(passengerRoutes, { prefix }); // ← NEW
+  await fastify.register(placesRoutes, { prefix });
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
