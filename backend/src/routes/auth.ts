@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import { addMinutes } from "date-fns";
+import Twilio from "twilio";
 import { RedisKeys, RedisTTL } from "../plugins/redis";
 import { OTP_EXPIRY_MINUTES, OTP_LENGTH } from "../config";
 
@@ -22,12 +23,36 @@ const adminLoginSchema = z.object({
   password: z.string().min(8),
 });
 
-// ─── Demo account ─────────────────────────────────────────────────────────────
-// A hardcoded test number that bypasses OTP for App Store review, demos,
-// and onboarding new users without needing Twilio.
-// OTP is always accepted as 123456 for this number only.
+// ─── Demo accounts ────────────────────────────────────────────────────────────
+// Hardcoded test numbers that bypass OTP for App Store review / demos.
+// OTP is always accepted as 123456 for these numbers only.
 const DEMO_PHONES = ["+447700000001", "+447700000003"];
 const DEMO_OTP = "123456";
+
+// ─── Twilio client (lazy-initialised) ────────────────────────────────────────
+// Only created when env vars are present so local dev still works without them.
+function getTwilioClient(): Twilio.Twilio | null {
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
+  return Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+}
+
+async function sendSmsOtp(to: string, code: string): Promise<void> {
+  const client = getTwilioClient();
+  const from = process.env.TWILIO_PHONE_NUMBER;
+
+  if (!client || !from) {
+    // No Twilio config — log only (local dev fallback)
+    console.log(`[OTP fallback] Code for ${to}: ${code}`);
+    return;
+  }
+
+  await client.messages.create({
+    body: `Your OrangeRide verification code is: ${code}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
+    from,
+    to,
+  });
+}
 
 export async function authRoutes(fastify: FastifyInstance) {
   // ─── Send OTP ────────────────────────────────────────────────────────────────
@@ -47,16 +72,20 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     await fastify.redis.setex(key, RedisTTL.otp, code);
 
-    fastify.log.info(`OTP for ${body.phone}: ${code}`);
+    try {
+      await sendSmsOtp(body.phone, code);
+      fastify.log.info(`OTP sent via SMS to ${body.phone}`);
+    } catch (err: any) {
+      fastify.log.error(`Twilio SMS failed for ${body.phone}: ${err.message}`);
+      // Delete the stored code so the user can retry cleanly
+      await fastify.redis.del(key);
+      return reply.status(500).send({
+        success: false,
+        error: "Failed to send OTP. Please try again.",
+      });
+    }
 
-    // TODO: Twilio integration
-    // await twilioClient.messages.create({ body: `Your code: ${code}`, from: ..., to: body.phone })
-
-    return reply.send({
-      success: true,
-      message: "OTP sent",
-      ...(process.env.NODE_ENV === "development" ? { _devCode: code } : {}),
-    });
+    return reply.send({ success: true, message: "OTP sent" });
   });
 
   // ─── Verify OTP ──────────────────────────────────────────────────────────────
@@ -64,8 +93,6 @@ export async function authRoutes(fastify: FastifyInstance) {
     const body = verifyOtpSchema.parse(request.body);
 
     // ── Demo bypass ───────────────────────────────────────────────────────────
-    // +447700000001 with OTP 123456 always succeeds.
-    // Used for App Store review, demos, and onboarding guests.
     if (DEMO_PHONES.includes(body.phone) && body.code !== DEMO_OTP) {
       return reply
         .status(400)
@@ -95,8 +122,6 @@ export async function authRoutes(fastify: FastifyInstance) {
     const isNewUser = !user;
 
     if (!user) {
-      // Brand-new phone number → create as PASSENGER with linked Passenger record
-      // For the demo number, seed a realistic display name
       const isDemoNumber = DEMO_PHONES.includes(body.phone);
       user = await fastify.prisma.user.create({
         data: {
@@ -114,15 +139,12 @@ export async function authRoutes(fastify: FastifyInstance) {
           : `New passenger created for ${body.phone}`
       );
     } else if (user.role === "PASSENGER") {
-      // Existing PASSENGER — ensure Passenger record exists (safety net)
       await fastify.prisma.passenger.upsert({
         where: { userId: user.id },
         update: {},
         create: { userId: user.id },
       });
     }
-    // Note: DRIVER users are allowed through here — the individual apps
-    // enforce their own role check (driver app blocks PASSENGER, passenger app blocks DRIVER)
 
     const token = fastify.jwt.sign({
       userId: user.id,
@@ -232,10 +254,6 @@ export async function authRoutes(fastify: FastifyInstance) {
   });
 
   // ─── Get current user (/auth/me) ─────────────────────────────────────────────
-  // Returns role-appropriate profile data.
-  // Passenger app expects:  reply.data.passenger
-  // Driver app expects:     reply.data.driver
-  // Admin panel expects:    reply.data.adminProfile
   fastify.get(
     "/auth/me",
     { preHandler: [fastify.authenticate] },
@@ -255,9 +273,6 @@ export async function authRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "User not found" });
       }
 
-      // Return the full user object with all relations — each app picks out what it needs.
-      // passenger app: data.passenger
-      // driver app:    data.driver
       return reply.send({
         success: true,
         data: {
