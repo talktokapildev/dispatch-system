@@ -449,32 +449,93 @@ model Receipt {
 // PRICING
 // ─────────────────────────────────────────
 
-model PricingZone {
-  id            String       @id @default(uuid())
-  name          String
-  description   String?
-  isDefault     Boolean      @default(false)
-  vehicleClass  VehicleClass @default(STANDARD)
+// model PricingZone {
+//   id            String       @id @default(uuid())
+//   name          String
+//   description   String?
+//   isDefault     Boolean      @default(false)
+//   vehicleClass  VehicleClass @default(STANDARD)
 
-  // Fixed pricing
-  baseFare      Float        @default(3.50)
-  perMile       Float        @default(2.00)
-  perMinute     Float        @default(0.25)
-  minimumFare   Float        @default(5.00)
+//   // Fixed pricing
+//   baseFare      Float        @default(3.50)
+//   perMile       Float        @default(2.00)
+//   perMinute     Float        @default(0.25)
+//   minimumFare   Float        @default(5.00)
 
-  // Airport supplements
-  airportPickupSupplement Float @default(0)
-  airportDropoffSupplement Float @default(0)
+//   // Airport supplements
+//   airportPickupSupplement Float @default(0)
+//   airportDropoffSupplement Float @default(0)
 
-  // Time supplements
-  nightSupplement Float      @default(0)    // % extra
-  weekendSupplement Float    @default(0)    // % extra
-  bankHolidaySupplement Float @default(0)  // % extra
+//   // Time supplements
+//   nightSupplement Float      @default(0)    // % extra
+//   weekendSupplement Float    @default(0)    // % extra
+//   bankHolidaySupplement Float @default(0)  // % extra
 
-  isActive      Boolean      @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+//   isActive      Boolean      @default(true)
+//   createdAt     DateTime     @default(now())
+//   updatedAt     DateTime     @updatedAt
+// }
+
+// ─────────────────────────────────────────
+// PRICING CONFIG (single configurable row)
+// ─────────────────────────────────────────
+
+model PricingConfig {
+  id                       String   @id @default(uuid())
+
+  // ── Base fare components ──────────────────
+  baseFare                 Float    @default(3.50)
+  perMile                  Float    @default(1.80)
+  perMinute                Float    @default(0.20)
+  minimumFare              Float    @default(15.00)
+
+  // ── Commission ────────────────────────────
+  // Operator takes 15%, drivers keep 85%
+  platformCommission       Float    @default(0.15)
+
+  // ── Time premiums (as decimals, 0.25 = 25%) ──
+  nightPremium             Float    @default(0.25)
+  nightStartHour           Int      @default(23)   // 23:00
+  nightEndHour             Int      @default(6)    // 06:00
+  bankHolidayPremium       Float    @default(0.25)
+  christmasNyePremium      Float    @default(0.75) // Dec 24-26, Dec 31
+
+  // ── Airport fees (£, pass-through) ────────
+  gatwickDropoff           Float    @default(10.00)
+  gatwickPickup            Float    @default(10.00)
+  heathrowDropoff          Float    @default(7.00)
+  heathrowPickup           Float    @default(7.00)
+  meetAndGreet             Float    @default(12.00)
+
+  // ── Other pass-throughs (£) ───────────────
+  dartfordCrossing         Float    @default(2.50)
+  congestionCharge         Float    @default(15.00)
+  // ULEZ is £0 for Tesla — omitted intentionally
+
+  // ── Extras ────────────────────────────────
+  extraStopCharge          Float    @default(5.00)
+  freeWaitingMinutes       Int      @default(10)
+  waitingRatePerMinute     Float    @default(0.50)
+
+  // ── Cancellation policy ───────────────────
+  retailCancelFreeMinutes  Int      @default(15)   // Free within 15 min of booking
+  accountCancelFreeHours   Int      @default(2)    // Free up to 2 hrs before pickup
+
+  // ── Care home distance bands (£) ─────────
+  careHomeUnder3miles      Float    @default(15.00)
+  careHome3to7miles        Float    @default(22.00)
+  careHome7to15miles       Float    @default(32.00)
+  careHome15to25miles      Float    @default(48.00)
+  careHome25to40miles      Float    @default(70.00)
+  careHomeHospitalDischarge Float   @default(10.00) // supplement
+  careHomeHalfDay          Float    @default(150.00)
+  careHomeFullDay          Float    @default(250.00)
+  careHomeHourlyBeyondFull Float    @default(35.00)
+
+  updatedAt                DateTime @updatedAt
+  updatedBy                String?
 }
+
 
 // ─────────────────────────────────────────
 // DRIVER EARNINGS
