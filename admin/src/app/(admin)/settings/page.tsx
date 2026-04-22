@@ -1,24 +1,770 @@
-'use client'
-import { useState } from 'react'
-import { SectionHeader } from '@/components/ui'
-import { Settings, Bell, Shield, PoundSterling, Car } from 'lucide-react'
-import toast from 'react-hot-toast'
+"use client";
+import { useState, useEffect, useCallback } from "react";
+import { SectionHeader, Spinner } from "@/components/ui";
+import {
+  Settings,
+  PoundSterling,
+  Clock,
+  Plane,
+  AlertTriangle,
+  Heart,
+  Calculator,
+  CheckCircle,
+  RefreshCw,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import toast from "react-hot-toast";
 
-const SECTIONS = ['General', 'Pricing', 'Dispatch', 'Notifications', 'Compliance']
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface PricingConfig {
+  baseFare: number;
+  perMile: number;
+  perMinute: number;
+  minimumFare: number;
+  platformCommission: number;
+  nightPremium: number;
+  nightStartHour: number;
+  nightEndHour: number;
+  bankHolidayPremium: number;
+  christmasNyePremium: number;
+  gatwickDropoff: number;
+  gatwickPickup: number;
+  heathrowDropoff: number;
+  heathrowPickup: number;
+  meetAndGreet: number;
+  dartfordCrossing: number;
+  congestionCharge: number;
+  extraStopCharge: number;
+  freeWaitingMinutes: number;
+  waitingRatePerMinute: number;
+  retailCancelFreeMinutes: number;
+  accountCancelFreeHours: number;
+  careHomeUnder3miles: number;
+  careHome3to7miles: number;
+  careHome7to15miles: number;
+  careHome15to25miles: number;
+  careHome25to40miles: number;
+  careHomeHospitalDischarge: number;
+  careHomeHalfDay: number;
+  careHomeFullDay: number;
+  careHomeHourlyBeyondFull: number;
+}
 
+const SECTIONS = [
+  "General",
+  "Pricing",
+  "Dispatch",
+  "Notifications",
+  "Compliance",
+];
+
+// ─── Field component ──────────────────────────────────────────────────────────
+function Field({
+  label,
+  value,
+  onChange,
+  prefix,
+  suffix,
+  hint,
+  step = "0.01",
+  integer = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  prefix?: string;
+  suffix?: string;
+  hint?: string;
+  step?: string;
+  integer?: boolean;
+}) {
+  return (
+    <div>
+      <label
+        className="text-xs font-medium block mb-1.5"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {label}
+      </label>
+      <div className="flex items-center gap-1.5">
+        {prefix && (
+          <span
+            className="text-sm font-medium px-2.5 py-2 rounded-lg border"
+            style={{
+              background: "var(--table-hover)",
+              borderColor: "var(--border)",
+              color: "var(--text-muted)",
+            }}
+          >
+            {prefix}
+          </span>
+        )}
+        <input
+          type="number"
+          step={integer ? "1" : step}
+          min="0"
+          value={value}
+          onChange={(e) =>
+            onChange(
+              integer
+                ? parseInt(e.target.value) || 0
+                : parseFloat(e.target.value) || 0
+            )
+          }
+          className="input"
+          style={{ maxWidth: 120 }}
+        />
+        {suffix && (
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {suffix}
+          </span>
+        )}
+      </div>
+      {hint && (
+        <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Group header ─────────────────────────────────────────────────────────────
+function GroupHeader({
+  icon: Icon,
+  label,
+  color = "text-brand-400",
+}: {
+  icon: any;
+  label: string;
+  color?: string;
+}) {
+  return (
+    <div
+      className="flex items-center gap-2 mb-4 pb-2 border-b"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <Icon size={14} className={color} />
+      <h3
+        className="text-xs font-semibold uppercase tracking-wider"
+        style={{ color: "var(--text-muted)" }}
+      >
+        {label}
+      </h3>
+    </div>
+  );
+}
+
+// ─── Live Fare Calculator ─────────────────────────────────────────────────────
+function FareCalculator({ config }: { config: PricingConfig }) {
+  const [miles, setMiles] = useState(5);
+  const [minutes, setMinutes] = useState(15);
+  const [gatwickDropoff, setGatwickDropoff] = useState(false);
+  const [gatwickPickup, setGatwickPickup] = useState(false);
+  const [heathrowDropoff, setHeathrowDropoff] = useState(false);
+  const [heathrowPickup, setHeathrowPickup] = useState(false);
+  const [meetGreet, setMeetGreet] = useState(false);
+  const [congestion, setCongestion] = useState(false);
+  const [dartford, setDartford] = useState(false);
+  const [extraStops, setExtraStops] = useState(0);
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const calculate = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.post("/pricing/calculate", {
+        distanceMiles: miles,
+        durationMinutes: minutes,
+        isGatwickDropoff: gatwickDropoff,
+        isGatwickPickup: gatwickPickup,
+        isHeathrowDropoff: heathrowDropoff,
+        isHeathrowPickup: heathrowPickup,
+        isMeetAndGreet: meetGreet,
+        isCongestionCharge: congestion,
+        isDartfordCrossing: dartford,
+        extraStops,
+      });
+      setResult(data.data);
+    } catch {
+      toast.error("Calculation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-calculate when inputs change
+  useEffect(() => {
+    calculate();
+  }, [
+    miles,
+    minutes,
+    gatwickDropoff,
+    gatwickPickup,
+    heathrowDropoff,
+    heathrowPickup,
+    meetGreet,
+    congestion,
+    dartford,
+    extraStops,
+  ]);
+
+  return (
+    <div className="card p-5 mt-6">
+      <GroupHeader
+        icon={Calculator}
+        label="Live Fare Calculator — test your changes"
+        color="text-green-400"
+      />
+      <div className="grid grid-cols-2 gap-6">
+        {/* Inputs */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                className="text-xs mb-1.5 block"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Distance (miles)
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                value={miles}
+                onChange={(e) => setMiles(parseFloat(e.target.value) || 1)}
+                className="input"
+              />
+            </div>
+            <div>
+              <label
+                className="text-xs mb-1.5 block"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Duration (mins)
+              </label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={minutes}
+                onChange={(e) => setMinutes(parseInt(e.target.value) || 1)}
+                className="input"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              {
+                label: "Gatwick drop-off",
+                state: gatwickDropoff,
+                set: setGatwickDropoff,
+              },
+              {
+                label: "Gatwick pick-up",
+                state: gatwickPickup,
+                set: setGatwickPickup,
+              },
+              {
+                label: "Heathrow drop-off",
+                state: heathrowDropoff,
+                set: setHeathrowDropoff,
+              },
+              {
+                label: "Heathrow pick-up",
+                state: heathrowPickup,
+                set: setHeathrowPickup,
+              },
+              { label: "Meet & Greet", state: meetGreet, set: setMeetGreet },
+              {
+                label: "Congestion Charge",
+                state: congestion,
+                set: setCongestion,
+              },
+              { label: "Dartford Crossing", state: dartford, set: setDartford },
+            ].map(({ label, state, set }) => (
+              <label
+                key={label}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={state}
+                  onChange={(e) => set(e.target.checked)}
+                  className="accent-brand-500"
+                />
+                <span className="text-xs" style={{ color: "var(--text)" }}>
+                  {label}
+                </span>
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <label
+              className="text-xs mb-1.5 block"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Extra stops
+            </label>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              max="5"
+              value={extraStops}
+              onChange={(e) => setExtraStops(parseInt(e.target.value) || 0)}
+              className="input"
+              style={{ maxWidth: 80 }}
+            />
+          </div>
+        </div>
+
+        {/* Result */}
+        <div>
+          {loading && (
+            <div className="flex items-center gap-2 py-4">
+              <Spinner />
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Calculating…
+              </span>
+            </div>
+          )}
+          {result && !loading && (
+            <div className="space-y-2">
+              <div className="text-3xl font-bold text-brand-400">
+                £{result.total.toFixed(2)}
+              </div>
+              <div
+                className="text-xs space-y-1 mt-3"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {result.breakdown.map((line: string, i: number) => (
+                  <div
+                    key={i}
+                    className="flex justify-between py-1 border-b"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <span>{line.split(":")[0]}</span>
+                    <span
+                      className="font-medium"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {line.split(":")[1]?.trim()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-2 flex justify-between text-xs">
+                <span style={{ color: "var(--text-muted)" }}>Driver earns</span>
+                <span className="font-semibold text-green-400">
+                  £{result.driverEarning.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span style={{ color: "var(--text-muted)" }}>Platform fee</span>
+                <span className="font-semibold text-brand-400">
+                  £{result.platformFee.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pricing Section ──────────────────────────────────────────────────────────
+function PricingSection() {
+  const [config, setConfig] = useState<PricingConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get("/pricing/config");
+      setConfig(data.data);
+    } catch {
+      toast.error("Failed to load pricing config");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const update = (key: keyof PricingConfig, value: number) => {
+    setConfig((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setDirty(true);
+  };
+
+  const save = async () => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      await api.put("/pricing/config", config);
+      toast.success("Pricing config saved");
+      setDirty(false);
+    } catch {
+      toast.error("Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading)
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size={24} />
+      </div>
+    );
+  if (!config)
+    return <div className="text-sm text-red-400">Failed to load config</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+          Pricing Configuration
+        </h2>
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <span className="text-xs text-brand-400">Unsaved changes</span>
+          )}
+          <button
+            onClick={load}
+            className="btn-ghost py-1.5 px-3 flex items-center gap-1.5 text-xs"
+          >
+            <RefreshCw size={12} /> Reload
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="btn-primary flex items-center gap-2 disabled:opacity-50"
+          >
+            {saving ? <Spinner size={14} /> : <CheckCircle size={14} />}
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+
+      {/* Base Fare */}
+      <div className="card p-5">
+        <GroupHeader icon={PoundSterling} label="Base Fare Components" />
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Base fare"
+            value={config.baseFare}
+            onChange={(v) => update("baseFare", v)}
+            prefix="£"
+            hint="Charged on every booking"
+          />
+          <Field
+            label="Per mile"
+            value={config.perMile}
+            onChange={(v) => update("perMile", v)}
+            prefix="£"
+            suffix="/mile"
+          />
+          <Field
+            label="Per minute"
+            value={config.perMinute}
+            onChange={(v) => update("perMinute", v)}
+            prefix="£"
+            suffix="/min"
+          />
+          <Field
+            label="Minimum fare"
+            value={config.minimumFare}
+            onChange={(v) => update("minimumFare", v)}
+            prefix="£"
+            hint="Floor price regardless of calculation"
+          />
+          <Field
+            label="Platform commission"
+            value={Math.round(config.platformCommission * 100)}
+            onChange={(v) => update("platformCommission", v / 100)}
+            suffix="%"
+            hint="Your take — drivers keep the rest"
+            step="1"
+          />
+        </div>
+      </div>
+
+      {/* Time Premiums */}
+      <div className="card p-5">
+        <GroupHeader
+          icon={Clock}
+          label="Time Premiums"
+          color="text-violet-400"
+        />
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Night premium"
+            value={Math.round(config.nightPremium * 100)}
+            onChange={(v) => update("nightPremium", v / 100)}
+            suffix="% uplift"
+            hint="Applied to subtotal (before supplements)"
+            step="1"
+          />
+          <Field
+            label="Night start hour"
+            value={config.nightStartHour}
+            onChange={(v) => update("nightStartHour", v)}
+            suffix="e.g. 23 = 11pm"
+            step="1"
+            integer
+          />
+          <Field
+            label="Night end hour"
+            value={config.nightEndHour}
+            onChange={(v) => update("nightEndHour", v)}
+            suffix="e.g. 6 = 6am"
+            step="1"
+            integer
+          />
+          <Field
+            label="Bank holiday premium"
+            value={Math.round(config.bankHolidayPremium * 100)}
+            onChange={(v) => update("bankHolidayPremium", v / 100)}
+            suffix="% uplift"
+            step="1"
+          />
+          <Field
+            label="Christmas / NYE premium"
+            value={Math.round(config.christmasNyePremium * 100)}
+            onChange={(v) => update("christmasNyePremium", v / 100)}
+            suffix="% uplift"
+            hint="Dec 24–26, Dec 31"
+            step="1"
+          />
+        </div>
+      </div>
+
+      {/* Airport Fees */}
+      <div className="card p-5">
+        <GroupHeader
+          icon={Plane}
+          label="Airport Fees (pass-through)"
+          color="text-blue-400"
+        />
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Gatwick drop-off"
+            value={config.gatwickDropoff}
+            onChange={(v) => update("gatwickDropoff", v)}
+            prefix="£"
+          />
+          <Field
+            label="Gatwick pick-up"
+            value={config.gatwickPickup}
+            onChange={(v) => update("gatwickPickup", v)}
+            prefix="£"
+          />
+          <Field
+            label="Heathrow drop-off"
+            value={config.heathrowDropoff}
+            onChange={(v) => update("heathrowDropoff", v)}
+            prefix="£"
+          />
+          <Field
+            label="Heathrow pick-up"
+            value={config.heathrowPickup}
+            onChange={(v) => update("heathrowPickup", v)}
+            prefix="£"
+          />
+          <Field
+            label="Meet & Greet"
+            value={config.meetAndGreet}
+            onChange={(v) => update("meetAndGreet", v)}
+            prefix="£"
+            hint="Name board in arrivals hall"
+          />
+        </div>
+      </div>
+
+      {/* Pass-throughs & Extras */}
+      <div className="card p-5">
+        <GroupHeader
+          icon={AlertTriangle}
+          label="Other Pass-throughs & Extras"
+          color="text-yellow-400"
+        />
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Dartford Crossing"
+            value={config.dartfordCrossing}
+            onChange={(v) => update("dartfordCrossing", v)}
+            prefix="£"
+          />
+          <Field
+            label="London Congestion Charge"
+            value={config.congestionCharge}
+            onChange={(v) => update("congestionCharge", v)}
+            prefix="£"
+            hint="ULEZ is £0 — Tesla is EV"
+          />
+          <Field
+            label="Extra stop charge"
+            value={config.extraStopCharge}
+            onChange={(v) => update("extraStopCharge", v)}
+            prefix="£"
+            suffix="/stop"
+          />
+          <Field
+            label="Free waiting time"
+            value={config.freeWaitingMinutes}
+            onChange={(v) => update("freeWaitingMinutes", v)}
+            suffix="minutes free"
+            step="1"
+            integer
+          />
+          <Field
+            label="Waiting rate (after free)"
+            value={config.waitingRatePerMinute}
+            onChange={(v) => update("waitingRatePerMinute", v)}
+            prefix="£"
+            suffix="/min"
+          />
+        </div>
+      </div>
+
+      {/* Cancellation */}
+      <div className="card p-5">
+        <GroupHeader
+          icon={AlertTriangle}
+          label="Cancellation Policy"
+          color="text-red-400"
+        />
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Retail: free cancel window"
+            value={config.retailCancelFreeMinutes}
+            onChange={(v) => update("retailCancelFreeMinutes", v)}
+            suffix="mins after booking"
+            step="1"
+            integer
+            hint="Free cancellation within this window"
+          />
+          <Field
+            label="Account: free cancel window"
+            value={config.accountCancelFreeHours}
+            onChange={(v) => update("accountCancelFreeHours", v)}
+            suffix="hrs before pickup"
+            step="1"
+            integer
+            hint="Free cancellation up to this far in advance"
+          />
+        </div>
+      </div>
+
+      {/* Care Home Rates */}
+      <div className="card p-5">
+        <GroupHeader
+          icon={Heart}
+          label="Care Home Distance Bands"
+          color="text-pink-400"
+        />
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Flat-rate pricing by distance — no time component. Used for care home
+          contract bookings.
+        </p>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-5">
+          <Field
+            label="Under 3 miles"
+            value={config.careHomeUnder3miles}
+            onChange={(v) => update("careHomeUnder3miles", v)}
+            prefix="£"
+            hint="GP, pharmacy, local shops"
+          />
+          <Field
+            label="3 – 7 miles"
+            value={config.careHome3to7miles}
+            onChange={(v) => update("careHome3to7miles", v)}
+            prefix="£"
+            hint="Hospital appointments, day centres"
+          />
+          <Field
+            label="7 – 15 miles"
+            value={config.careHome7to15miles}
+            onChange={(v) => update("careHome7to15miles", v)}
+            prefix="£"
+            hint="Specialist clinics, outpatient"
+          />
+          <Field
+            label="15 – 25 miles"
+            value={config.careHome15to25miles}
+            onChange={(v) => update("careHome15to25miles", v)}
+            prefix="£"
+            hint="Cross-county appointments"
+          />
+          <Field
+            label="25 – 40 miles"
+            value={config.careHome25to40miles}
+            onChange={(v) => update("careHome25to40miles", v)}
+            prefix="£"
+            hint="Gatwick transfers, family visits"
+          />
+          <Field
+            label="Hospital discharge supplement"
+            value={config.careHomeHospitalDischarge}
+            onChange={(v) => update("careHomeHospitalDischarge", v)}
+            prefix="£"
+            hint="Extra wait + equipment loading"
+          />
+          <Field
+            label="Half-day rate (up to 4 hrs)"
+            value={config.careHomeHalfDay}
+            onChange={(v) => update("careHomeHalfDay", v)}
+            prefix="£"
+            hint="Funerals, family events, multi-stop"
+          />
+          <Field
+            label="Full-day rate (up to 8 hrs)"
+            value={config.careHomeFullDay}
+            onChange={(v) => update("careHomeFullDay", v)}
+            prefix="£"
+            hint="Weddings, multi-appointment days"
+          />
+          <Field
+            label="Hourly beyond full day"
+            value={config.careHomeHourlyBeyondFull}
+            onChange={(v) => update("careHomeHourlyBeyondFull", v)}
+            prefix="£"
+            suffix="/hr"
+            hint="After 8 hours"
+          />
+        </div>
+      </div>
+
+      {/* Live Calculator */}
+      <FareCalculator config={config} />
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const [active, setActive] = useState('General')
-  const [saved, setSaved] = useState(false)
+  const [active, setActive] = useState("General");
+  const [saved, setSaved] = useState(false);
 
   const save = () => {
-    toast.success('Settings saved')
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
+    toast.success("Settings saved");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <SectionHeader title="Settings" subtitle="System configuration and preferences" />
+      <SectionHeader
+        title="Settings"
+        subtitle="System configuration and preferences"
+      />
 
       <div className="flex gap-5">
         {/* Side nav */}
@@ -28,7 +774,9 @@ export default function SettingsPage() {
               key={s}
               onClick={() => setActive(s)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                active === s ? 'bg-brand-500/10 text-brand-400' : 'text-slate-400 hover:text-white hover:bg-[var(--table-hover)]'
+                active === s
+                  ? "bg-brand-500/10 text-brand-400"
+                  : "text-slate-400 hover:text-white hover:bg-[var(--table-hover)]"
               }`}
             >
               {s}
@@ -37,159 +785,339 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 card p-6 space-y-6">
-          {active === 'General' && (
-            <>
-              <h2 className="text-sm font-semibold text-white border-b border-[var(--border)] pb-3">General Settings</h2>
-              <div className="space-y-4">
-                {[
-                  { label: 'Company Name', value: 'Your Company Ltd', key: 'companyName' },
-                  { label: 'TfL Operator Licence Number', value: 'PHV1234567', key: 'licenseNumber' },
-                  { label: 'Contact Email', value: 'dispatch@company.com', key: 'email' },
-                  { label: 'Contact Phone', value: '+44 20 1234 5678', key: 'phone' },
-                  { label: 'Business Address', value: 'London, UK', key: 'address' },
-                ].map(({ label, value, key }) => (
-                  <div key={key}>
-                    <label className="text-xs text-slate-400 block mb-1.5">{label}</label>
-                    <input defaultValue={value} className="input max-w-md" />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {active === 'Pricing' && (
-            <>
-              <h2 className="text-sm font-semibold text-white border-b border-[var(--border)] pb-3">Pricing Configuration</h2>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 max-w-lg">
-                  {[
-                    { label: 'Platform Fee (%)', value: '15', key: 'platformFee' },
-                    { label: 'Minimum Fare (£)', value: '5.00', key: 'minFare' },
-                    { label: 'Night Rate Premium (%)', value: '20', key: 'nightRate' },
-                    { label: 'Weekend Premium (%)', value: '10', key: 'weekendRate' },
-                    { label: 'Bank Holiday Premium (%)', value: '25', key: 'bankHoliday' },
-                    { label: 'Airport Pickup Supplement (£)', value: '5.00', key: 'airportPickup' },
-                  ].map(({ label, value, key }) => (
-                    <div key={key}>
-                      <label className="text-xs text-slate-400 block mb-1.5">{label}</label>
-                      <input defaultValue={value} type="number" step="0.01" className="input" />
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-600">These are default values. Per-vehicle-class rates are managed in the pricing zones table.</p>
-              </div>
-            </>
-          )}
-
-          {active === 'Dispatch' && (
-            <>
-              <h2 className="text-sm font-semibold text-white border-b border-[var(--border)] pb-3">Dispatch Engine</h2>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 max-w-lg">
-                  {[
-                    { label: 'Driver Accept Timeout (seconds)', value: '60', key: 'acceptTimeout' },
-                    { label: 'Max Dispatch Attempts', value: '3', key: 'maxAttempts' },
-                    { label: 'Max Search Radius (km)', value: '10', key: 'searchRadius' },
-                    { label: 'Pre-book Lead Time (minutes)', value: '30', key: 'leadTime' },
-                  ].map(({ label, value, key }) => (
-                    <div key={key}>
-                      <label className="text-xs text-slate-400 block mb-1.5">{label}</label>
-                      <input defaultValue={value} type="number" className="input" />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  {[
-                    { label: 'Auto-dispatch ASAP jobs', description: 'Automatically offer ASAP jobs to nearest available driver', defaultChecked: true },
-                    { label: 'Escalate to manual after max attempts', description: 'Alert dispatcher if no driver accepts within configured attempts', defaultChecked: true },
-                    { label: 'Allow driver to reject jobs', description: 'Drivers can decline job offers (recommended)', defaultChecked: true },
-                  ].map(({ label, description, defaultChecked }) => (
-                    <label key={label} className="flex items-start gap-3 cursor-pointer group">
-                      <input type="checkbox" defaultChecked={defaultChecked} className="mt-0.5 accent-brand-500" />
-                      <div>
-                        <p className="text-xs text-white group-hover:text-brand-400 transition-colors">{label}</p>
-                        <p className="text-[11px] text-slate-600 mt-0.5">{description}</p>
+        <div className="flex-1 min-w-0">
+          {active === "Pricing" ? (
+            <PricingSection />
+          ) : (
+            <div className="card p-6 space-y-6">
+              {active === "General" && (
+                <>
+                  <h2
+                    className="text-sm font-semibold border-b pb-3"
+                    style={{
+                      color: "var(--text)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    General Settings
+                  </h2>
+                  <div className="space-y-4">
+                    {[
+                      {
+                        label: "Company Name",
+                        value: "OrangeRide",
+                        key: "companyName",
+                      },
+                      {
+                        label: "TfL Operator Licence Number",
+                        value: "II786",
+                        key: "licenseNumber",
+                      },
+                      {
+                        label: "Contact Email",
+                        value: "admin@orangeride.co.uk",
+                        key: "email",
+                      },
+                      {
+                        label: "Contact Phone",
+                        value: "+44 7476 999805",
+                        key: "phone",
+                      },
+                      {
+                        label: "Business Address",
+                        value: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+                        key: "address",
+                      },
+                    ].map(({ label, value, key }) => (
+                      <div key={key}>
+                        <label
+                          className="text-xs block mb-1.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {label}
+                        </label>
+                        <input
+                          defaultValue={value}
+                          className="input max-w-md"
+                        />
                       </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+                    ))}
+                  </div>
+                </>
+              )}
 
-          {active === 'Notifications' && (
-            <>
-              <h2 className="text-sm font-semibold text-white border-b border-[var(--border)] pb-3">Notification Settings</h2>
-              <div className="space-y-3">
-                {[
-                  { label: 'New booking created', channels: ['Push', 'Email'] },
-                  { label: 'Driver assigned', channels: ['Push', 'SMS'] },
-                  { label: 'Driver arrived', channels: ['Push', 'SMS'] },
-                  { label: 'Trip completed', channels: ['Push', 'Email'] },
-                  { label: 'Booking cancelled', channels: ['Push', 'Email'] },
-                  { label: 'Document expiry alert', channels: ['Email'] },
-                  { label: 'Manual dispatch required', channels: ['Push', 'Email'] },
-                ].map(({ label, channels }) => (
-                  <div key={label} className="flex items-center justify-between py-2 border-b border-[var(--border)]">
-                    <p className="text-xs text-slate-300">{label}</p>
-                    <div className="flex gap-2">
-                      {['Push', 'SMS', 'Email'].map((c) => (
-                        <label key={c} className="flex items-center gap-1.5 cursor-pointer">
-                          <input type="checkbox" defaultChecked={channels.includes(c)} className="accent-brand-500" />
-                          <span className="text-[11px] text-slate-500">{c}</span>
+              {active === "Dispatch" && (
+                <>
+                  <h2
+                    className="text-sm font-semibold border-b pb-3"
+                    style={{
+                      color: "var(--text)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    Dispatch Engine
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 max-w-lg">
+                      {[
+                        {
+                          label: "Driver Accept Timeout (seconds)",
+                          value: "60",
+                          key: "acceptTimeout",
+                        },
+                        {
+                          label: "Max Dispatch Attempts",
+                          value: "3",
+                          key: "maxAttempts",
+                        },
+                        {
+                          label: "Max Search Radius (km)",
+                          value: "10",
+                          key: "searchRadius",
+                        },
+                        {
+                          label: "Pre-book Lead Time (minutes)",
+                          value: "30",
+                          key: "leadTime",
+                        },
+                      ].map(({ label, value, key }) => (
+                        <div key={key}>
+                          <label
+                            className="text-xs block mb-1.5"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {label}
+                          </label>
+                          <input
+                            defaultValue={value}
+                            type="number"
+                            className="input"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-3 pt-2">
+                      {[
+                        {
+                          label: "Auto-dispatch ASAP jobs",
+                          description:
+                            "Automatically offer ASAP jobs to nearest available driver",
+                          defaultChecked: true,
+                        },
+                        {
+                          label: "Escalate to manual after max attempts",
+                          description:
+                            "Alert dispatcher if no driver accepts within configured attempts",
+                          defaultChecked: true,
+                        },
+                        {
+                          label: "Allow driver to reject jobs",
+                          description:
+                            "Drivers can decline job offers (recommended)",
+                          defaultChecked: true,
+                        },
+                      ].map(({ label, description, defaultChecked }) => (
+                        <label
+                          key={label}
+                          className="flex items-start gap-3 cursor-pointer group"
+                        >
+                          <input
+                            type="checkbox"
+                            defaultChecked={defaultChecked}
+                            className="mt-0.5 accent-brand-500"
+                          />
+                          <div>
+                            <p
+                              className="text-xs group-hover:text-brand-400 transition-colors"
+                              style={{ color: "var(--text)" }}
+                            >
+                              {label}
+                            </p>
+                            <p
+                              className="text-[11px] mt-0.5"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              {description}
+                            </p>
+                          </div>
                         </label>
                       ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                </>
+              )}
 
-          {active === 'Compliance' && (
-            <>
-              <h2 className="text-sm font-semibold text-white border-b border-[var(--border)] pb-3">TfL Compliance Settings</h2>
-              <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
-                  These settings appear on all passenger receipts and are legally required under your TfL operator licence.
-                </div>
-                {[
-                  { label: 'Operator Licence Number', value: 'PHV1234567' },
-                  { label: 'Operator Name (as licensed)', value: 'Your Company Ltd' },
-                  { label: 'Registered Address', value: 'London, UK' },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <label className="text-xs text-slate-400 block mb-1.5">{label}</label>
-                    <input defaultValue={value} className="input max-w-md" />
+              {active === "Notifications" && (
+                <>
+                  <h2
+                    className="text-sm font-semibold border-b pb-3"
+                    style={{
+                      color: "var(--text)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    Notification Settings
+                  </h2>
+                  <div className="space-y-3">
+                    {[
+                      {
+                        label: "New booking created",
+                        channels: ["Push", "Email"],
+                      },
+                      { label: "Driver assigned", channels: ["Push", "SMS"] },
+                      { label: "Driver arrived", channels: ["Push", "SMS"] },
+                      { label: "Trip completed", channels: ["Push", "Email"] },
+                      {
+                        label: "Booking cancelled",
+                        channels: ["Push", "Email"],
+                      },
+                      { label: "Document expiry alert", channels: ["Email"] },
+                      {
+                        label: "Manual dispatch required",
+                        channels: ["Push", "Email"],
+                      },
+                    ].map(({ label, channels }) => (
+                      <div
+                        key={label}
+                        className="flex items-center justify-between py-2 border-b"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {label}
+                        </p>
+                        <div className="flex gap-2">
+                          {["Push", "SMS", "Email"].map((c) => (
+                            <label
+                              key={c}
+                              className="flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                defaultChecked={channels.includes(c)}
+                                className="accent-brand-500"
+                              />
+                              <span
+                                className="text-[11px]"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                {c}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                <div className="space-y-3 pt-2">
-                  {[
-                    { label: 'Alert when PCO licence expires within 60 days', defaultChecked: true },
-                    { label: 'Alert when vehicle MOT expires within 30 days', defaultChecked: true },
-                    { label: 'Alert when vehicle insurance expires within 30 days', defaultChecked: true },
-                    { label: 'Block driver from receiving jobs if documents expired', defaultChecked: true },
-                    { label: 'Include driver PCO badge on passenger receipts', defaultChecked: true },
-                  ].map(({ label, defaultChecked }) => (
-                    <label key={label} className="flex items-center gap-3 cursor-pointer">
-                      <input type="checkbox" defaultChecked={defaultChecked} className="accent-brand-500" />
-                      <span className="text-xs text-slate-300">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
+                </>
+              )}
 
-          <div className="pt-4 border-t border-[var(--border)]">
-            <button onClick={save} className="btn-primary">
-              {saved ? '✓ Saved' : 'Save Changes'}
-            </button>
-          </div>
+              {active === "Compliance" && (
+                <>
+                  <h2
+                    className="text-sm font-semibold border-b pb-3"
+                    style={{
+                      color: "var(--text)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
+                    TfL Compliance Settings
+                  </h2>
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
+                      These settings appear on all passenger receipts and are
+                      legally required under TfL Operator Licence II786.
+                    </div>
+                    {[
+                      { label: "Operator Licence Number", value: "II786" },
+                      {
+                        label: "Operator Name (as licensed)",
+                        value: "ORANGERIDE",
+                      },
+                      {
+                        label: "Registered Address",
+                        value: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+                      },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <label
+                          className="text-xs block mb-1.5"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          {label}
+                        </label>
+                        <input
+                          defaultValue={value}
+                          className="input max-w-md"
+                        />
+                      </div>
+                    ))}
+                    <div className="space-y-3 pt-2">
+                      {[
+                        {
+                          label:
+                            "Alert when PCO licence expires within 60 days",
+                          defaultChecked: true,
+                        },
+                        {
+                          label:
+                            "Alert when vehicle MOT expires within 30 days",
+                          defaultChecked: true,
+                        },
+                        {
+                          label:
+                            "Alert when vehicle insurance expires within 30 days",
+                          defaultChecked: true,
+                        },
+                        {
+                          label:
+                            "Block driver from receiving jobs if documents expired",
+                          defaultChecked: true,
+                        },
+                        {
+                          label:
+                            "Include driver PCO badge on passenger receipts",
+                          defaultChecked: true,
+                        },
+                      ].map(({ label, defaultChecked }) => (
+                        <label
+                          key={label}
+                          className="flex items-center gap-3 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            defaultChecked={defaultChecked}
+                            className="accent-brand-500"
+                          />
+                          <span
+                            className="text-xs"
+                            style={{ color: "var(--text-muted)" }}
+                          >
+                            {label}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {active !== "Pricing" && (
+                <div
+                  className="pt-4 border-t"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <button onClick={save} className="btn-primary">
+                    {saved ? "✓ Saved" : "Save Changes"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
-  )
+  );
 }
