@@ -66,7 +66,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       );
 
       const estimate = await pricing.estimateFare({
-        distanceKm: directions.distanceKm,
+        distanceMiles: directions.distanceKm * 0.621371,
         durationMinutes: directions.durationMinutes,
         scheduledAt: new Date(),
       });
@@ -107,7 +107,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       );
 
       const estimate = await pricing.estimateFare({
-        distanceKm: directions.distanceKm,
+        distanceMiles: directions.distanceKm * 0.621371,
         durationMinutes: directions.durationMinutes,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
