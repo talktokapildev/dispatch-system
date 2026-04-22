@@ -458,12 +458,27 @@ function isNightHour(hour: number, start: number, end: number): boolean {
 }
 
 function toLondonTime(date: Date): Date {
-  // Convert UTC to Europe/London for correct night/premium checks
+  // Convert UTC to Europe/London using Intl.DateTimeFormat formatToParts
   try {
-    const londonStr = date.toLocaleString("en-GB", {
+    const fmt = new Intl.DateTimeFormat("en-GB", {
       timeZone: "Europe/London",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
     });
-    return new Date(londonStr);
+    const parts = fmt.formatToParts(date);
+    const get = (type: string) =>
+      parts.find((p) => p.type === type)?.value ?? "0";
+    // Build ISO-like string: "YYYY-MM-DDTHH:mm:ss" (no timezone suffix = local parse)
+    return new Date(
+      `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get(
+        "minute"
+      )}:${get("second")}`
+    );
   } catch {
     return date;
   }
