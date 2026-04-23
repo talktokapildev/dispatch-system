@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --input-bg: #ffffff;
+    --input-border: #cbd5e1;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+}
+
+@layer components {
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    @apply rounded-xl;
+  }
+
+  .btn-primary {
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-semibold
+           transition-all duration-200 active:scale-95 text-sm
+           px-4 py-2.5 rounded-lg;
+    box-shadow: 0 1px 3px rgba(255,140,26,0.3);
+  }
+
+  .btn-ghost {
+    @apply bg-white hover:bg-slate-50 text-slate-600 border border-slate-200
+           px-4 py-2.5 rounded-lg transition-all duration-150 text-sm font-medium;
+  }
+
+  .btn-danger {
+    @apply bg-red-50 hover:bg-red-100 text-red-600 border border-red-200
+           px-4 py-2 rounded-lg transition-all text-sm;
+  }
+
+  .input {
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text);
+    @apply rounded-lg px-3 py-2.5 text-sm w-full
+           placeholder:text-slate-400 focus:outline-none
+           focus:border-brand-500/60 focus:ring-2 focus:ring-brand-500/10 transition-all;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-slate-600 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .page-header {
+    @apply mb-6;
+  }
+
+  .page-title {
+    @apply text-xl font-bold text-slate-900;
+  }
+
+  .page-subtitle {
+    @apply text-sm text-slate-500 mt-0.5;
+  }
+
+  .table-row {
+    @apply border-b border-slate-100 hover:bg-slate-50 transition-colors;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
+           transition-all cursor-pointer text-slate-600 hover:text-slate-900
+           hover:bg-slate-100 font-medium;
+  }
+
+  .sidebar-link.active {
+    @apply bg-brand-50 text-brand-700 font-semibold;
+    border-left: 3px solid #ff8c1a;
+    padding-left: calc(0.75rem - 3px);
+  }
+}
+
+/* Status badges */
+.status-PENDING        { @apply bg-yellow-100 text-yellow-700; }
+.status-CONFIRMED      { @apply bg-blue-100 text-blue-700; }
+.status-DRIVER_ASSIGNED { @apply bg-violet-100 text-violet-700; }
+.status-DRIVER_EN_ROUTE { @apply bg-indigo-100 text-indigo-700; }
+.status-DRIVER_ARRIVED  { @apply bg-cyan-100 text-cyan-700; }
+.status-IN_PROGRESS    { @apply bg-orange-100 text-orange-700; }
+.status-COMPLETED      { @apply bg-green-100 text-green-700; }
+.status-CANCELLED      { @apply bg-red-100 text-red-600; }
+
+/* Invoice status */
+.invoice-DRAFT    { @apply bg-slate-100 text-slate-600; }
+.invoice-SENT     { @apply bg-blue-100 text-blue-700; }
+.invoice-PAID     { @apply bg-green-100 text-green-700; }
+.invoice-OVERDUE  { @apply bg-red-100 text-red-600; }

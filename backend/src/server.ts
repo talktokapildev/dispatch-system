@@ -18,6 +18,7 @@ import { driverRoutes } from "./routes/drivers";
 import { adminRoutes } from "./routes/admin";
 import { passengerRoutes } from "./routes/passengers";
 import { pricingRoutes } from "./routes/pricing";
+import { corporateRoutes } from "./routes/corporate";
 
 async function buildServer() {
   const fastify = Fastify({
@@ -58,6 +59,7 @@ async function buildServer() {
   await fastify.register(adminRoutes, { prefix });
   await fastify.register(passengerRoutes, { prefix });
   await fastify.register(pricingRoutes, { prefix });
+  await fastify.register(corporateRoutes, { prefix });
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
