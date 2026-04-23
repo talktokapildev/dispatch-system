@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AddressPicker } from "@/components/AddressPicker";
 import { Spinner } from "@/components/ui";
@@ -44,6 +44,12 @@ export default function BookPage() {
   const [booking, setBooking] = useState(false);
   const [confirmed, setConfirmed] = useState<any>(null);
 
+  useEffect(() => {
+    if (pickup.lat && dropoff.lat) {
+      getEstimate(pickup, dropoff);
+    }
+  }, [pickup.lat, dropoff.lat]);
+
   // Airport detection
   const isGatwickPickup = pickup.address.toLowerCase().includes("gatwick");
   const isGatwickDropoff = dropoff.address.toLowerCase().includes("gatwick");
@@ -74,15 +80,11 @@ export default function BookPage() {
   };
 
   const handlePickup = (address: string, lat: number, lng: number) => {
-    const p = { address, lat, lng };
-    setPickup(p);
-    if (dropoff.lat) getEstimate(p, dropoff);
+    setPickup({ address, lat, lng });
   };
 
   const handleDropoff = (address: string, lat: number, lng: number) => {
-    const d = { address, lat, lng };
-    setDropoff(d);
-    if (pickup.lat) getEstimate(pickup, d);
+    setDropoff({ address, lat, lng });
   };
 
   const submit = async () => {
