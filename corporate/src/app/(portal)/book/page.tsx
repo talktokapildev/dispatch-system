@@ -50,18 +50,24 @@ export default function BookPage() {
     }
   }, [pickup.lat, dropoff.lat]);
 
-  // Airport detection
-  const isGatwickPickup = pickup.address.toLowerCase().includes("gatwick");
-  const isGatwickDropoff = dropoff.address.toLowerCase().includes("gatwick");
-  const isHeathrowPickup = pickup.address.toLowerCase().includes("heathrow");
-  const isHeathrowDropoff = dropoff.address.toLowerCase().includes("heathrow");
-
   const getEstimate = async (p: Location, d: Location) => {
     if (!p.lat || !d.lat) return;
     setEstimating(true);
     try {
+      const isGatwickDrop = d.address.toLowerCase().includes("gatwick");
+      const isHeathrowDrop = d.address.toLowerCase().includes("heathrow");
+      const isGatwickPick = p.address.toLowerCase().includes("gatwick");
+      const isHeathrowPick = p.address.toLowerCase().includes("heathrow");
+
+      const bookingType =
+        isGatwickDrop || isHeathrowDrop
+          ? "AIRPORT_DROPOFF"
+          : isGatwickPick || isHeathrowPick
+          ? "AIRPORT_PICKUP"
+          : "ASAP";
+
       const { data } = await api.post("/bookings/quote", {
-        type: "ASAP",
+        type: bookingType,
         pickupAddress: p.address,
         pickupLatitude: p.lat,
         pickupLongitude: p.lng,
@@ -71,7 +77,7 @@ export default function BookPage() {
         paymentMethod: "ACCOUNT",
       });
       setEstimate(data.data);
-      console.log("Quote response:", data.data);
+      //console.log("Quote response:", data.data);
     } catch {
       toast.error("Could not calculate fare");
     } finally {
