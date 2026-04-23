@@ -65,6 +65,7 @@ export default function BookPage() {
         paymentMethod: "ACCOUNT",
       });
       setEstimate(data.data);
+      console.log("Quote response:", data.data);
     } catch {
       toast.error("Could not calculate fare");
     } finally {
@@ -333,10 +334,10 @@ export default function BookPage() {
             ) : estimate ? (
               <div className="space-y-2">
                 <div className="text-3xl font-bold text-brand-500 mb-3">
-                  £{estimate.total.toFixed(2)}
+                  £{(estimate.total ?? estimate.estimatedFare ?? 0).toFixed(2)}
                 </div>
                 <div className="text-xs space-y-1.5">
-                  {estimate.breakdown.map((line: string, i: number) => (
+                  {(estimate.breakdown ?? []).map((line: string, i: number) => (
                     <div
                       key={i}
                       className="flex justify-between py-1 border-b border-slate-50"
