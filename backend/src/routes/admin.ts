@@ -4,6 +4,7 @@ import { BookingStatus, DriverStatus } from "@prisma/client";
 import { subDays, startOfDay, endOfDay, format } from "date-fns";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
+import bcrypt from "bcryptjs";
 
 const corporateSchema = z.object({
   companyName: z.string().min(2),
@@ -14,6 +15,11 @@ const corporateSchema = z.object({
   invoicingEmail: z.string().email(),
   paymentTermsDays: z.number().int().default(30),
   creditLimit: z.number().default(0),
+  // Portal login fields (required on create)
+  portalEmail: z.string().email().optional(),
+  portalPassword: z.string().min(8).optional(),
+  portalFirstName: z.string().min(1).optional(),
+  portalLastName: z.string().min(1).optional(),
 });
 
 export async function adminRoutes(fastify: FastifyInstance) {
@@ -204,10 +210,64 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const body = corporateSchema.parse(request.body);
+
+      const {
+        portalEmail,
+        portalPassword,
+        portalFirstName,
+        portalLastName,
+        ...accountData
+      } = body;
+
+      // Create corporate account
       const account = await fastify.prisma.corporateAccount.create({
-        data: body,
+        data: accountData,
       });
-      return reply.status(201).send({ success: true, data: account });
+
+      // Create portal login user if email + password provided
+      let portalUser = null;
+      if (portalEmail && portalPassword) {
+        // Check email not already taken
+        const existing = await fastify.prisma.user.findUnique({
+          where: { email: portalEmail },
+        });
+        if (existing) {
+          // Rollback account
+          await fastify.prisma.corporateAccount.delete({
+            where: { id: account.id },
+          });
+          return reply
+            .status(400)
+            .send({ success: false, error: "Email already in use" });
+        }
+
+        const hash = await bcrypt.hash(portalPassword, 12);
+        portalUser = await fastify.prisma.user.create({
+          data: {
+            phone: body.contactPhone,
+            email: portalEmail,
+            firstName: portalFirstName ?? body.contactName.split(" ")[0],
+            lastName:
+              portalLastName ??
+              (body.contactName.split(" ").slice(1).join(" ") || "User"),
+            role: "CORPORATE_ADMIN",
+            isVerified: true,
+            passwordHash: hash,
+            passenger: { create: { corporateAccountId: account.id } },
+          },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
+        });
+      }
+
+      return reply
+        .status(201)
+        .send({ success: true, data: { account, portalUser } });
     }
   );
 
@@ -306,12 +366,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Booking not found" });
       if (!["PENDING", "CONFIRMED"].includes(booking.status)) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: `Cannot dispatch a booking with status ${booking.status}`,
-          });
+        return reply.status(400).send({
+          success: false,
+          error: `Cannot dispatch a booking with status ${booking.status}`,
+        });
       }
 
       // Normalise to PENDING so dispatch service accepts it
@@ -410,12 +468,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
 
       // Broadcast update to admin and relevant sockets
-      fastify.io
-        .to("admin")
-        .emit("admin:booking:updated", {
-          bookingId: id,
-          status: updated.status,
-        });
+      fastify.io.to("admin").emit("admin:booking:updated", {
+        bookingId: id,
+        status: updated.status,
+      });
 
       return reply.send({ success: true, data: updated });
     }
