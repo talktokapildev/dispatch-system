@@ -194,8 +194,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.get(
     "/admin/corporate",
     { preHandler: [fastify.authenticateAdmin] },
-    async (_request, reply) => {
+    async (request, reply) => {
+      const { archived } = request.query as { archived?: string };
+      const showArchived = archived === "true";
       const accounts = await fastify.prisma.corporateAccount.findMany({
+        where: { isActive: !showArchived },
         include: {
           _count: { select: { passengers: true, bookings: true } },
         },
@@ -337,6 +340,75 @@ export async function adminRoutes(fastify: FastifyInstance) {
       });
 
       return reply.status(201).send({ success: true, data: user });
+    }
+  );
+
+  // ─── Archive corporate account ───
+  fastify.patch(
+    "/admin/corporate/:id/archive",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const account = await fastify.prisma.corporateAccount.update({
+        where: { id },
+        data: { isActive: false },
+      });
+      // Disable portal users
+      await fastify.prisma.user.updateMany({
+        where: { passenger: { corporateAccountId: id } },
+        data: { isActive: false },
+      });
+      return reply.send({ success: true, data: account });
+    }
+  );
+
+  // ─── Reactivate corporate account ───
+  fastify.patch(
+    "/admin/corporate/:id/reactivate",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const account = await fastify.prisma.corporateAccount.update({
+        where: { id },
+        data: { isActive: true },
+      });
+      // Re-enable portal users
+      await fastify.prisma.user.updateMany({
+        where: { passenger: { corporateAccountId: id } },
+        data: { isActive: true },
+      });
+      return reply.send({ success: true, data: account });
+    }
+  );
+
+  // ─── Delete corporate account (only if no bookings) ───
+  fastify.delete(
+    "/admin/corporate/:id",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const bookingCount = await fastify.prisma.booking.count({
+        where: { corporateAccountId: id },
+      });
+      if (bookingCount > 0) {
+        return reply.status(400).send({
+          success: false,
+          error: `Cannot delete — account has ${bookingCount} booking(s). Archive it instead.`,
+        });
+      }
+      // Delete portal users first
+      const passengers = await fastify.prisma.passenger.findMany({
+        where: { corporateAccountId: id },
+      });
+      for (const p of passengers) {
+        await fastify.prisma.refreshToken.deleteMany({
+          where: { userId: p.userId },
+        });
+        await fastify.prisma.passenger.delete({ where: { id: p.id } });
+        await fastify.prisma.user.delete({ where: { id: p.userId } });
+      }
+      await fastify.prisma.corporateAccount.delete({ where: { id } });
+      return reply.send({ success: true });
     }
   );
 
