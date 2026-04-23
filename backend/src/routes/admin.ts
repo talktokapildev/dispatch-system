@@ -285,6 +285,61 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Add portal login to existing corporate account ───
+  fastify.post(
+    "/admin/corporate/:id/login",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { portalEmail, portalPassword, portalFirstName, portalLastName } =
+        request.body as {
+          portalEmail: string;
+          portalPassword: string;
+          portalFirstName: string;
+          portalLastName: string;
+        };
+
+      const account = await fastify.prisma.corporateAccount.findUnique({
+        where: { id },
+      });
+      if (!account)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Account not found" });
+
+      const existing = await fastify.prisma.user.findUnique({
+        where: { email: portalEmail },
+      });
+      if (existing)
+        return reply
+          .status(400)
+          .send({ success: false, error: "Email already in use" });
+
+      const hash = await bcrypt.hash(portalPassword, 12);
+      const user = await fastify.prisma.user.create({
+        data: {
+          phone: `+44${Date.now().toString().slice(-10)}`, // temp unique phone
+          email: portalEmail,
+          firstName: portalFirstName,
+          lastName: portalLastName,
+          role: "CORPORATE_ADMIN",
+          isVerified: true,
+          passwordHash: hash,
+          passenger: { create: { corporateAccountId: id } },
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+        },
+      });
+
+      return reply.status(201).send({ success: true, data: user });
+    }
+  );
+
   // ─── Maps: live driver positions ───
   fastify.get(
     "/admin/map/drivers",
