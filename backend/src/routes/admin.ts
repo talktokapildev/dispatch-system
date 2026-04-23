@@ -13,8 +13,8 @@ const corporateSchema = z.object({
   contactPhone: z.string(),
   address: z.string(),
   invoicingEmail: z.string().email(),
-  paymentTermsDays: z.number().int().default(30),
-  creditLimit: z.number().default(0),
+  paymentTermsDays: z.coerce.number().int().default(30),
+  creditLimit: z.coerce.number().default(0),
   // Portal login fields (required on create)
   portalEmail: z.string().email().optional(),
   portalPassword: z.string().min(8).optional(),
