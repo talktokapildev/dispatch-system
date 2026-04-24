@@ -55,9 +55,18 @@ export default function BookPage() {
     setEstimating(true);
     try {
       const isGatwickDrop = d.address.toLowerCase().includes("gatwick");
-      const isHeathrowDrop = d.address.toLowerCase().includes("heathrow");
       const isGatwickPick = p.address.toLowerCase().includes("gatwick");
-      const isHeathrowPick = p.address.toLowerCase().includes("heathrow");
+
+      const isHeathrowDrop =
+        d.address.toLowerCase().includes("heathrow") ||
+        d.address.toLowerCase().includes("lhr") ||
+        (d.address.toLowerCase().includes("terminal") &&
+          d.address.toLowerCase().includes("hounslow"));
+      const isHeathrowPick =
+        p.address.toLowerCase().includes("heathrow") ||
+        p.address.toLowerCase().includes("lhr") ||
+        (p.address.toLowerCase().includes("terminal") &&
+          p.address.toLowerCase().includes("hounslow"));
 
       const bookingType =
         isGatwickDrop || isHeathrowDrop

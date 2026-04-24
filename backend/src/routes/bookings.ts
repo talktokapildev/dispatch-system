@@ -42,7 +42,14 @@ const createBookingSchema = z.object({
 
 // Detect airport from address string
 const isGatwick = (addr: string) => addr.toLowerCase().includes("gatwick");
-const isHeathrow = (addr: string) => addr.toLowerCase().includes("heathrow");
+const isHeathrow = (addr: string) => {
+  const a = addr.toLowerCase();
+  return (
+    a.includes("heathrow") ||
+    a.includes("lhr") ||
+    (a.includes("terminal") && a.includes("hounslow"))
+  );
+};
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
