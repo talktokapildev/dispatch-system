@@ -42,9 +42,9 @@ const createBookingSchema = z.object({
 
 // Detect airport from address string
 const isNearGatwick = (lat: number, lng: number) =>
-  Math.abs(lat - 51.1537) < 0.05 && Math.abs(lng - -0.1821) < 0.05;
+  Math.abs(lat - 51.1537) < 0.02 && Math.abs(lng - -0.1821) < 0.02;
 const isNearHeathrow = (lat: number, lng: number) =>
-  Math.abs(lat - 51.47) < 0.05 && Math.abs(lng - -0.4543) < 0.05;
+  Math.abs(lat - 51.47) < 0.02 && Math.abs(lng - -0.4543) < 0.02;
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()

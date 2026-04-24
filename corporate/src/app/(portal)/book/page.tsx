@@ -56,10 +56,10 @@ export default function BookPage() {
     try {
       // Detect airports by coordinates (more reliable than address strings)
       const isNearGatwick = (lat: number, lng: number) =>
-        Math.abs(lat - 51.1537) < 0.05 && Math.abs(lng - -0.1821) < 0.05;
+        Math.abs(lat - 51.1537) < 0.02 && Math.abs(lng - -0.1821) < 0.02;
 
       const isNearHeathrow = (lat: number, lng: number) =>
-        Math.abs(lat - 51.47) < 0.05 && Math.abs(lng - -0.4543) < 0.05;
+        Math.abs(lat - 51.47) < 0.02 && Math.abs(lng - -0.4543) < 0.02;
 
       const isGatwickDrop = isNearGatwick(d.lat, d.lng);
       const isHeathrowDrop = isNearHeathrow(d.lat, d.lng);
