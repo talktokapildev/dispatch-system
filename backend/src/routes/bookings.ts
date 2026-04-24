@@ -41,15 +41,10 @@ const createBookingSchema = z.object({
 });
 
 // Detect airport from address string
-const isGatwick = (addr: string) => addr.toLowerCase().includes("gatwick");
-const isHeathrow = (addr: string) => {
-  const a = addr.toLowerCase();
-  return (
-    a.includes("heathrow") ||
-    a.includes("lhr") ||
-    (a.includes("terminal") && a.includes("hounslow"))
-  );
-};
+const isNearGatwick = (lat: number, lng: number) =>
+  Math.abs(lat - 51.1537) < 0.05 && Math.abs(lng - -0.1821) < 0.05;
+const isNearHeathrow = (lat: number, lng: number) =>
+  Math.abs(lat - 51.47) < 0.05 && Math.abs(lng - -0.4543) < 0.05;
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -75,16 +70,16 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       durationMinutes: directions.durationMinutes,
       isGatwickPickup:
         body.type === BookingType.AIRPORT_PICKUP &&
-        isGatwick(body.pickupAddress),
+        isNearGatwick(body.pickupLatitude, body.pickupLongitude),
       isGatwickDropoff:
         body.type === BookingType.AIRPORT_DROPOFF &&
-        isGatwick(body.dropoffAddress),
+        isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
       isHeathrowPickup:
         body.type === BookingType.AIRPORT_PICKUP &&
-        isHeathrow(body.pickupAddress),
+        isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
       isHeathrowDropoff:
         body.type === BookingType.AIRPORT_DROPOFF &&
-        isHeathrow(body.dropoffAddress),
+        isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
       scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
     });
 
@@ -125,16 +120,16 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         durationMinutes: directions.durationMinutes,
         isGatwickPickup:
           body.type === BookingType.AIRPORT_PICKUP &&
-          isGatwick(body.pickupAddress),
+          isNearGatwick(body.pickupLatitude, body.pickupLongitude),
         isGatwickDropoff:
           body.type === BookingType.AIRPORT_DROPOFF &&
-          isGatwick(body.dropoffAddress),
+          isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
         isHeathrowPickup:
           body.type === BookingType.AIRPORT_PICKUP &&
-          isHeathrow(body.pickupAddress),
+          isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
         isHeathrowDropoff:
           body.type === BookingType.AIRPORT_DROPOFF &&
-          isHeathrow(body.dropoffAddress),
+          isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
@@ -470,16 +465,16 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         durationMinutes: directions.durationMinutes,
         isGatwickPickup:
           body.type === BookingType.AIRPORT_PICKUP &&
-          isGatwick(body.pickupAddress),
+          isNearGatwick(body.pickupLatitude, body.pickupLongitude),
         isGatwickDropoff:
           body.type === BookingType.AIRPORT_DROPOFF &&
-          isGatwick(body.dropoffAddress),
+          isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
         isHeathrowPickup:
           body.type === BookingType.AIRPORT_PICKUP &&
-          isHeathrow(body.pickupAddress),
+          isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
         isHeathrowDropoff:
           body.type === BookingType.AIRPORT_DROPOFF &&
-          isHeathrow(body.dropoffAddress),
+          isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 

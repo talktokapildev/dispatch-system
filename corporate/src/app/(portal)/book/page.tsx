@@ -54,19 +54,17 @@ export default function BookPage() {
     if (!p.lat || !d.lat) return;
     setEstimating(true);
     try {
-      const isGatwickDrop = d.address.toLowerCase().includes("gatwick");
-      const isGatwickPick = p.address.toLowerCase().includes("gatwick");
+      // Detect airports by coordinates (more reliable than address strings)
+      const isNearGatwick = (lat: number, lng: number) =>
+        Math.abs(lat - 51.1537) < 0.05 && Math.abs(lng - -0.1821) < 0.05;
 
-      const isHeathrowDrop =
-        d.address.toLowerCase().includes("heathrow") ||
-        d.address.toLowerCase().includes("lhr") ||
-        (d.address.toLowerCase().includes("terminal") &&
-          d.address.toLowerCase().includes("hounslow"));
-      const isHeathrowPick =
-        p.address.toLowerCase().includes("heathrow") ||
-        p.address.toLowerCase().includes("lhr") ||
-        (p.address.toLowerCase().includes("terminal") &&
-          p.address.toLowerCase().includes("hounslow"));
+      const isNearHeathrow = (lat: number, lng: number) =>
+        Math.abs(lat - 51.47) < 0.05 && Math.abs(lng - -0.4543) < 0.05;
+
+      const isGatwickDrop = isNearGatwick(d.lat, d.lng);
+      const isHeathrowDrop = isNearHeathrow(d.lat, d.lng);
+      const isGatwickPick = isNearGatwick(p.lat, p.lng);
+      const isHeathrowPick = isNearHeathrow(p.lat, p.lng);
 
       const bookingType =
         isGatwickDrop || isHeathrowDrop
