@@ -19,6 +19,7 @@ import { adminRoutes } from "./routes/admin";
 import { passengerRoutes } from "./routes/passengers";
 import { pricingRoutes } from "./routes/pricing";
 import { corporateRoutes } from "./routes/corporate";
+import { surchargeZoneRoutes } from "./routes/surcharge-zones";
 
 async function buildServer() {
   const fastify = Fastify({
@@ -60,6 +61,7 @@ async function buildServer() {
   await fastify.register(passengerRoutes, { prefix });
   await fastify.register(pricingRoutes, { prefix });
   await fastify.register(corporateRoutes, { prefix });
+  await fastify.register(surchargeZoneRoutes, { prefix });
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
@@ -123,4 +125,3 @@ process.on("SIGINT", async () => {
 });
 
 start();
-

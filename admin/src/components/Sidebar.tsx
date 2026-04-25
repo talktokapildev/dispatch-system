@@ -34,6 +34,7 @@ const nav = [
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
 ];
 
 export function Sidebar() {

@@ -8,19 +8,19 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "14.2.35",
+    "@googlemaps/js-api-loader": "^1.16.6",
+    "@hookform/resolvers": "^3.9.0",
+    "axios": "^1.7.3",
+    "clsx": "^2.1.1",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.395.0",
+    "next": "^14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "axios": "^1.7.3",
-    "date-fns": "^3.6.0",
-    "react-hot-toast": "^2.4.1",
-    "lucide-react": "^0.395.0",
-    "clsx": "^2.1.1",
-    "zustand": "^4.5.4",
-    "@googlemaps/js-api-loader": "^1.16.6",
     "react-hook-form": "^7.52.1",
+    "react-hot-toast": "^2.6.0",
     "zod": "^3.23.8",
-    "@hookform/resolvers": "^3.9.0"
+    "zustand": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "^20.14.12",

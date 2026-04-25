@@ -40,12 +40,6 @@ const createBookingSchema = z.object({
   vehicleClass: z.string().optional(),
 });
 
-// Detect airport from address string
-const isNearGatwick = (lat: number, lng: number) =>
-  Math.abs(lat - 51.1537) < 0.02 && Math.abs(lng - -0.1821) < 0.02;
-const isNearHeathrow = (lat: number, lng: number) =>
-  Math.abs(lat - 51.47) < 0.02 && Math.abs(lng - -0.4543) < 0.02;
-
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
     .toString(36)
@@ -68,18 +62,10 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     const estimate = await pricing.estimateFare({
       distanceMiles: directions.distanceKm * 0.621371,
       durationMinutes: directions.durationMinutes,
-      isGatwickPickup:
-        body.type === BookingType.AIRPORT_PICKUP &&
-        isNearGatwick(body.pickupLatitude, body.pickupLongitude),
-      isGatwickDropoff:
-        body.type === BookingType.AIRPORT_DROPOFF &&
-        isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
-      isHeathrowPickup:
-        body.type === BookingType.AIRPORT_PICKUP &&
-        isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
-      isHeathrowDropoff:
-        body.type === BookingType.AIRPORT_DROPOFF &&
-        isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
+      pickupLatitude: body.pickupLatitude,
+      pickupLongitude: body.pickupLongitude,
+      dropoffLatitude: body.dropoffLatitude,
+      dropoffLongitude: body.dropoffLongitude,
       scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
     });
 
@@ -118,18 +104,10 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       const estimate = await pricing.estimateFare({
         distanceMiles: directions.distanceKm * 0.621371,
         durationMinutes: directions.durationMinutes,
-        isGatwickPickup:
-          body.type === BookingType.AIRPORT_PICKUP &&
-          isNearGatwick(body.pickupLatitude, body.pickupLongitude),
-        isGatwickDropoff:
-          body.type === BookingType.AIRPORT_DROPOFF &&
-          isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
-        isHeathrowPickup:
-          body.type === BookingType.AIRPORT_PICKUP &&
-          isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
-        isHeathrowDropoff:
-          body.type === BookingType.AIRPORT_DROPOFF &&
-          isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
+        pickupLatitude: body.pickupLatitude,
+        pickupLongitude: body.pickupLongitude,
+        dropoffLatitude: body.dropoffLatitude,
+        dropoffLongitude: body.dropoffLongitude,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
@@ -463,18 +441,10 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       const estimate = await pricing.estimateFare({
         distanceMiles: directions.distanceKm * 0.621371,
         durationMinutes: directions.durationMinutes,
-        isGatwickPickup:
-          body.type === BookingType.AIRPORT_PICKUP &&
-          isNearGatwick(body.pickupLatitude, body.pickupLongitude),
-        isGatwickDropoff:
-          body.type === BookingType.AIRPORT_DROPOFF &&
-          isNearGatwick(body.dropoffLatitude, body.dropoffLongitude),
-        isHeathrowPickup:
-          body.type === BookingType.AIRPORT_PICKUP &&
-          isNearHeathrow(body.pickupLatitude, body.pickupLongitude),
-        isHeathrowDropoff:
-          body.type === BookingType.AIRPORT_DROPOFF &&
-          isNearHeathrow(body.dropoffLatitude, body.dropoffLongitude),
+        pickupLatitude: body.pickupLatitude,
+        pickupLongitude: body.pickupLongitude,
+        dropoffLatitude: body.dropoffLatitude,
+        dropoffLongitude: body.dropoffLongitude,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 

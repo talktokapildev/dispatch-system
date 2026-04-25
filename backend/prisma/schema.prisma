@@ -586,3 +586,24 @@ model PushToken {
   @@unique([userId, token])
   @@index([userId])
 }
+
+// ─────────────────────────────────────────
+// SURCHARGE ZONES
+// ─────────────────────────────────────────
+
+model SurchargeZone {
+  id            String   @id @default(uuid())
+  name          String   // "London Gatwick South Terminal"
+  type          String   @default("OTHER") // AIRPORT | HOTEL | VENUE | OTHER
+  latitude      Float
+  longitude     Float
+  radiusMeters  Int      @default(500)  // detection radius
+  pickupFee     Float    @default(0)
+  dropoffFee    Float    @default(0)
+  isActive      Boolean  @default(true)
+  notes         String?  // internal notes e.g. "Hilton access fee — pass-through only"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+}

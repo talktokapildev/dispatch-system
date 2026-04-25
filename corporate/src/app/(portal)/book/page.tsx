@@ -21,6 +21,47 @@ interface Location {
   lng: number;
 }
 
+interface SurchargeZone {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  pickupFee: number;
+  dropoffFee: number;
+}
+
+// Haversine distance in metres
+function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function findZone(
+  lat: number,
+  lng: number,
+  zones: SurchargeZone[]
+): SurchargeZone | null {
+  if (!lat || !lng) return null;
+  for (const z of zones) {
+    if (haversineMeters(lat, lng, z.latitude, z.longitude) <= z.radiusMeters)
+      return z;
+  }
+  return null;
+}
+
 export default function BookPage() {
   const router = useRouter();
   const [pickup, setPickup] = useState<Location>({
@@ -43,35 +84,36 @@ export default function BookPage() {
   const [estimating, setEstimating] = useState(false);
   const [booking, setBooking] = useState(false);
   const [confirmed, setConfirmed] = useState<any>(null);
+  const [zones, setZones] = useState<SurchargeZone[]>([]);
+
+  // Load surcharge zones once on mount
+  useEffect(() => {
+    api
+      .get("/surcharge-zones")
+      .then((r) => setZones(r.data.data ?? []))
+      .catch(() => {}); // silent fail — estimate still works without zones
+  }, []);
 
   useEffect(() => {
-    if (pickup.lat && dropoff.lat) {
-      getEstimate(pickup, dropoff);
-    }
-  }, [pickup.lat, dropoff.lat]);
+    if (pickup.lat && dropoff.lat) getEstimate(pickup, dropoff);
+  }, [pickup.lat, dropoff.lat, zones]);
 
   const getEstimate = async (p: Location, d: Location) => {
     if (!p.lat || !d.lat) return;
     setEstimating(true);
     try {
-      // Detect airports by coordinates (more reliable than address strings)
-      const isNearGatwick = (lat: number, lng: number) =>
-        Math.abs(lat - 51.1537) < 0.02 && Math.abs(lng - -0.1821) < 0.02;
+      // Detect booking type using surcharge zones
+      const pickupZone = findZone(p.lat, p.lng, zones);
+      const dropoffZone = findZone(d.lat, d.lng, zones);
 
-      const isNearHeathrow = (lat: number, lng: number) =>
-        Math.abs(lat - 51.47) < 0.02 && Math.abs(lng - -0.4543) < 0.02;
+      const hasPickupFee = pickupZone && pickupZone.pickupFee > 0;
+      const hasDropoffFee = dropoffZone && dropoffZone.dropoffFee > 0;
 
-      const isGatwickDrop = isNearGatwick(d.lat, d.lng);
-      const isHeathrowDrop = isNearHeathrow(d.lat, d.lng);
-      const isGatwickPick = isNearGatwick(p.lat, p.lng);
-      const isHeathrowPick = isNearHeathrow(p.lat, p.lng);
-
-      const bookingType =
-        isGatwickDrop || isHeathrowDrop
-          ? "AIRPORT_DROPOFF"
-          : isGatwickPick || isHeathrowPick
-          ? "AIRPORT_PICKUP"
-          : "ASAP";
+      const bookingType = hasDropoffFee
+        ? "AIRPORT_DROPOFF"
+        : hasPickupFee
+        ? "AIRPORT_PICKUP"
+        : "ASAP";
 
       const { data } = await api.post("/bookings/quote", {
         type: bookingType,
@@ -84,7 +126,6 @@ export default function BookPage() {
         paymentMethod: "ACCOUNT",
       });
       setEstimate(data.data);
-      //console.log("Quote response:", data.data);
     } catch {
       toast.error("Could not calculate fare");
     } finally {
@@ -92,19 +133,15 @@ export default function BookPage() {
     }
   };
 
-  const handlePickup = (address: string, lat: number, lng: number) => {
+  const handlePickup = (address: string, lat: number, lng: number) =>
     setPickup({ address, lat, lng });
-  };
-
-  const handleDropoff = (address: string, lat: number, lng: number) => {
+  const handleDropoff = (address: string, lat: number, lng: number) =>
     setDropoff({ address, lat, lng });
-  };
 
   const submit = async () => {
     if (!pickup.lat || !dropoff.lat)
       return toast.error("Please enter pickup and dropoff addresses");
     if (!passengerName) return toast.error("Please enter passenger name");
-
     setBooking(true);
     try {
       const { data } = await api.post("/corporate/bookings", {
@@ -129,7 +166,6 @@ export default function BookPage() {
     }
   };
 
-  // Booking confirmed screen
   if (confirmed) {
     return (
       <div className="max-w-md mx-auto text-center py-16 animate-fade-in">
@@ -144,34 +180,30 @@ export default function BookPage() {
           {confirmed.reference}
         </p>
         <div className="card p-4 text-left space-y-2 mb-6 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Passenger</span>
-            <span className="font-medium text-slate-800">{passengerName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Pickup</span>
-            <span className="font-medium text-slate-800 text-right max-w-[200px]">
-              {pickup.address}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Dropoff</span>
-            <span className="font-medium text-slate-800 text-right max-w-[200px]">
-              {dropoff.address}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Fare estimate</span>
-            <span className="font-bold text-brand-500">
-              £{confirmed.estimatedFare.toFixed(2)}
-            </span>
-          </div>
-          {poNumber && (
-            <div className="flex justify-between">
-              <span className="text-slate-500">PO / Reference</span>
-              <span className="font-medium text-slate-800">{poNumber}</span>
+          {[
+            { label: "Passenger", value: passengerName },
+            { label: "Pickup", value: pickup.address },
+            { label: "Dropoff", value: dropoff.address },
+            {
+              label: "Fare estimate",
+              value: `£${confirmed.estimatedFare.toFixed(2)}`,
+              bold: true,
+            },
+            ...(poNumber ? [{ label: "PO / Reference", value: poNumber }] : []),
+          ].map(({ label, value, bold }) => (
+            <div key={label} className="flex justify-between">
+              <span className="text-slate-500">{label}</span>
+              <span
+                className={`text-right max-w-[200px] ${
+                  bold
+                    ? "font-bold text-brand-500"
+                    : "font-medium text-slate-800"
+                }`}
+              >
+                {value}
+              </span>
             </div>
-          )}
+          ))}
         </div>
         <div className="flex gap-3 justify-center">
           <button
@@ -208,9 +240,7 @@ export default function BookPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        {/* Form */}
         <div className="col-span-2 space-y-5">
-          {/* Journey */}
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <MapPin size={14} className="text-brand-500" /> Journey
@@ -229,32 +259,24 @@ export default function BookPage() {
             />
           </div>
 
-          {/* Timing */}
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <Clock size={14} className="text-brand-500" /> Timing
             </h2>
             <div className="flex gap-3">
-              <button
-                onClick={() => setIsAsap(true)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all ${
-                  isAsap
-                    ? "bg-brand-500 text-white border-brand-500"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-brand-300"
-                }`}
-              >
-                ASAP
-              </button>
-              <button
-                onClick={() => setIsAsap(false)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all ${
-                  !isAsap
-                    ? "bg-brand-500 text-white border-brand-500"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-brand-300"
-                }`}
-              >
-                Schedule
-              </button>
+              {["ASAP", "Schedule"].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => setIsAsap(label === "ASAP")}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-all ${
+                    (label === "ASAP") === isAsap
+                      ? "bg-brand-500 text-white border-brand-500"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-brand-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             {!isAsap && (
               <div>
@@ -270,7 +292,6 @@ export default function BookPage() {
             )}
           </div>
 
-          {/* Passenger */}
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <User size={14} className="text-brand-500" /> Passenger Details
@@ -303,7 +324,6 @@ export default function BookPage() {
             </div>
           </div>
 
-          {/* Reference */}
           <div className="card p-5 space-y-4">
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
               <FileText size={14} className="text-brand-500" /> Reference &
@@ -337,7 +357,6 @@ export default function BookPage() {
             <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-4">
               <Car size={14} className="text-brand-500" /> Fare Estimate
             </h2>
-
             {!pickup.lat || !dropoff.lat ? (
               <p className="text-xs text-slate-400 text-center py-6">
                 Enter addresses to see estimate
@@ -371,7 +390,6 @@ export default function BookPage() {
                 </p>
               </div>
             ) : null}
-
             <button
               onClick={submit}
               disabled={
@@ -392,20 +410,4 @@ export default function BookPage() {
       </div>
     </div>
   );
-}
-
-// Rough distance calc using Haversine — server recalculates accurately
-function getDistanceMiles(p: Location, d: Location): number {
-  const R = 3958.8;
-  const dLat = deg2rad(d.lat - p.lat);
-  const dLng = deg2rad(d.lng - p.lng);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(deg2rad(p.lat)) *
-      Math.cos(deg2rad(d.lat)) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-function deg2rad(deg: number) {
-  return deg * (Math.PI / 180);
 }
