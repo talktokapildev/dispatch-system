@@ -2,7 +2,9 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PricingService } from "../services/pricing.service";
 
-// Haversine distance in metres between two lat/lng points
+// ── Geometry helpers ────────────────────────────────────────────────────────
+
+/** Haversine distance in metres between two lat/lng points */
 function haversineMetres(
   lat1: number,
   lng1: number,
@@ -19,11 +21,54 @@ function haversineMetres(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Ray-casting point-in-polygon for {lat, lng}[] polygons */
+function pointInPolygon(
+  point: { lat: number; lng: number },
+  polygon: { lat: number; lng: number }[]
+): boolean {
+  if (polygon.length < 3) return false;
+  let inside = false;
+  const x = point.lat;
+  const y = point.lng;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat,
+      yi = polygon[i].lng;
+    const xj = polygon[j].lat,
+      yj = polygon[j].lng;
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Returns true if a point is within a zone — polygon takes priority over radius */
+function pointInZone(
+  lat: number,
+  lng: number,
+  zone: {
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    polygon: any;
+  }
+): boolean {
+  if (zone.polygon) {
+    const polygonPoints = zone.polygon as { lat: number; lng: number }[];
+    return pointInPolygon({ lat, lng }, polygonPoints);
+  }
+  return (
+    haversineMetres(lat, lng, zone.latitude, zone.longitude) <=
+    zone.radiusMeters
+  );
+}
+
+// ── Validation schemas ───────────────────────────────────────────────────────
+
 const calculateSchema = z.object({
   distanceMiles: z.number().positive(),
   durationMinutes: z.number().positive(),
   scheduledAt: z.string().datetime().optional(),
-  // Optional coordinates — when provided, surcharge zones are detected automatically
   pickupLatitude: z.number().optional(),
   pickupLongitude: z.number().optional(),
   dropoffLatitude: z.number().optional(),
@@ -83,6 +128,8 @@ const updateConfigSchema = z.object({
   careHomeHourlyBeyondFull: z.number().positive().optional(),
 });
 
+// ── Routes ───────────────────────────────────────────────────────────────────
+
 export async function pricingRoutes(fastify: FastifyInstance) {
   const pricingService = new PricingService(fastify.prisma);
 
@@ -97,11 +144,7 @@ export async function pricingRoutes(fastify: FastifyInstance) {
     const body = calculateSchema.parse(request.body);
 
     // ── Auto-detect surcharge zones from coordinates ──────────────────────
-    let zoneSurcharges: {
-      name: string;
-      fee: number;
-      type: "pickup" | "dropoff";
-    }[] = [];
+    const zoneSurcharges: { name: string; fee: number; label: string }[] = [];
 
     const hasPickupCoords =
       body.pickupLatitude !== undefined && body.pickupLongitude !== undefined;
@@ -114,34 +157,27 @@ export async function pricingRoutes(fastify: FastifyInstance) {
       });
 
       for (const zone of zones) {
-        if (hasPickupCoords) {
-          const dist = haversineMetres(
-            body.pickupLatitude!,
-            body.pickupLongitude!,
-            zone.latitude,
-            zone.longitude
-          );
-          if (dist <= zone.radiusMeters && zone.pickupFee > 0) {
+        if (hasPickupCoords && zone.pickupFee > 0) {
+          if (pointInZone(body.pickupLatitude!, body.pickupLongitude!, zone)) {
             zoneSurcharges.push({
-              name: `${zone.name} pickup`,
+              name: zone.name,
               fee: zone.pickupFee,
-              type: "pickup",
+              label: `${zone.name} pickup surcharge: £${zone.pickupFee.toFixed(
+                2
+              )}`,
             });
           }
         }
-
-        if (hasDropoffCoords) {
-          const dist = haversineMetres(
-            body.dropoffLatitude!,
-            body.dropoffLongitude!,
-            zone.latitude,
-            zone.longitude
-          );
-          if (dist <= zone.radiusMeters && zone.dropoffFee > 0) {
+        if (hasDropoffCoords && zone.dropoffFee > 0) {
+          if (
+            pointInZone(body.dropoffLatitude!, body.dropoffLongitude!, zone)
+          ) {
             zoneSurcharges.push({
-              name: `${zone.name} dropoff`,
+              name: zone.name,
               fee: zone.dropoffFee,
-              type: "dropoff",
+              label: `${
+                zone.name
+              } dropoff surcharge: £${zone.dropoffFee.toFixed(2)}`,
             });
           }
         }
@@ -164,18 +200,10 @@ export async function pricingRoutes(fastify: FastifyInstance) {
     });
 
     // ── Add zone surcharges on top ────────────────────────────────────────
-    const zoneSurchargeTotal = zoneSurcharges.reduce(
-      (sum, z) => sum + z.fee,
-      0
-    );
-    const zoneBreakdown = zoneSurcharges.map(
-      (z) => `${z.name} surcharge: £${z.fee.toFixed(2)}`
-    );
-
+    const zoneSurchargeTotal = zoneSurcharges.reduce((s, z) => s + z.fee, 0);
     const total = Math.round((estimate.total + zoneSurchargeTotal) * 100) / 100;
-
-    // Recalculate driver earning and platform fee with updated total
-    const commissionRate = 1 - estimate.driverEarning / estimate.total;
+    const commissionRate =
+      estimate.total > 0 ? 1 - estimate.driverEarning / estimate.total : 0;
     const driverEarning = Math.round(total * (1 - commissionRate) * 100) / 100;
     const platformFee = Math.round((total - driverEarning) * 100) / 100;
 
@@ -187,7 +215,10 @@ export async function pricingRoutes(fastify: FastifyInstance) {
           ...(estimate.supplements ?? []),
           ...zoneSurcharges.map((z) => ({ label: z.name, amount: z.fee })),
         ],
-        breakdown: [...estimate.breakdown, ...zoneBreakdown],
+        breakdown: [
+          ...estimate.breakdown,
+          ...zoneSurcharges.map((z) => z.label),
+        ],
         total,
         driverEarning,
         platformFee,

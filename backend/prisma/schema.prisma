@@ -602,6 +602,7 @@ model SurchargeZone {
   dropoffFee    Float    @default(0)
   isActive      Boolean  @default(true)
   notes         String?  // internal notes e.g. "Hilton access fee — pass-through only"
+  polygon       Json? 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
