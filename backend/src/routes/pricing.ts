@@ -2,69 +2,6 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PricingService } from "../services/pricing.service";
 
-// ── Geometry helpers ────────────────────────────────────────────────────────
-
-/** Haversine distance in metres between two lat/lng points */
-function haversineMetres(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6_371_000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/** Ray-casting point-in-polygon for {lat, lng}[] polygons */
-function pointInPolygon(
-  point: { lat: number; lng: number },
-  polygon: { lat: number; lng: number }[]
-): boolean {
-  if (polygon.length < 3) return false;
-  let inside = false;
-  const x = point.lat;
-  const y = point.lng;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lat,
-      yi = polygon[i].lng;
-    const xj = polygon[j].lat,
-      yj = polygon[j].lng;
-    const intersect =
-      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-/** Returns true if a point is within a zone — polygon takes priority over radius */
-function pointInZone(
-  lat: number,
-  lng: number,
-  zone: {
-    latitude: number;
-    longitude: number;
-    radiusMeters: number;
-    polygon: any;
-  }
-): boolean {
-  if (zone.polygon) {
-    const polygonPoints = zone.polygon as { lat: number; lng: number }[];
-    return pointInPolygon({ lat, lng }, polygonPoints);
-  }
-  return (
-    haversineMetres(lat, lng, zone.latitude, zone.longitude) <=
-    zone.radiusMeters
-  );
-}
-
-// ── Validation schemas ───────────────────────────────────────────────────────
-
 const calculateSchema = z.object({
   distanceMiles: z.number().positive(),
   durationMinutes: z.number().positive(),
@@ -73,7 +10,6 @@ const calculateSchema = z.object({
   pickupLongitude: z.number().optional(),
   dropoffLatitude: z.number().optional(),
   dropoffLongitude: z.number().optional(),
-  // Legacy boolean flags — still accepted for backwards compatibility
   isGatwickPickup: z.boolean().optional(),
   isGatwickDropoff: z.boolean().optional(),
   isHeathrowPickup: z.boolean().optional(),
@@ -128,10 +64,8 @@ const updateConfigSchema = z.object({
   careHomeHourlyBeyondFull: z.number().positive().optional(),
 });
 
-// ── Routes ───────────────────────────────────────────────────────────────────
-
 export async function pricingRoutes(fastify: FastifyInstance) {
-  const pricingService = new PricingService(fastify.prisma);
+  const pricingService = new PricingService(fastify.prisma, fastify.redis);
 
   // ─── GET /pricing/config ─────────────────────────────────────────────────
   fastify.get("/pricing/config", async (_request, reply) => {
@@ -140,55 +74,17 @@ export async function pricingRoutes(fastify: FastifyInstance) {
   });
 
   // ─── POST /pricing/calculate ─────────────────────────────────────────────
+  // Zone detection (radius + polygon) handled in PricingService.estimateFare
   fastify.post("/pricing/calculate", async (request, reply) => {
     const body = calculateSchema.parse(request.body);
-
-    // ── Auto-detect surcharge zones from coordinates ──────────────────────
-    const zoneSurcharges: { name: string; fee: number; label: string }[] = [];
-
-    const hasPickupCoords =
-      body.pickupLatitude !== undefined && body.pickupLongitude !== undefined;
-    const hasDropoffCoords =
-      body.dropoffLatitude !== undefined && body.dropoffLongitude !== undefined;
-
-    if (hasPickupCoords || hasDropoffCoords) {
-      const zones = await fastify.prisma.surchargeZone.findMany({
-        where: { isActive: true },
-      });
-
-      for (const zone of zones) {
-        if (hasPickupCoords && zone.pickupFee > 0) {
-          if (pointInZone(body.pickupLatitude!, body.pickupLongitude!, zone)) {
-            zoneSurcharges.push({
-              name: zone.name,
-              fee: zone.pickupFee,
-              label: `${zone.name} pickup surcharge: £${zone.pickupFee.toFixed(
-                2
-              )}`,
-            });
-          }
-        }
-        if (hasDropoffCoords && zone.dropoffFee > 0) {
-          if (
-            pointInZone(body.dropoffLatitude!, body.dropoffLongitude!, zone)
-          ) {
-            zoneSurcharges.push({
-              name: zone.name,
-              fee: zone.dropoffFee,
-              label: `${
-                zone.name
-              } dropoff surcharge: £${zone.dropoffFee.toFixed(2)}`,
-            });
-          }
-        }
-      }
-    }
-
-    // ── Calculate base fare ───────────────────────────────────────────────
     const estimate = await pricingService.estimateFare({
       distanceMiles: body.distanceMiles,
       durationMinutes: body.durationMinutes,
       scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : undefined,
+      pickupLatitude: body.pickupLatitude,
+      pickupLongitude: body.pickupLongitude,
+      dropoffLatitude: body.dropoffLatitude,
+      dropoffLongitude: body.dropoffLongitude,
       isGatwickPickup: body.isGatwickPickup,
       isGatwickDropoff: body.isGatwickDropoff,
       isHeathrowPickup: body.isHeathrowPickup,
@@ -198,32 +94,7 @@ export async function pricingRoutes(fastify: FastifyInstance) {
       isCongestionCharge: body.isCongestionCharge,
       extraStops: body.extraStops,
     });
-
-    // ── Add zone surcharges on top ────────────────────────────────────────
-    const zoneSurchargeTotal = zoneSurcharges.reduce((s, z) => s + z.fee, 0);
-    const total = Math.round((estimate.total + zoneSurchargeTotal) * 100) / 100;
-    const commissionRate =
-      estimate.total > 0 ? 1 - estimate.driverEarning / estimate.total : 0;
-    const driverEarning = Math.round(total * (1 - commissionRate) * 100) / 100;
-    const platformFee = Math.round((total - driverEarning) * 100) / 100;
-
-    return reply.send({
-      success: true,
-      data: {
-        ...estimate,
-        supplements: [
-          ...(estimate.supplements ?? []),
-          ...zoneSurcharges.map((z) => ({ label: z.name, amount: z.fee })),
-        ],
-        breakdown: [
-          ...estimate.breakdown,
-          ...zoneSurcharges.map((z) => z.label),
-        ],
-        total,
-        driverEarning,
-        platformFee,
-      },
-    });
+    return reply.send({ success: true, data: estimate });
   });
 
   // ─── POST /pricing/calculate/care-home ───────────────────────────────────

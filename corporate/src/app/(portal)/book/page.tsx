@@ -53,27 +53,16 @@ export default function BookPage() {
     if (!p.lat || !d.lat) return;
     setEstimating(true);
     try {
-      // Step 1: get distance/duration from Google Directions
-      const directionsRes = await fetch(
-        `https://maps.googleapis.com/maps/api/directions/json` +
-          `?origin=${p.lat},${p.lng}&destination=${d.lat},${d.lng}` +
-          `&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
-      );
-      const directionsJson = await directionsRes.json();
-      const leg = directionsJson.routes?.[0]?.legs?.[0];
-      if (!leg) throw new Error("No route found");
-
-      const distanceMiles = ((leg.distance?.value ?? 0) / 1000) * 0.621371;
-      const durationMinutes = Math.ceil((leg.duration?.value ?? 0) / 60);
-
-      // Step 2: call pricing engine with coordinates — surcharge zones detected server-side
-      const { data } = await api.post("/pricing/calculate", {
-        distanceMiles,
-        durationMinutes,
+      // /bookings/quote handles Directions + pricing + polygon surcharge zones server-side
+      const { data } = await api.post("/bookings/quote", {
+        type: "ASAP",
+        pickupAddress: p.address,
         pickupLatitude: p.lat,
         pickupLongitude: p.lng,
+        dropoffAddress: d.address,
         dropoffLatitude: d.lat,
         dropoffLongitude: d.lng,
+        paymentMethod: "ACCOUNT",
       });
       setEstimate(data.data);
     } catch {

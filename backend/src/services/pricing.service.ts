@@ -13,6 +13,7 @@ export interface SurchargeZoneRow {
   dropoffFee: number;
   isActive: boolean;
   notes: string | null;
+  polygon?: { lat: number; lng: number }[] | null;
 }
 
 export interface FareEstimateInput {
@@ -197,7 +198,7 @@ export class PricingService {
     }
   }
 
-  // ─── Find matching zone by coordinates ───────────────────────────────────
+  // ─── Find matching zone — polygon takes priority over radius ─────────────
   private findMatchingZone(
     lat: number,
     lng: number,
@@ -206,10 +207,18 @@ export class PricingService {
     if (!lat || !lng) return null;
     for (const zone of zones) {
       if (
-        haversineMeters(lat, lng, zone.latitude, zone.longitude) <=
-        zone.radiusMeters
-      )
-        return zone;
+        zone.polygon &&
+        Array.isArray(zone.polygon) &&
+        zone.polygon.length >= 3
+      ) {
+        if (pointInPolygon(lat, lng, zone.polygon)) return zone;
+      } else {
+        if (
+          haversineMeters(lat, lng, zone.latitude, zone.longitude) <=
+          zone.radiusMeters
+        )
+          return zone;
+      }
     }
     return null;
   }
@@ -536,6 +545,26 @@ function toLondonTime(date: Date): Date {
     return date;
   }
 }
+function pointInPolygon(
+  lat: number,
+  lng: number,
+  polygon: { lat: number; lng: number }[]
+): boolean {
+  let inside = false;
+  const x = lat,
+    y = lng;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat,
+      yi = polygon[i].lng;
+    const xj = polygon[j].lat,
+      yj = polygon[j].lng;
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 function haversineMeters(
   lat1: number,
   lng1: number,
