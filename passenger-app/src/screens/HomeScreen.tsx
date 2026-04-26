@@ -21,6 +21,7 @@ import AddressPicker from "../components/AddressPicker";
 import TripMap from "../components/TripMap";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const GOOGLE_API_KEY = "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI";
 
 interface PlaceResult {
   address: string;
@@ -54,7 +55,6 @@ export default function HomeScreen({ navigation }: any) {
 
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
-  // Sheet height: compact when idle, expands with keyboard
   const SHEET_NORMAL = estimate ? 370 + insets.bottom : 300 + insets.bottom;
   const SHEET_EXPANDED = SCREEN_HEIGHT - insets.top - 20;
 
@@ -84,6 +84,7 @@ export default function HomeScreen({ navigation }: any) {
       useNativeDriver: false,
       speed: 20,
     }).start();
+
   const collapse = () =>
     Animated.spring(sheetAnim, {
       toValue: 0,
@@ -117,40 +118,51 @@ export default function HomeScreen({ navigation }: any) {
     if (!pickup || !dropoff) return;
     setEstimating(true);
     try {
-      const { data } = await api.get("/bookings/estimate", {
-        params: {
-          pickupLat: pickup.latitude,
-          pickupLng: pickup.longitude,
-          dropoffLat: dropoff.latitude,
-          dropoffLng: dropoff.longitude,
-        },
+      // ── Step 1: Get route from Google Directions ──────────────────────
+      const directionsUrl =
+        `https://maps.googleapis.com/maps/api/directions/json` +
+        `?origin=${pickup.latitude},${pickup.longitude}` +
+        `&destination=${dropoff.latitude},${dropoff.longitude}` +
+        `&key=${GOOGLE_API_KEY}`;
+
+      const res = await fetch(directionsUrl);
+      const json = await res.json();
+
+      const leg = json.routes?.[0]?.legs?.[0];
+      const polyline = json.routes?.[0]?.overview_polyline?.points;
+
+      if (!leg) {
+        setEstimate(null);
+        return;
+      }
+
+      const distanceKm = (leg.distance?.value ?? 0) / 1000;
+      const distanceMiles = distanceKm * 0.621371;
+      const durationMins = Math.ceil((leg.duration?.value ?? 0) / 60);
+
+      if (polyline) setRouteCoords(decodePolyline(polyline));
+
+      // ── Step 2: Get fare from our pricing engine ─────────────────────
+      // Passing coordinates so surcharge zones are auto-detected server-side
+      const { data: priceData } = await api.post("/pricing/calculate", {
+        distanceMiles,
+        durationMinutes: durationMins,
+        pickupLatitude: pickup.latitude,
+        pickupLongitude: pickup.longitude,
+        dropoffLatitude: dropoff.latitude,
+        dropoffLongitude: dropoff.longitude,
       });
-      const est = data.data;
-      setEstimate(est);
-      if (est.polyline) setRouteCoords(decodePolyline(est.polyline));
-    } catch {
-      try {
-        const url =
-          `https://maps.googleapis.com/maps/api/directions/json` +
-          `?origin=${pickup.latitude},${pickup.longitude}` +
-          `&destination=${dropoff.latitude},${dropoff.longitude}` +
-          `&key=AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI`;
-        const res = await fetch(url);
-        const json = await res.json();
-        const leg = json.routes?.[0]?.legs?.[0];
-        const poly = json.routes?.[0]?.overview_polyline?.points;
-        if (poly) setRouteCoords(decodePolyline(poly));
-        if (leg) {
-          const distKm = (leg.distance?.value ?? 0) / 1000;
-          const durationMins = Math.ceil((leg.duration?.value ?? 0) / 60);
-          const miles = distKm * 0.621371;
-          setEstimate({
-            estimatedFare: 3 + miles * 2,
-            distanceKm: distKm,
-            durationMins,
-          });
-        }
-      } catch {}
+
+      setEstimate({
+        estimatedFare: priceData.data.total,
+        distanceKm,
+        durationMins,
+        polyline,
+      });
+    } catch (err) {
+      // Silently fail — don't block booking, just hide the estimate
+      setEstimate(null);
+      setRouteCoords([]);
     } finally {
       setEstimating(false);
     }
@@ -165,7 +177,7 @@ export default function HomeScreen({ navigation }: any) {
       return;
     }
     try {
-      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${myLocation.latitude},${myLocation.longitude}&key=AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI`;
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${myLocation.latitude},${myLocation.longitude}&key=${GOOGLE_API_KEY}`;
       const res = await fetch(url);
       const json = await res.json();
       const address =
@@ -189,7 +201,7 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={s.container}>
-      {/* Full-screen map — never wrapped in Animated to avoid iOS polyline clipping */}
+      {/* Full-screen map */}
       <View style={StyleSheet.absoluteFill}>
         <TripMap
           passengerLocation={myLocation ?? undefined}
@@ -208,7 +220,7 @@ export default function HomeScreen({ navigation }: any) {
           <View style={s.handle} />
         </View>
 
-        {/* Scrollable address pickers — grows when keyboard opens */}
+        {/* Scrollable address pickers */}
         <ScrollView
           keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
@@ -243,11 +255,11 @@ export default function HomeScreen({ navigation }: any) {
               setDropoff(r);
               Keyboard.dismiss();
             }}
-            onClear={() => setPickup(null)}
+            onClear={() => setDropoff(null)}
           />
         </ScrollView>
 
-        {/* ── Fixed bottom section — always visible ─────────────────── */}
+        {/* ── Fixed bottom section ───────────────────────────────────── */}
         <View style={s.bottomFixed}>
           {/* Estimating spinner */}
           {estimating && (
@@ -283,7 +295,7 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* Book button — always pinned at bottom */}
+          {/* Book button */}
           <TouchableOpacity
             style={[s.bookBtn, (!pickup || !dropoff) && s.bookBtnDisabled]}
             onPress={proceedToConfirm}
@@ -297,7 +309,6 @@ export default function HomeScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
 
-          {/* Safe area spacer */}
           <View style={{ height: insets.bottom > 0 ? 0 : Spacing.md }} />
         </View>
       </Animated.View>
@@ -310,8 +321,6 @@ const styles = (
 ) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
-
-    // Sheet
     sheet: {
       position: "absolute",
       bottom: 0,
@@ -340,8 +349,6 @@ const styles = (
       borderRadius: 2,
       backgroundColor: C.border,
     },
-
-    // Scrollable pickers
     scrollContent: {
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.sm,
@@ -355,8 +362,6 @@ const styles = (
     },
     myLocBtn: { marginBottom: Spacing.sm, marginTop: -4 },
     myLocText: { fontSize: FontSize.xs, color: C.brand, fontWeight: "600" },
-
-    // Fixed bottom section
     bottomFixed: {
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.sm,
@@ -385,8 +390,6 @@ const styles = (
     estimateValue: { fontSize: FontSize.md, fontWeight: "800", color: C.brand },
     estimateLabel: { fontSize: FontSize.xs, color: C.muted, marginTop: 2 },
     estimateDivider: { width: 1, height: 28, backgroundColor: C.border },
-
-    // Book button
     bookBtn: {
       backgroundColor: C.brand,
       borderRadius: Radius.lg,

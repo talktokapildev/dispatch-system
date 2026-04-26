@@ -2,10 +2,33 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PricingService } from "../services/pricing.service";
 
+// Haversine distance in metres between two lat/lng points
+function haversineMetres(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const calculateSchema = z.object({
   distanceMiles: z.number().positive(),
   durationMinutes: z.number().positive(),
-  scheduledAt: z.string().datetime().optional(), // ISO string
+  scheduledAt: z.string().datetime().optional(),
+  // Optional coordinates — when provided, surcharge zones are detected automatically
+  pickupLatitude: z.number().optional(),
+  pickupLongitude: z.number().optional(),
+  dropoffLatitude: z.number().optional(),
+  dropoffLongitude: z.number().optional(),
+  // Legacy boolean flags — still accepted for backwards compatibility
   isGatwickPickup: z.boolean().optional(),
   isGatwickDropoff: z.boolean().optional(),
   isHeathrowPickup: z.boolean().optional(),
@@ -64,25 +87,115 @@ export async function pricingRoutes(fastify: FastifyInstance) {
   const pricingService = new PricingService(fastify.prisma);
 
   // ─── GET /pricing/config ─────────────────────────────────────────────────
-  // Public — apps need this to show config-driven UI
   fastify.get("/pricing/config", async (_request, reply) => {
     const config = await pricingService.getConfig();
     return reply.send({ success: true, data: config });
   });
 
   // ─── POST /pricing/calculate ─────────────────────────────────────────────
-  // Public — passenger app + corporate portal call this for fare estimates
   fastify.post("/pricing/calculate", async (request, reply) => {
     const body = calculateSchema.parse(request.body);
+
+    // ── Auto-detect surcharge zones from coordinates ──────────────────────
+    let zoneSurcharges: {
+      name: string;
+      fee: number;
+      type: "pickup" | "dropoff";
+    }[] = [];
+
+    const hasPickupCoords =
+      body.pickupLatitude !== undefined && body.pickupLongitude !== undefined;
+    const hasDropoffCoords =
+      body.dropoffLatitude !== undefined && body.dropoffLongitude !== undefined;
+
+    if (hasPickupCoords || hasDropoffCoords) {
+      const zones = await fastify.prisma.surchargeZone.findMany({
+        where: { isActive: true },
+      });
+
+      for (const zone of zones) {
+        if (hasPickupCoords) {
+          const dist = haversineMetres(
+            body.pickupLatitude!,
+            body.pickupLongitude!,
+            zone.latitude,
+            zone.longitude
+          );
+          if (dist <= zone.radiusMeters && zone.pickupFee > 0) {
+            zoneSurcharges.push({
+              name: `${zone.name} pickup`,
+              fee: zone.pickupFee,
+              type: "pickup",
+            });
+          }
+        }
+
+        if (hasDropoffCoords) {
+          const dist = haversineMetres(
+            body.dropoffLatitude!,
+            body.dropoffLongitude!,
+            zone.latitude,
+            zone.longitude
+          );
+          if (dist <= zone.radiusMeters && zone.dropoffFee > 0) {
+            zoneSurcharges.push({
+              name: `${zone.name} dropoff`,
+              fee: zone.dropoffFee,
+              type: "dropoff",
+            });
+          }
+        }
+      }
+    }
+
+    // ── Calculate base fare ───────────────────────────────────────────────
     const estimate = await pricingService.estimateFare({
-      ...body,
+      distanceMiles: body.distanceMiles,
+      durationMinutes: body.durationMinutes,
       scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : undefined,
+      isGatwickPickup: body.isGatwickPickup,
+      isGatwickDropoff: body.isGatwickDropoff,
+      isHeathrowPickup: body.isHeathrowPickup,
+      isHeathrowDropoff: body.isHeathrowDropoff,
+      isMeetAndGreet: body.isMeetAndGreet,
+      isDartfordCrossing: body.isDartfordCrossing,
+      isCongestionCharge: body.isCongestionCharge,
+      extraStops: body.extraStops,
     });
-    return reply.send({ success: true, data: estimate });
+
+    // ── Add zone surcharges on top ────────────────────────────────────────
+    const zoneSurchargeTotal = zoneSurcharges.reduce(
+      (sum, z) => sum + z.fee,
+      0
+    );
+    const zoneBreakdown = zoneSurcharges.map(
+      (z) => `${z.name} surcharge: £${z.fee.toFixed(2)}`
+    );
+
+    const total = Math.round((estimate.total + zoneSurchargeTotal) * 100) / 100;
+
+    // Recalculate driver earning and platform fee with updated total
+    const commissionRate = 1 - estimate.driverEarning / estimate.total;
+    const driverEarning = Math.round(total * (1 - commissionRate) * 100) / 100;
+    const platformFee = Math.round((total - driverEarning) * 100) / 100;
+
+    return reply.send({
+      success: true,
+      data: {
+        ...estimate,
+        supplements: [
+          ...(estimate.supplements ?? []),
+          ...zoneSurcharges.map((z) => ({ label: z.name, amount: z.fee })),
+        ],
+        breakdown: [...estimate.breakdown, ...zoneBreakdown],
+        total,
+        driverEarning,
+        platformFee,
+      },
+    });
   });
 
   // ─── POST /pricing/calculate/care-home ───────────────────────────────────
-  // Public — care home portal calls this
   fastify.post("/pricing/calculate/care-home", async (request, reply) => {
     const body = careHomeCalculateSchema.parse(request.body);
     const estimate = await pricingService.estimateCareHomeFare(
@@ -93,7 +206,6 @@ export async function pricingRoutes(fastify: FastifyInstance) {
   });
 
   // ─── PUT /pricing/config ─────────────────────────────────────────────────
-  // Admin only — update any pricing value
   fastify.put(
     "/pricing/config",
     { preHandler: [fastify.authenticate] },
@@ -102,7 +214,6 @@ export async function pricingRoutes(fastify: FastifyInstance) {
       if (!["ADMIN", "DISPATCHER"].includes(user.role)) {
         return reply.status(403).send({ success: false, error: "Forbidden" });
       }
-
       const body = updateConfigSchema.parse(request.body);
       const updated = await pricingService.updateConfig(body, user.userId);
       return reply.send({ success: true, data: updated });
