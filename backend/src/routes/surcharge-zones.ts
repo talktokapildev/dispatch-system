@@ -12,6 +12,10 @@ const zoneSchema = z.object({
   dropoffFee: z.number().min(0).default(0),
   isActive: z.boolean().default(true),
   notes: z.string().optional(),
+  polygon: z
+    .array(z.object({ lat: z.number(), lng: z.number() }))
+    .nullable()
+    .optional(),
 });
 
 export async function surchargeZoneRoutes(fastify: FastifyInstance) {
