@@ -206,20 +206,30 @@ export function Modal({
   onClose,
   title,
   children,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
   title: React.ReactNode;
   children: React.ReactNode;
+  size?: "md" | "lg" | "xl" | "2xl";
 }) {
   if (!open) return null;
+  const maxW = {
+    md: "max-w-lg",
+    lg: "max-w-2xl",
+    xl: "max-w-4xl",
+    "2xl": "max-w-6xl",
+  }[size];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative card w-full max-w-lg p-6 animate-slide-up">
+      <div
+        className={`relative card w-full ${maxW} p-6 animate-slide-up max-h-[90vh] overflow-y-auto`}
+      >
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-semibold text-white">{title}</h2>
           <button

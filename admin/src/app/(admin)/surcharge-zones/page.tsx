@@ -644,6 +644,7 @@ export default function SurchargeZonesPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? `Edit — ${editing.name}` : "New Surcharge Zone"}
+        size={detectionMode === "polygon" ? "xl" : "md"}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Name */}
