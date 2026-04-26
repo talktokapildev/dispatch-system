@@ -21,46 +21,7 @@ interface Location {
   lng: number;
 }
 
-interface SurchargeZone {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  radiusMeters: number;
-  pickupFee: number;
-  dropoffFee: number;
-}
-
-// Haversine distance in metres
-function haversineMeters(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function findZone(
-  lat: number,
-  lng: number,
-  zones: SurchargeZone[]
-): SurchargeZone | null {
-  if (!lat || !lng) return null;
-  for (const z of zones) {
-    if (haversineMeters(lat, lng, z.latitude, z.longitude) <= z.radiusMeters)
-      return z;
-  }
-  return null;
-}
+// Surcharge zone detection is handled server-side via /pricing/calculate
 
 export default function BookPage() {
   const router = useRouter();
@@ -84,46 +45,35 @@ export default function BookPage() {
   const [estimating, setEstimating] = useState(false);
   const [booking, setBooking] = useState(false);
   const [confirmed, setConfirmed] = useState<any>(null);
-  const [zones, setZones] = useState<SurchargeZone[]>([]);
-
-  // Load surcharge zones once on mount
-  useEffect(() => {
-    api
-      .get("/surcharge-zones")
-      .then((r) => setZones(r.data.data ?? []))
-      .catch(() => {}); // silent fail — estimate still works without zones
-  }, []);
-
   useEffect(() => {
     if (pickup.lat && dropoff.lat) getEstimate(pickup, dropoff);
-  }, [pickup.lat, dropoff.lat, zones]);
+  }, [pickup.lat, dropoff.lat]);
 
   const getEstimate = async (p: Location, d: Location) => {
     if (!p.lat || !d.lat) return;
     setEstimating(true);
     try {
-      // Detect booking type using surcharge zones
-      const pickupZone = findZone(p.lat, p.lng, zones);
-      const dropoffZone = findZone(d.lat, d.lng, zones);
+      // Step 1: get distance/duration from Google Directions
+      const directionsRes = await fetch(
+        `https://maps.googleapis.com/maps/api/directions/json` +
+          `?origin=${p.lat},${p.lng}&destination=${d.lat},${d.lng}` +
+          `&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}`
+      );
+      const directionsJson = await directionsRes.json();
+      const leg = directionsJson.routes?.[0]?.legs?.[0];
+      if (!leg) throw new Error("No route found");
 
-      const hasPickupFee = pickupZone && pickupZone.pickupFee > 0;
-      const hasDropoffFee = dropoffZone && dropoffZone.dropoffFee > 0;
+      const distanceMiles = ((leg.distance?.value ?? 0) / 1000) * 0.621371;
+      const durationMinutes = Math.ceil((leg.duration?.value ?? 0) / 60);
 
-      const bookingType = hasDropoffFee
-        ? "AIRPORT_DROPOFF"
-        : hasPickupFee
-        ? "AIRPORT_PICKUP"
-        : "ASAP";
-
-      const { data } = await api.post("/bookings/quote", {
-        type: bookingType,
-        pickupAddress: p.address,
+      // Step 2: call pricing engine with coordinates — surcharge zones detected server-side
+      const { data } = await api.post("/pricing/calculate", {
+        distanceMiles,
+        durationMinutes,
         pickupLatitude: p.lat,
         pickupLongitude: p.lng,
-        dropoffAddress: d.address,
         dropoffLatitude: d.lat,
         dropoffLongitude: d.lng,
-        paymentMethod: "ACCOUNT",
       });
       setEstimate(data.data);
     } catch {
