@@ -28,10 +28,7 @@ export interface FareEstimateInput {
   dropoffLongitude?: number;
 
   // Legacy flags (kept for backward compatibility)
-  isGatwickPickup?: boolean;
-  isGatwickDropoff?: boolean;
-  isHeathrowPickup?: boolean;
-  isHeathrowDropoff?: boolean;
+  // isGatwickPickup/Dropoff/isHeathrowPickup/Dropoff removed — handled by SurchargeZone
   isMeetAndGreet?: boolean;
   isDartfordCrossing?: boolean;
   isCongestionCharge?: boolean;
@@ -311,34 +308,8 @@ export class PricingService {
       }
     } else {
       // Legacy fallback when no zones in DB
-      if (input.isGatwickPickup)
-        addSupplement(
-          supplements,
-          breakdown,
-          "Gatwick pick-up fee",
-          cfg.gatwickPickup
-        );
-      if (input.isGatwickDropoff)
-        addSupplement(
-          supplements,
-          breakdown,
-          "Gatwick drop-off fee",
-          cfg.gatwickDropoff
-        );
-      if (input.isHeathrowPickup)
-        addSupplement(
-          supplements,
-          breakdown,
-          "Heathrow pick-up fee",
-          cfg.heathrowPickup
-        );
-      if (input.isHeathrowDropoff)
-        addSupplement(
-          supplements,
-          breakdown,
-          "Heathrow drop-off fee",
-          cfg.heathrowDropoff
-        );
+      // Gatwick/Heathrow fees are now handled automatically via SurchargeZone
+      // polygon/radius detection — boolean flags no longer applied here
     }
 
     if (input.isMeetAndGreet)

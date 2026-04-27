@@ -27,10 +27,6 @@ interface PricingConfig {
   nightEndHour: number;
   bankHolidayPremium: number;
   christmasNyePremium: number;
-  gatwickDropoff: number;
-  gatwickPickup: number;
-  heathrowDropoff: number;
-  heathrowPickup: number;
   meetAndGreet: number;
   dartfordCrossing: number;
   congestionCharge: number;
@@ -159,10 +155,7 @@ function GroupHeader({
 function FareCalculator({ config }: { config: PricingConfig }) {
   const [miles, setMiles] = useState(5);
   const [minutes, setMinutes] = useState(15);
-  const [gatwickDropoff, setGatwickDropoff] = useState(false);
-  const [gatwickPickup, setGatwickPickup] = useState(false);
-  const [heathrowDropoff, setHeathrowDropoff] = useState(false);
-  const [heathrowPickup, setHeathrowPickup] = useState(false);
+
   const [meetGreet, setMeetGreet] = useState(false);
   const [congestion, setCongestion] = useState(false);
   const [dartford, setDartford] = useState(false);
@@ -176,10 +169,7 @@ function FareCalculator({ config }: { config: PricingConfig }) {
       const { data } = await api.post("/pricing/calculate", {
         distanceMiles: miles,
         durationMinutes: minutes,
-        isGatwickDropoff: gatwickDropoff,
-        isGatwickPickup: gatwickPickup,
-        isHeathrowDropoff: heathrowDropoff,
-        isHeathrowPickup: heathrowPickup,
+
         isMeetAndGreet: meetGreet,
         isCongestionCharge: congestion,
         isDartfordCrossing: dartford,
@@ -196,18 +186,7 @@ function FareCalculator({ config }: { config: PricingConfig }) {
   // Auto-calculate when inputs change
   useEffect(() => {
     calculate();
-  }, [
-    miles,
-    minutes,
-    gatwickDropoff,
-    gatwickPickup,
-    heathrowDropoff,
-    heathrowPickup,
-    meetGreet,
-    congestion,
-    dartford,
-    extraStops,
-  ]);
+  }, [miles, minutes, meetGreet, congestion, dartford, extraStops]);
 
   return (
     <div className="card p-5 mt-6">
@@ -256,26 +235,6 @@ function FareCalculator({ config }: { config: PricingConfig }) {
 
           <div className="grid grid-cols-2 gap-2">
             {[
-              {
-                label: "Gatwick drop-off",
-                state: gatwickDropoff,
-                set: setGatwickDropoff,
-              },
-              {
-                label: "Gatwick pick-up",
-                state: gatwickPickup,
-                set: setGatwickPickup,
-              },
-              {
-                label: "Heathrow drop-off",
-                state: heathrowDropoff,
-                set: setHeathrowDropoff,
-              },
-              {
-                label: "Heathrow pick-up",
-                state: heathrowPickup,
-                set: setHeathrowPickup,
-              },
               { label: "Meet & Greet", state: meetGreet, set: setMeetGreet },
               {
                 label: "Congestion Charge",
@@ -555,30 +514,6 @@ function PricingSection() {
         />
         <div className="grid grid-cols-2 gap-x-8 gap-y-5">
           <Field
-            label="Gatwick drop-off"
-            value={config.gatwickDropoff}
-            onChange={(v) => update("gatwickDropoff", v)}
-            prefix="£"
-          />
-          <Field
-            label="Gatwick pick-up"
-            value={config.gatwickPickup}
-            onChange={(v) => update("gatwickPickup", v)}
-            prefix="£"
-          />
-          <Field
-            label="Heathrow drop-off"
-            value={config.heathrowDropoff}
-            onChange={(v) => update("heathrowDropoff", v)}
-            prefix="£"
-          />
-          <Field
-            label="Heathrow pick-up"
-            value={config.heathrowPickup}
-            onChange={(v) => update("heathrowPickup", v)}
-            prefix="£"
-          />
-          <Field
             label="Meet & Greet"
             value={config.meetAndGreet}
             onChange={(v) => update("meetAndGreet", v)}
@@ -586,6 +521,14 @@ function PricingSection() {
             hint="Name board in arrivals hall"
           />
         </div>
+        <p className="text-xs text-slate-500 mt-2">
+          Airport pickup/dropoff fees (Gatwick, Heathrow, Luton, City, Stansted)
+          are managed via{" "}
+          <a href="/surcharge-zones" className="text-brand-400 hover:underline">
+            Surcharge Zones
+          </a>{" "}
+          using precise polygon boundary detection.
+        </p>
       </div>
 
       {/* Pass-throughs & Extras */}

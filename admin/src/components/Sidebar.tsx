@@ -33,8 +33,8 @@ const nav = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
-  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
