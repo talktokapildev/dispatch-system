@@ -230,26 +230,15 @@ export async function corporateRoutes(fastify: FastifyInstance) {
         { lat: body.dropoffLatitude, lng: body.dropoffLongitude }
       );
 
-      const isGatwickPickup = body.pickupAddress
-        .toLowerCase()
-        .includes("gatwick");
-      const isGatwickDropoff = body.dropoffAddress
-        .toLowerCase()
-        .includes("gatwick");
-      const isHeathrowPickup = body.pickupAddress
-        .toLowerCase()
-        .includes("heathrow");
-      const isHeathrowDropoff = body.dropoffAddress
-        .toLowerCase()
-        .includes("heathrow");
-
+      // Surcharge zones (Gatwick, Heathrow etc) are detected automatically
+      // via polygon/radius in estimateFare when coordinates are provided
       const estimate = await pricing.estimateFare({
         distanceMiles: directions.distanceKm * 0.621371,
         durationMinutes: directions.durationMinutes,
-        isGatwickPickup,
-        isGatwickDropoff,
-        isHeathrowPickup,
-        isHeathrowDropoff,
+        pickupLatitude: body.pickupLatitude,
+        pickupLongitude: body.pickupLongitude,
+        dropoffLatitude: body.dropoffLatitude,
+        dropoffLongitude: body.dropoffLongitude,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
