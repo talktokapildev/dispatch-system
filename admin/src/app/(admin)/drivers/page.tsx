@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useState } from "react";
 import { format } from "date-fns";
-import { Search, AlertTriangle, UserPlus } from "lucide-react";
+import { Search, AlertTriangle, UserPlus, Pencil, Trash2 } from "lucide-react";
 import {
   DriverBadge,
   SectionHeader,
@@ -43,6 +43,8 @@ export default function DriversPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<any>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
 
@@ -78,6 +80,58 @@ export default function DriversPage() {
     },
   });
 
+  const editDriver = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) =>
+      api.put(`/admin/drivers/${id}`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      setShowAdd(false);
+      setEditing(null);
+      setForm(EMPTY_FORM);
+      setFormError("");
+    },
+    onError: (err: any) =>
+      setFormError(err.response?.data?.error ?? "Failed to update driver"),
+  });
+
+  const deleteDriver = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/drivers/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      setDeleteId(null);
+      setSelected(null);
+    },
+    onError: () => setFormError("Failed to delete driver"),
+  });
+
+  const openEdit = (d: any) => {
+    setEditing(d);
+    setForm({
+      firstName: d.user.firstName,
+      lastName: d.user.lastName,
+      phone: d.user.phone,
+      email: d.user.email ?? "",
+      pcoBadgeNumber: d.pcoBadgeNumber,
+      pcoLicenseExpiry: d.pcoLicenseExpiry?.split("T")[0] ?? "",
+      drivingLicenseNumber: d.drivingLicenseNumber ?? "",
+      make: d.vehicle?.make ?? "",
+      model: d.vehicle?.model ?? "",
+      year: d.vehicle?.year?.toString() ?? "",
+      colour: d.vehicle?.colour ?? "",
+      licensePlate: d.vehicle?.licensePlate ?? "",
+      vehicleClass: d.vehicle?.class ?? "STANDARD",
+      seats: d.vehicle?.seats?.toString() ?? "4",
+      motExpiry: d.vehicle?.motExpiry?.split("T")[0] ?? "",
+      insuranceExpiry: d.vehicle?.insuranceExpiry?.split("T")[0] ?? "",
+      phvLicenceNumber: d.vehicle?.phvLicenceNumber ?? "",
+      phvLicenceExpiry: d.vehicle?.phvLicenceExpiry?.split("T")[0] ?? "",
+      phvDiscNumber: d.vehicle?.phvDiscNumber ?? "",
+    });
+    setFormError("");
+    setShowAdd(true);
+    setSelected(null);
+  };
+
   const set =
     (key: string) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -85,26 +139,30 @@ export default function DriversPage() {
 
   const submit = () => {
     setFormError("");
-    const required = [
-      "firstName",
-      "lastName",
-      "phone",
-      "pcoBadgeNumber",
-      "pcoLicenseExpiry",
-      "drivingLicenseNumber",
-      "make",
-      "model",
-      "licensePlate",
-      "motExpiry",
-      "insuranceExpiry",
-    ];
-    const missing = required.find((k) => !form[k as keyof typeof form].trim());
-    if (missing) {
-      setFormError("Please fill in all required fields");
-      return;
+    if (!editing) {
+      const required = [
+        "firstName",
+        "lastName",
+        "phone",
+        "pcoBadgeNumber",
+        "pcoLicenseExpiry",
+        "drivingLicenseNumber",
+        "make",
+        "model",
+        "licensePlate",
+        "motExpiry",
+        "insuranceExpiry",
+      ];
+      const missing = required.find(
+        (k) => !form[k as keyof typeof form].trim()
+      );
+      if (missing) {
+        setFormError("Please fill in all required fields");
+        return;
+      }
     }
 
-    addDriver.mutate({
+    const payload = {
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
       phone: form.phone.trim(),
@@ -126,7 +184,13 @@ export default function DriversPage() {
         phvLicenceExpiry: form.phvLicenceExpiry || undefined,
         phvDiscNumber: form.phvDiscNumber.trim() || undefined,
       },
-    });
+    };
+
+    if (editing) {
+      editDriver.mutate({ id: editing.id, payload });
+    } else {
+      addDriver.mutate(payload);
+    }
   };
 
   const drivers: any[] = data?.items ?? data ?? [];
@@ -329,8 +393,16 @@ export default function DriversPage() {
       {/* ── Add Driver Modal ── */}
       <Modal
         open={showAdd}
-        onClose={() => setShowAdd(false)}
-        title="Add New Driver"
+        onClose={() => {
+          setShowAdd(false);
+          setEditing(null);
+          setForm(EMPTY_FORM);
+        }}
+        title={
+          editing
+            ? `Edit — ${editing?.user?.firstName} ${editing?.user?.lastName}`
+            : "Add New Driver"
+        }
       >
         <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
           {/* Personal */}
@@ -589,10 +661,16 @@ export default function DriversPage() {
             </button>
             <button
               onClick={submit}
-              disabled={addDriver.isPending}
+              disabled={addDriver.isPending || editDriver.isPending}
               className="flex-2 flex-1 px-6 py-2.5 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-black text-sm font-semibold transition-colors"
             >
-              {addDriver.isPending ? "Creating…" : "Create Driver"}
+              {addDriver.isPending || editDriver.isPending
+                ? editing
+                  ? "Saving…"
+                  : "Creating…"
+                : editing
+                ? "Save Changes"
+                : "Create Driver"}
             </button>
           </div>
         </div>
@@ -608,6 +686,20 @@ export default function DriversPage() {
       >
         {selected && (
           <div className="space-y-4">
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => openEdit(selected)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] text-slate-300 hover:text-white hover:border-brand-500 transition-colors"
+              >
+                <Pencil size={12} /> Edit
+              </button>
+              <button
+                onClick={() => setDeleteId(selected.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {[
                 {
@@ -652,7 +744,7 @@ export default function DriversPage() {
                   {selected.vehicle.year} {selected.vehicle.make}{" "}
                   {selected.vehicle.model} · {selected.vehicle.colour}
                 </p>
-                <div className="flex gap-4 mt-1 text-xs text-slate-500 flex-wrap">
+                <div className="flex gap-4 mt-1 text-xs text-slate-500">
                   <span>
                     Plate:{" "}
                     <span className="font-mono text-slate-300">
@@ -661,22 +753,6 @@ export default function DriversPage() {
                   </span>
                   <span>Class: {selected.vehicle.class}</span>
                   <span>Seats: {selected.vehicle.seats}</span>
-                  {selected.vehicle.phvLicenceNumber && (
-                    <span>
-                      PHV Licence:{" "}
-                      <span className="font-mono text-slate-300">
-                        {selected.vehicle.phvLicenceNumber}
-                      </span>
-                    </span>
-                  )}
-                  {selected.vehicle.phvDiscNumber && (
-                    <span>
-                      Disc:{" "}
-                      <span className="font-mono text-slate-300">
-                        {selected.vehicle.phvDiscNumber}
-                      </span>
-                    </span>
-                  )}
                 </div>
               </div>
             )}
@@ -704,6 +780,34 @@ export default function DriversPage() {
             )}
           </div>
         )}
+      </Modal>
+      {/* Delete confirm */}
+      <Modal
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        title="Delete Driver"
+      >
+        <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
+          Are you sure you want to delete this driver? Their booking history
+          will be preserved but their account will be removed. This cannot be
+          undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setDeleteId(null)}
+            className="btn-ghost text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => deleteId && deleteDriver.mutate(deleteId)}
+            disabled={deleteDriver.isPending}
+            className="btn-danger flex items-center gap-2 text-sm"
+          >
+            {deleteDriver.isPending ? <Spinner size={14} /> : null} Delete
+            Driver
+          </button>
+        </div>
       </Modal>
     </div>
   );
