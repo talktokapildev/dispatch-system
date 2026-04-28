@@ -199,7 +199,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (_request, reply) => {
       const drivers = await fastify.prisma.driver.findMany({
-        where: { isActive: true },
         include: {
           user: { select: { firstName: true, lastName: true } },
           vehicle: {
