@@ -11,12 +11,9 @@ import {
   CheckCircle,
   RefreshCw,
   MapPin,
-  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
-
-const GOOGLE_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY!;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PricingConfig {
@@ -177,132 +174,93 @@ function GroupHeader({
   );
 }
 
-// ─── Address Autocomplete ─────────────────────────────────────────────────────
+// ─── Address Autocomplete (Google Places JS SDK) ──────────────────────────────
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 function AddressInput({
   label,
   placeholder,
-  value,
   onSelect,
-  onClear,
 }: {
   label: string;
   placeholder: string;
-  value: string;
   onSelect: (address: string, lat: number, lng: number) => void;
-  onClear: () => void;
 }) {
-  const [query, setQuery] = useState(value);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [loaded, setLoaded] = useState(false);
 
+  // Load Google Maps script once
   useEffect(() => {
-    if (!value) setQuery("");
-  }, [value]);
-
-  const search = (text: string) => {
-    setQuery(text);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (text.length < 3) {
-      setSuggestions([]);
+    if (typeof window === "undefined") return;
+    if (window.google?.maps?.places) {
+      setLoaded(true);
       return;
     }
-    debounceRef.current = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(
-          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
-            text
-          )}&key=${GOOGLE_KEY}&components=country:gb&language=en`
-        );
-        const json = await res.json();
-        setSuggestions(json.predictions ?? []);
-      } catch {
-      } finally {
-        setLoading(false);
-      }
-    }, 350);
-  };
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+    if (!key) return;
+    if (document.querySelector("script[data-gmaps]")) {
+      // Script already injected — wait for it
+      const interval = setInterval(() => {
+        if (window.google?.maps?.places) {
+          setLoaded(true);
+          clearInterval(interval);
+        }
+      }, 100);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+    script.async = true;
+    script.setAttribute("data-gmaps", "1");
+    script.onload = () => setLoaded(true);
+    document.head.appendChild(script);
+  }, []);
 
-  const select = async (s: any) => {
-    setQuery(s.description);
-    setSuggestions([]);
-    try {
-      const res = await fetch(
-        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${s.place_id}&fields=geometry,formatted_address&key=${GOOGLE_KEY}`
-      );
-      const json = await res.json();
-      const loc = json.result?.geometry?.location;
-      if (loc)
+  // Attach Autocomplete once loaded
+  useEffect(() => {
+    if (!loaded || !inputRef.current) return;
+    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+      componentRestrictions: { country: "gb" },
+      fields: ["formatted_address", "geometry"],
+    });
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (place.geometry?.location) {
         onSelect(
-          json.result?.formatted_address ?? s.description,
-          loc.lat,
-          loc.lng
+          place.formatted_address ?? "",
+          place.geometry.location.lat(),
+          place.geometry.location.lng()
         );
-    } catch {}
-  };
+      }
+    });
+  }, [loaded]);
 
   return (
-    <div className="relative">
+    <div>
       <label
         className="text-xs mb-1.5 block"
         style={{ color: "var(--text-muted)" }}
       >
         {label}
       </label>
-      <div className="relative flex items-center">
+      <div className="relative">
         <MapPin
           size={13}
-          className="absolute left-3 text-slate-500 pointer-events-none"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"
         />
         <input
-          value={query}
-          onChange={(e) => search(e.target.value)}
+          ref={inputRef}
+          type="text"
           placeholder={placeholder}
-          className="input pl-8 pr-8 w-full"
+          className="input pl-8 w-full"
           autoCorrect="off"
           autoComplete="off"
         />
-        {loading && (
-          <div className="absolute right-3">
-            <Spinner size={12} />
-          </div>
-        )}
-        {query && !loading && (
-          <button
-            onClick={() => {
-              setQuery("");
-              setSuggestions([]);
-              onClear();
-            }}
-            className="absolute right-3 text-slate-500 hover:text-white"
-          >
-            <X size={13} />
-          </button>
-        )}
       </div>
-      {suggestions.length > 0 && (
-        <div
-          className="absolute z-50 w-full mt-1 rounded-xl border shadow-xl overflow-hidden"
-          style={{ background: "var(--card)", borderColor: "var(--border)" }}
-        >
-          {suggestions.map((s) => (
-            <button
-              key={s.place_id}
-              onClick={() => select(s)}
-              className="w-full text-left px-3 py-2.5 text-xs hover:bg-[var(--table-hover)] border-b last:border-0"
-              style={{ borderColor: "var(--border)", color: "var(--text)" }}
-            >
-              <span className="font-medium">
-                {s.structured_formatting.main_text}
-              </span>
-              <span className="text-slate-500 ml-1">
-                {s.structured_formatting.secondary_text}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -317,10 +275,8 @@ function FareCalculator() {
   const [extraStops, setExtraStops] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [pickupAddress, setPickupAddress] = useState("");
   const [pickupLat, setPickupLat] = useState<number | null>(null);
   const [pickupLng, setPickupLng] = useState<number | null>(null);
-  const [dropoffAddress, setDropoffAddress] = useState("");
   const [dropoffLat, setDropoffLat] = useState<number | null>(null);
   const [dropoffLng, setDropoffLng] = useState<number | null>(null);
 
@@ -391,37 +347,25 @@ function FareCalculator() {
           <AddressInput
             label="Pickup address (optional)"
             placeholder="e.g. Crawley Hospital"
-            value={pickupAddress}
             onSelect={(addr, lat, lng) => {
               setPickupAddress(addr);
               setPickupLat(lat);
               setPickupLng(lng);
             }}
-            onClear={() => {
-              setPickupAddress("");
-              setPickupLat(null);
-              setPickupLng(null);
-            }}
           />
           <AddressInput
             label="Dropoff address (optional)"
             placeholder="e.g. Gatwick South Terminal"
-            value={dropoffAddress}
             onSelect={(addr, lat, lng) => {
               setDropoffAddress(addr);
               setDropoffLat(lat);
               setDropoffLng(lng);
             }}
-            onClear={() => {
-              setDropoffAddress("");
-              setDropoffLat(null);
-              setDropoffLng(null);
-            }}
           />
         </div>
         {(pickupLat || dropoffLat) && (
           <p className="text-[11px] text-green-400">
-            ✓ Coordinates resolved — surcharge zones detected automatically
+            ✓ Coordinates resolved — surcharge zones will be detected
           </p>
         )}
       </div>
