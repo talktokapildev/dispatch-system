@@ -49,6 +49,8 @@ interface AuthState {
     role: string;
   } | null;
   driver: Driver | null;
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   setAuth: (token: string, user: any, driver: any) => void;
   logout: () => void;
 }
@@ -59,12 +61,17 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       driver: null,
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
       setAuth: (token, user, driver) => set({ token, user, driver }),
       logout: () => set({ token: null, user: null, driver: null }),
     }),
     {
       name: "driver-auth",
       storage: createJSONStorage(() => AsyncStorage),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

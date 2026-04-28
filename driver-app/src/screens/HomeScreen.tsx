@@ -20,7 +20,7 @@ import * as TaskManager from "expo-task-manager";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
-  const { user, driver, logout, token, setAuth } = useAuthStore();
+  const { user, driver, logout, token, setAuth, _hasHydrated } = useAuthStore();
   const [status, setStatus] = useState(driver?.status ?? "OFFLINE");
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
@@ -128,14 +128,17 @@ export default function HomeScreen({ navigation }: any) {
           <View>
             <Text style={s.greeting}>Good {getTimeOfDay()},</Text>
             <Text style={s.name}>
-              {user?.firstName} {user?.lastName}
+              {_hasHydrated
+                ? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()
+                : ""}
             </Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
             <View style={s.avatar}>
               <Text style={s.avatarText}>
-                {user?.firstName?.[0]}
-                {user?.lastName?.[0]}
+                {_hasHydrated
+                  ? `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`
+                  : ""}
               </Text>
             </View>
           </TouchableOpacity>
