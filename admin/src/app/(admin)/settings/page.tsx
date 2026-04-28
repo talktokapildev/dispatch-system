@@ -347,8 +347,7 @@ function FareCalculator() {
           <AddressInput
             label="Pickup address (optional)"
             placeholder="e.g. Crawley Hospital"
-            onSelect={(addr, lat, lng) => {
-              setPickupAddress(addr);
+            onSelect={(_addr, lat, lng) => {
               setPickupLat(lat);
               setPickupLng(lng);
             }}
@@ -356,8 +355,7 @@ function FareCalculator() {
           <AddressInput
             label="Dropoff address (optional)"
             placeholder="e.g. Gatwick South Terminal"
-            onSelect={(addr, lat, lng) => {
-              setDropoffAddress(addr);
+            onSelect={(_addr, lat, lng) => {
               setDropoffLat(lat);
               setDropoffLng(lng);
             }}
