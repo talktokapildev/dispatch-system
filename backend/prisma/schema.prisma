@@ -227,6 +227,9 @@ model Vehicle {
   year            Int
   colour          String
   licensePlate    String       @unique
+  phvLicenceNumber String?     // e.g. 452689 — TfL vehicle licence
+  phvLicenceExpiry DateTime?   // e.g. 27 Feb 2027
+  phvDiscNumber   String?      // e.g. 1087796
   class           VehicleClass @default(STANDARD)
   seats           Int          @default(4)
   motExpiry       DateTime

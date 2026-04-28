@@ -32,6 +32,9 @@ const EMPTY_FORM = {
   seats: "4",
   motExpiry: "",
   insuranceExpiry: "",
+  phvLicenceNumber: "",
+  phvLicenceExpiry: "",
+  phvDiscNumber: "",
 };
 
 export default function DriversPage() {
@@ -119,6 +122,9 @@ export default function DriversPage() {
         seats: parseInt(form.seats) || 4,
         motExpiry: form.motExpiry,
         insuranceExpiry: form.insuranceExpiry,
+        phvLicenceNumber: form.phvLicenceNumber.trim() || undefined,
+        phvLicenceExpiry: form.phvLicenceExpiry || undefined,
+        phvDiscNumber: form.phvDiscNumber.trim() || undefined,
       },
     });
   };
@@ -532,6 +538,39 @@ export default function DriversPage() {
                   onChange={set("seats")}
                 />
               </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  PHV Licence No.
+                </label>
+                <input
+                  className="input w-full font-mono"
+                  placeholder="452689"
+                  value={form.phvLicenceNumber}
+                  onChange={set("phvLicenceNumber")}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  PHV Licence Expiry
+                </label>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={form.phvLicenceExpiry}
+                  onChange={set("phvLicenceExpiry")}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  PHV Disc No.
+                </label>
+                <input
+                  className="input w-full font-mono"
+                  placeholder="1087796"
+                  value={form.phvDiscNumber}
+                  onChange={set("phvDiscNumber")}
+                />
+              </div>
             </div>
           </div>
 
@@ -613,7 +652,7 @@ export default function DriversPage() {
                   {selected.vehicle.year} {selected.vehicle.make}{" "}
                   {selected.vehicle.model} · {selected.vehicle.colour}
                 </p>
-                <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                <div className="flex gap-4 mt-1 text-xs text-slate-500 flex-wrap">
                   <span>
                     Plate:{" "}
                     <span className="font-mono text-slate-300">
@@ -622,6 +661,22 @@ export default function DriversPage() {
                   </span>
                   <span>Class: {selected.vehicle.class}</span>
                   <span>Seats: {selected.vehicle.seats}</span>
+                  {selected.vehicle.phvLicenceNumber && (
+                    <span>
+                      PHV Licence:{" "}
+                      <span className="font-mono text-slate-300">
+                        {selected.vehicle.phvLicenceNumber}
+                      </span>
+                    </span>
+                  )}
+                  {selected.vehicle.phvDiscNumber && (
+                    <span>
+                      Disc:{" "}
+                      <span className="font-mono text-slate-300">
+                        {selected.vehicle.phvDiscNumber}
+                      </span>
+                    </span>
+                  )}
                 </div>
               </div>
             )}

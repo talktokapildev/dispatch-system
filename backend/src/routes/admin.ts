@@ -190,6 +190,50 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── GET /admin/reports/tfl-export ───────────────────────────────────────────
+  // Returns driver and vehicle data in TfL weekly upload format
+  // Add this route inside your adminRoutes function in admin.ts
+
+  fastify.get(
+    "/admin/reports/tfl-export",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (_request, reply) => {
+      const drivers = await fastify.prisma.driver.findMany({
+        where: { isActive: true },
+        include: {
+          user: { select: { firstName: true, lastName: true } },
+          vehicle: {
+            select: {
+              licensePlate: true,
+              make: true,
+              phvLicenceNumber: true,
+            },
+          },
+        },
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          drivers: drivers.map((d) => ({
+            pcoBadgeNumber: d.pcoBadgeNumber,
+            firstName: d.user.firstName,
+            lastName: d.user.lastName,
+          })),
+          vehicles: drivers
+            .filter((d) => d.vehicle)
+            .map((d) => ({
+              licensePlate: d.vehicle!.licensePlate,
+              make: d.vehicle!.make,
+              phvLicenceNumber: d.vehicle!.phvLicenceNumber ?? "",
+            })),
+          generatedAt: new Date().toISOString(),
+          weekEnding: new Date().toISOString().split("T")[0],
+        },
+      });
+    }
+  );
+
   // ─── Corporate accounts ───
   fastify.get(
     "/admin/corporate",
