@@ -117,11 +117,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  passenger     Passenger?
-  driver        Driver?
-  adminProfile  AdminProfile?
-  otpCodes      OtpCode[]
-  refreshTokens RefreshToken[]
+  passenger          Passenger?
+  driver             Driver?
+  adminProfile       AdminProfile?
+  otpCodes           OtpCode[]
+  refreshTokens      RefreshToken[]
+  dispatchedBookings Booking[]     @relation("BookingDispatcher")
 
   @@index([phone])
   @@index([email])
@@ -155,35 +156,35 @@ model RefreshToken {
 // ─────────────────────────────────────────
 
 model Passenger {
-  id                String    @id @default(uuid())
-  userId            String    @unique
-  stripeCustomerId  String?
-  savedAddresses    Json      @default("[]")
+  id                 String    @id @default(uuid())
+  userId             String    @unique
+  stripeCustomerId   String?
+  savedAddresses     Json      @default("[]")
   corporateAccountId String?
-  totalRides        Int       @default(0)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  totalRides         Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  user              User      @relation(fields: [userId], references: [id])
-  corporateAccount  CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
-  bookings          Booking[]
-  paymentMethods    SavedPaymentMethod[]
+  user             User              @relation(fields: [userId], references: [id])
+  corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
+  bookings         Booking[]
+  paymentMethods   SavedPaymentMethod[]
 
   @@index([userId])
 }
 
 model SavedPaymentMethod {
-  id                String    @id @default(uuid())
-  passengerId       String
+  id                    String    @id @default(uuid())
+  passengerId           String
   stripePaymentMethodId String
-  brand             String
-  last4             String
-  expiryMonth       Int
-  expiryYear        Int
-  isDefault         Boolean   @default(false)
-  createdAt         DateTime  @default(now())
+  brand                 String
+  last4                 String
+  expiryMonth           Int
+  expiryYear            Int
+  isDefault             Boolean   @default(false)
+  createdAt             DateTime  @default(now())
 
-  passenger         Passenger @relation(fields: [passengerId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [id])
 }
 
 // ─────────────────────────────────────────
@@ -191,70 +192,70 @@ model SavedPaymentMethod {
 // ─────────────────────────────────────────
 
 model Driver {
-  id                  String       @id @default(uuid())
-  userId              String       @unique
-  pcoBadgeNumber      String       @unique
-  pcoLicenseExpiry    DateTime
+  id                   String       @id @default(uuid())
+  userId               String       @unique
+  pcoBadgeNumber       String       @unique
+  pcoLicenseExpiry     DateTime
   drivingLicenseNumber String
-  status              DriverStatus @default(OFFLINE)
-  currentLatitude     Float?
-  currentLongitude    Float?
-  currentBearing      Float?
-  lastLocationAt      DateTime?
-  rating              Float        @default(5.0)
-  totalJobs           Int          @default(0)
-  stripeAccountId     String?
-  onboardingComplete  Boolean      @default(false)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  status               DriverStatus @default(OFFLINE)
+  currentLatitude      Float?
+  currentLongitude     Float?
+  currentBearing       Float?
+  lastLocationAt       DateTime?
+  rating               Float        @default(5.0)
+  totalJobs            Int          @default(0)
+  stripeAccountId      String?
+  onboardingComplete   Boolean      @default(false)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
-  user                User         @relation(fields: [userId], references: [id])
-  vehicle             Vehicle?
-  documents           DriverDocument[]
-  bookings            Booking[]
-  earnings            DriverEarning[]
-  breaks              DriverBreak[]
+  user      User             @relation(fields: [userId], references: [id])
+  vehicle   Vehicle?
+  documents DriverDocument[]
+  bookings  Booking[]
+  earnings  DriverEarning[]
+  breaks    DriverBreak[]
 
   @@index([userId])
   @@index([status])
 }
 
 model Vehicle {
-  id              String       @id @default(uuid())
-  driverId        String       @unique
-  make            String
-  model           String
-  year            Int
-  colour          String
-  licensePlate    String       @unique
-  phvLicenceNumber String?     // e.g. 452689 — TfL vehicle licence
-  phvLicenceExpiry DateTime?   // e.g. 27 Feb 2027
-  phvDiscNumber   String?      // e.g. 1087796
-  class           VehicleClass @default(STANDARD)
-  seats           Int          @default(4)
-  motExpiry       DateTime
-  insuranceExpiry DateTime
-  isActive        Boolean      @default(true)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id               String       @id @default(uuid())
+  driverId         String       @unique
+  make             String
+  model            String
+  year             Int
+  colour           String
+  licensePlate     String       @unique
+  phvLicenceNumber String?
+  phvLicenceExpiry DateTime?
+  phvDiscNumber    String?
+  class            VehicleClass @default(STANDARD)
+  seats            Int          @default(4)
+  motExpiry        DateTime
+  insuranceExpiry  DateTime
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-  driver          Driver       @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 }
 
 model DriverDocument {
-  id          String         @id @default(uuid())
-  driverId    String
-  type        DocumentType
-  status      DocumentStatus @default(PENDING)
-  fileUrl     String
-  expiryDate  DateTime?
-  notes       String?
-  reviewedAt  DateTime?
-  reviewedBy  String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id         String         @id @default(uuid())
+  driverId   String
+  type       DocumentType
+  status     DocumentStatus @default(PENDING)
+  fileUrl    String
+  expiryDate DateTime?
+  notes      String?
+  reviewedAt DateTime?
+  reviewedBy String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
-  driver      Driver         @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 
   @@index([driverId])
   @@index([status])
@@ -262,12 +263,12 @@ model DriverDocument {
 }
 
 model DriverBreak {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   driverId  String
-  startedAt DateTime @default(now())
+  startedAt DateTime  @default(now())
   endedAt   DateTime?
 
-  driver    Driver   @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 }
 
 // ─────────────────────────────────────────
@@ -280,7 +281,7 @@ model AdminProfile {
   permissions Json     @default("[]")
   createdAt   DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 }
 
 // ─────────────────────────────────────────
@@ -288,42 +289,42 @@ model AdminProfile {
 // ─────────────────────────────────────────
 
 model CorporateAccount {
-  id                String                  @id @default(uuid())
-  companyName       String
-  contactName       String
-  contactEmail      String
-  contactPhone      String
-  address           String
-  invoicingEmail    String
-  paymentTermsDays  Int                     @default(30)
-  creditLimit       Float                   @default(0)
-  currentBalance    Float                   @default(0)
-  isActive          Boolean                 @default(true)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  id               String   @id @default(uuid())
+  name             String                    // renamed from companyName
+  contactName      String
+  contactEmail     String
+  contactPhone     String
+  address          String
+  invoicingEmail   String
+  paymentTermsDays Int      @default(30)
+  creditLimit      Float    @default(0)
+  currentBalance   Float    @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  passengers        Passenger[]
-  bookings          Booking[]
-  invoices          CorporateInvoice[]
+  passengers Passenger[]
+  bookings   Booking[]
+  invoices   CorporateInvoice[]
 
-  @@index([companyName])
+  @@index([name])
 }
 
 model CorporateInvoice {
-  id                 String                @id @default(uuid())
+  id                 String                 @id @default(uuid())
   corporateAccountId String
-  invoiceNumber      String                @unique
+  invoiceNumber      String                 @unique
   periodFrom         DateTime
   periodTo           DateTime
   totalAmount        Float
   status             CorporateInvoiceStatus @default(DRAFT)
   dueDate            DateTime
   paidAt             DateTime?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
 
-  corporateAccount   CorporateAccount      @relation(fields: [corporateAccountId], references: [id])
-  bookings           Booking[]
+  corporateAccount CorporateAccount @relation(fields: [corporateAccountId], references: [id])
+  bookings         Booking[]
 
   @@index([corporateAccountId])
 }
@@ -333,85 +334,90 @@ model CorporateInvoice {
 // ─────────────────────────────────────────
 
 model Booking {
-  id                  String        @id @default(uuid())
-  reference           String        @unique
-  passengerId         String
-  driverId            String?
-  corporateAccountId  String?
-  corporateInvoiceId  String?
+  id                 String        @id @default(uuid())
+  reference          String        @unique
+  passengerId        String
+  driverId           String?
+  corporateAccountId String?
+  corporateInvoiceId String?
 
-  type                BookingType
-  status              BookingStatus @default(PENDING)
+  type   BookingType
+  status BookingStatus @default(PENDING)
 
   // Locations
-  pickupAddress       String
-  pickupLatitude      Float
-  pickupLongitude     Float
-  dropoffAddress      String
-  dropoffLatitude     Float
-  dropoffLongitude    Float
-  stops               Json          @default("[]") // intermediate stops
+  pickupAddress    String
+  pickupLatitude   Float
+  pickupLongitude  Float
+  dropoffAddress   String
+  dropoffLatitude  Float
+  dropoffLongitude Float
+  stops            Json   @default("[]")
 
   // Timing
-  scheduledAt         DateTime?     // null = ASAP
-  dispatchedAt        DateTime?
-  driverAcceptedAt    DateTime?
-  driverArrivedAt     DateTime?
-  tripStartedAt       DateTime?
-  completedAt         DateTime?
+  scheduledAt      DateTime?
+  dispatchedAt     DateTime?
+  driverAcceptedAt DateTime?
+  driverArrivedAt  DateTime?
+  tripStartedAt    DateTime?
+  completedAt      DateTime?
+
+  // TfL Compliance: dispatcher record (Condition 6)
+  dispatchedBy String?
 
   // Pricing
-  pricingType         PricingType   @default(FIXED)
-  estimatedFare       Float
-  actualFare          Float?
-  surgeMultiplier     Float         @default(1.0)
-  driverEarning       Float?
-  platformFee         Float?
+  pricingType     PricingType   @default(FIXED)
+  estimatedFare   Float
+  actualFare      Float?
+  surgeMultiplier Float         @default(1.0)
+  driverEarning   Float?
+  platformFee     Float?
 
   // Payment
-  paymentMethod       PaymentMethod @default(CARD)
-  paymentStatus       PaymentStatus @default(PENDING)
+  paymentMethod         PaymentMethod @default(CARD)
+  paymentStatus         PaymentStatus @default(PENDING)
   stripePaymentIntentId String?
 
-  // Flight details (airport jobs)
-  flightNumber        String?
-  flightArrivalTime   DateTime?
-  terminal            String?
+  // Flight details
+  flightNumber      String?
+  flightArrivalTime DateTime?
+  terminal          String?
 
   // Misc
-  passengerCount      Int           @default(1)
-  notes               String?
-  operatorNotes       String?       // Private notes visible only to operator
-  cancellationReason  String?
-  rating              Int?
-  feedback            String?
-  dispatchAttempts    Int           @default(0)
+  passengerCount     Int     @default(1)
+  notes              String?
+  operatorNotes      String?
+  cancellationReason String?
+  rating             Int?
+  feedback           String?
+  dispatchAttempts   Int     @default(0)
 
   // Quick-win fields
-  pickupZone          String?       // Zone label for pickup area
-  dropoffZone         String?       // Zone label for dropoff area
-  fixedPriceOverride  Float?        // Manual price override by operator
-  isOnHold            Boolean       @default(false)
-  allocationTime      DateTime?     // Delay dispatch until this time
-  requiredCarFeatures Json          @default("[]") // e.g. ["baby_seat","wheelchair"]
-  requiredDriverFeatures Json       @default("[]") // e.g. ["female_driver","speaks_arabic"]
-  department          String?       // Corporate department
+  pickupZone             String?
+  dropoffZone            String?
+  fixedPriceOverride     Float?
+  isOnHold               Boolean   @default(false)
+  allocationTime         DateTime?
+  requiredCarFeatures    Json      @default("[]")
+  requiredDriverFeatures Json      @default("[]")
+  department             String?
 
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  passenger           Passenger     @relation(fields: [passengerId], references: [id])
-  driver              Driver?       @relation(fields: [driverId], references: [id])
-  corporateAccount    CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
-  corporateInvoice    CorporateInvoice? @relation(fields: [corporateInvoiceId], references: [id])
-  statusHistory       BookingStatusHistory[]
-  receipt             Receipt?
+  passenger        Passenger         @relation(fields: [passengerId], references: [id])
+  driver           Driver?           @relation(fields: [driverId], references: [id])
+  corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
+  corporateInvoice CorporateInvoice? @relation(fields: [corporateInvoiceId], references: [id])
+  statusHistory    BookingStatusHistory[]
+  receipt          Receipt?
+  dispatchedByUser User?             @relation("BookingDispatcher", fields: [dispatchedBy], references: [id])
 
   @@index([passengerId])
   @@index([driverId])
   @@index([status])
   @@index([scheduledAt])
   @@index([reference])
+  @@index([dispatchedBy])
 }
 
 model BookingStatusHistory {
@@ -421,7 +427,7 @@ model BookingStatusHistory {
   note      String?
   createdAt DateTime      @default(now())
 
-  booking   Booking       @relation(fields: [bookingId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
 
   @@index([bookingId])
 }
@@ -439,123 +445,81 @@ model Receipt {
   pickupAddress         String
   dropoffAddress        String
   tripDistance          Float?
-  tripDuration          Int?     // seconds
+  tripDuration          Int?
   fareBreakdown         Json
   totalAmount           Float
   paymentMethod         String
   issuedAt              DateTime @default(now())
 
-  booking               Booking  @relation(fields: [bookingId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
 }
 
 // ─────────────────────────────────────────
-// PRICING
-// ─────────────────────────────────────────
-
-// model PricingZone {
-//   id            String       @id @default(uuid())
-//   name          String
-//   description   String?
-//   isDefault     Boolean      @default(false)
-//   vehicleClass  VehicleClass @default(STANDARD)
-
-//   // Fixed pricing
-//   baseFare      Float        @default(3.50)
-//   perMile       Float        @default(2.00)
-//   perMinute     Float        @default(0.25)
-//   minimumFare   Float        @default(5.00)
-
-//   // Airport supplements
-//   airportPickupSupplement Float @default(0)
-//   airportDropoffSupplement Float @default(0)
-
-//   // Time supplements
-//   nightSupplement Float      @default(0)    // % extra
-//   weekendSupplement Float    @default(0)    // % extra
-//   bankHolidaySupplement Float @default(0)  // % extra
-
-//   isActive      Boolean      @default(true)
-//   createdAt     DateTime     @default(now())
-//   updatedAt     DateTime     @updatedAt
-// }
-
-// ─────────────────────────────────────────
-// PRICING CONFIG (single configurable row)
+// PRICING CONFIG
 // ─────────────────────────────────────────
 
 model PricingConfig {
-  id                       String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  // ── Base fare components ──────────────────
-  baseFare                 Float    @default(3.50)
-  perMile                  Float    @default(1.80)
-  perMinute                Float    @default(0.20)
-  minimumFare              Float    @default(15.00)
+  baseFare    Float @default(3.50)
+  perMile     Float @default(1.80)
+  perMinute   Float @default(0.20)
+  minimumFare Float @default(15.00)
 
-  // ── Commission ────────────────────────────
-  // Operator takes 15%, drivers keep 85%
-  platformCommission       Float    @default(0.15)
+  platformCommission Float @default(0.15)
 
-  // ── Time premiums (as decimals, 0.25 = 25%) ──
-  nightPremium             Float    @default(0.25)
-  nightStartHour           Int      @default(23)   // 23:00
-  nightEndHour             Int      @default(6)    // 06:00
-  bankHolidayPremium       Float    @default(0.25)
-  christmasNyePremium      Float    @default(0.75) // Dec 24-26, Dec 31
+  nightPremium        Float @default(0.25)
+  nightStartHour      Int   @default(23)
+  nightEndHour        Int   @default(6)
+  bankHolidayPremium  Float @default(0.25)
+  christmasNyePremium Float @default(0.75)
 
-  // ── Airport fees (£, pass-through) ────────
-  gatwickDropoff           Float    @default(10.00)
-  gatwickPickup            Float    @default(10.00)
-  heathrowDropoff          Float    @default(7.00)
-  heathrowPickup           Float    @default(7.00)
-  meetAndGreet             Float    @default(12.00)
+  gatwickDropoff  Float @default(10.00)
+  gatwickPickup   Float @default(10.00)
+  heathrowDropoff Float @default(7.00)
+  heathrowPickup  Float @default(7.00)
+  meetAndGreet    Float @default(12.00)
 
-  // ── Other pass-throughs (£) ───────────────
-  dartfordCrossing         Float    @default(2.50)
-  congestionCharge         Float    @default(15.00)
-  // ULEZ is £0 for Tesla — omitted intentionally
+  dartfordCrossing Float @default(2.50)
+  congestionCharge Float @default(15.00)
 
-  // ── Extras ────────────────────────────────
-  extraStopCharge          Float    @default(5.00)
-  freeWaitingMinutes       Int      @default(10)
-  waitingRatePerMinute     Float    @default(0.50)
+  extraStopCharge      Float @default(5.00)
+  freeWaitingMinutes   Int   @default(10)
+  waitingRatePerMinute Float @default(0.50)
 
-  // ── Cancellation policy ───────────────────
-  retailCancelFreeMinutes  Int      @default(15)   // Free within 15 min of booking
-  accountCancelFreeHours   Int      @default(2)    // Free up to 2 hrs before pickup
+  retailCancelFreeMinutes Int @default(15)
+  accountCancelFreeHours  Int @default(2)
 
-  // ── Care home distance bands (£) ─────────
-  careHomeUnder3miles      Float    @default(15.00)
-  careHome3to7miles        Float    @default(22.00)
-  careHome7to15miles       Float    @default(32.00)
-  careHome15to25miles      Float    @default(48.00)
-  careHome25to40miles      Float    @default(70.00)
-  careHomeHospitalDischarge Float   @default(10.00) // supplement
-  careHomeHalfDay          Float    @default(150.00)
-  careHomeFullDay          Float    @default(250.00)
-  careHomeHourlyBeyondFull Float    @default(35.00)
+  careHomeUnder3miles       Float @default(15.00)
+  careHome3to7miles         Float @default(22.00)
+  careHome7to15miles        Float @default(32.00)
+  careHome15to25miles       Float @default(48.00)
+  careHome25to40miles       Float @default(70.00)
+  careHomeHospitalDischarge Float @default(10.00)
+  careHomeHalfDay           Float @default(150.00)
+  careHomeFullDay           Float @default(250.00)
+  careHomeHourlyBeyondFull  Float @default(35.00)
 
-  updatedAt                DateTime @updatedAt
-  updatedBy                String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
 }
-
 
 // ─────────────────────────────────────────
 // DRIVER EARNINGS
 // ─────────────────────────────────────────
 
 model DriverEarning {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   driverId    String
-  bookingId   String   @unique
+  bookingId   String    @unique
   grossAmount Float
   platformFee Float
   netAmount   Float
-  paidOut     Boolean  @default(false)
+  paidOut     Boolean   @default(false)
   paidOutAt   DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  driver      Driver   @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 
   @@index([driverId])
   @@index([paidOut])
@@ -566,13 +530,13 @@ model DriverEarning {
 // ─────────────────────────────────────────
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  body      String
-  data      Json?
-  read      Boolean  @default(false)
-  sentAt    DateTime @default(now())
+  id     String   @id @default(uuid())
+  userId String
+  title  String
+  body   String
+  data   Json?
+  read   Boolean  @default(false)
+  sentAt DateTime @default(now())
 
   @@index([userId])
   @@index([read])
@@ -582,7 +546,7 @@ model PushToken {
   id        String   @id @default(uuid())
   userId    String
   token     String
-  platform  String   // ios | android
+  platform  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -595,19 +559,19 @@ model PushToken {
 // ─────────────────────────────────────────
 
 model SurchargeZone {
-  id            String   @id @default(uuid())
-  name          String   // "London Gatwick South Terminal"
-  type          String   @default("OTHER") // AIRPORT | HOTEL | VENUE | OTHER
-  latitude      Float
-  longitude     Float
-  radiusMeters  Int      @default(500)  // detection radius
-  pickupFee     Float    @default(0)
-  dropoffFee    Float    @default(0)
-  isActive      Boolean  @default(true)
-  notes         String?  // internal notes e.g. "Hilton access fee — pass-through only"
-  polygon       Json? 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  type         String   @default("OTHER")
+  latitude     Float
+  longitude    Float
+  radiusMeters Int      @default(500)
+  pickupFee    Float    @default(0)
+  dropoffFee   Float    @default(0)
+  isActive     Boolean  @default(true)
+  notes        String?
+  polygon      Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([isActive])
 }

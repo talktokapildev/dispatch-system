@@ -7,7 +7,7 @@ import { MapsService } from "../services/maps.service";
 import bcrypt from "bcryptjs";
 
 const corporateSchema = z.object({
-  companyName: z.string().min(2),
+  name: z.string().min(2), // ← was companyName, CorporateAccount.name in schema
   contactName: z.string().min(2),
   contactEmail: z.string().email(),
   contactPhone: z.string(),
@@ -21,6 +21,17 @@ const corporateSchema = z.object({
   portalFirstName: z.string().min(1).optional(),
   portalLastName: z.string().min(1).optional(),
 });
+
+// Reusable dispatcher include (TfL compliance)
+const dispatcherInclude = {
+  select: {
+    id: true,
+    phone: true,
+    firstName: true,
+    lastName: true,
+    adminProfile: { select: { id: true } },
+  },
+};
 
 export async function adminRoutes(fastify: FastifyInstance) {
   // ─── Dashboard stats ───
@@ -190,10 +201,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── GET /admin/reports/tfl-export ───────────────────────────────────────────
-  // Returns driver and vehicle data in TfL weekly upload format
-  // Add this route inside your adminRoutes function in admin.ts
-
+  // ─── TfL weekly export ───
   fastify.get(
     "/admin/reports/tfl-export",
     { preHandler: [fastify.authenticateAdmin] },
@@ -245,7 +253,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           _count: { select: { passengers: true, bookings: true } },
         },
-        orderBy: { companyName: "asc" },
+        orderBy: { name: "asc" }, // ← was companyName
       });
       return reply.send({ success: true, data: accounts });
     }
@@ -267,18 +275,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
       // Create corporate account
       const account = await fastify.prisma.corporateAccount.create({
-        data: accountData,
+        data: accountData, // now contains `name` not `companyName`
       });
 
       // Create portal login user if email + password provided
       let portalUser = null;
       if (portalEmail && portalPassword) {
-        // Check email not already taken
         const existing = await fastify.prisma.user.findUnique({
           where: { email: portalEmail },
         });
         if (existing) {
-          // Rollback account
           await fastify.prisma.corporateAccount.delete({
             where: { id: account.id },
           });
@@ -325,7 +331,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const body = corporateSchema.partial().parse(request.body);
       const account = await fastify.prisma.corporateAccount.update({
         where: { id },
-        data: body,
+        data: body, // now contains `name` not `companyName`
       });
       return reply.send({ success: true, data: account });
     }
@@ -364,7 +370,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const hash = await bcrypt.hash(portalPassword, 12);
       const user = await fastify.prisma.user.create({
         data: {
-          phone: `+44${Date.now().toString().slice(-10)}`, // temp unique phone
+          phone: `+44${Date.now().toString().slice(-10)}`,
           email: portalEmail,
           firstName: portalFirstName,
           lastName: portalLastName,
@@ -396,7 +402,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         where: { id },
         data: { isActive: false },
       });
-      // Disable portal users
       await fastify.prisma.user.updateMany({
         where: { passenger: { corporateAccountId: id } },
         data: { isActive: false },
@@ -415,7 +420,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         where: { id },
         data: { isActive: true },
       });
-      // Re-enable portal users
       await fastify.prisma.user.updateMany({
         where: { passenger: { corporateAccountId: id } },
         data: { isActive: true },
@@ -439,7 +443,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
           error: `Cannot delete — account has ${bookingCount} booking(s). Archive it instead.`,
         });
       }
-      // Delete portal users first
       const passengers = await fastify.prisma.passenger.findMany({
         where: { corporateAccountId: id },
       });
@@ -467,21 +470,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: { user: true, vehicle: true },
       });
 
-      const enriched = await Promise.all(
-        drivers.map(async (d) => ({
-          id: d.id,
-          name: `${d.user.firstName} ${d.user.lastName}`,
-          status: d.status,
-          vehicle: d.vehicle
-            ? `${d.vehicle.make} ${d.vehicle.model} (${d.vehicle.licensePlate})`
-            : null,
-          vehicleClass: d.vehicle?.class,
-          latitude: d.currentLatitude,
-          longitude: d.currentLongitude,
-          bearing: d.currentBearing,
-          lastSeen: d.lastLocationAt,
-        }))
-      );
+      const enriched = drivers.map((d) => ({
+        id: d.id,
+        name: `${d.user.firstName} ${d.user.lastName}`,
+        status: d.status,
+        vehicle: d.vehicle
+          ? `${d.vehicle.make} ${d.vehicle.model} (${d.vehicle.licensePlate})`
+          : null,
+        vehicleClass: d.vehicle?.class,
+        latitude: d.currentLatitude,
+        longitude: d.currentLongitude,
+        bearing: d.currentBearing,
+        lastSeen: d.lastLocationAt,
+      }));
 
       return reply.send({ success: true, data: enriched });
     }
@@ -519,6 +520,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
+      const adminUserId = request.user.userId; // TfL: record who dispatched
       const maps = new MapsService();
       const dispatch = new DispatchService(
         fastify.prisma,
@@ -527,7 +529,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         maps
       );
 
-      // Allow dispatching PENDING or CONFIRMED bookings
       const booking = await fastify.prisma.booking.findUnique({
         where: { id },
       });
@@ -542,10 +543,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Normalise to PENDING so dispatch service accepts it
+      // TfL Condition 6: record the staff member who dispatched + normalise status
       await fastify.prisma.booking.update({
         where: { id },
-        data: { status: "PENDING" },
+        data: {
+          status: "PENDING",
+          dispatchedBy: adminUserId,
+          dispatchedAt: new Date(),
+        },
       });
 
       await dispatch.dispatchBooking(id);
@@ -565,6 +570,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         id: string;
         driverId: string;
       };
+      const adminUserId = request.user.userId; // TfL: record who assigned
       const maps = new MapsService();
       const dispatch = new DispatchService(
         fastify.prisma,
@@ -573,9 +579,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         maps
       );
 
+      // TfL: record dispatcher before assigning
       await fastify.prisma.booking.update({
         where: { id },
-        data: { status: "PENDING" },
+        data: {
+          status: "PENDING",
+          dispatchedBy: adminUserId,
+          dispatchedAt: new Date(),
+        },
       });
 
       await dispatch.manualAssign(id, driverId);
@@ -583,6 +594,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Edit booking ───
   fastify.patch(
     "/admin/bookings/:id",
     { preHandler: [fastify.authenticateAdmin] },
@@ -608,6 +620,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Booking not found" });
 
+      // TfL: if manually setting to DRIVER_ASSIGNED, record dispatcher
+      const dispatcherUpdate =
+        body.status === "DRIVER_ASSIGNED" && !booking.dispatchedBy
+          ? { dispatchedBy: request.user.userId, dispatchedAt: new Date() }
+          : {};
+
       const updated = await fastify.prisma.booking.update({
         where: { id },
         data: {
@@ -630,14 +648,15 @@ export async function adminRoutes(fastify: FastifyInstance) {
             flightNumber: body.flightNumber,
           }),
           ...(body.terminal !== undefined && { terminal: body.terminal }),
+          ...dispatcherUpdate,
         },
         include: {
           passenger: { include: { user: true } },
           driver: { include: { user: true } },
+          dispatchedByUser: dispatcherInclude, // TfL
         },
       });
 
-      // Broadcast update to admin and relevant sockets
       fastify.io.to("admin").emit("admin:booking:updated", {
         bookingId: id,
         status: updated.status,
@@ -647,7 +666,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // Also add GET single booking for admin
+  // ─── Get single booking (admin) ───
   fastify.get(
     "/admin/bookings/:id",
     { preHandler: [fastify.authenticateAdmin] },
@@ -658,6 +677,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           passenger: { include: { user: true } },
           driver: { include: { user: true, vehicle: true } },
+          dispatchedByUser: dispatcherInclude, // TfL
         },
       });
       if (!booking)

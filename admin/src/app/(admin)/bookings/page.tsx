@@ -42,6 +42,13 @@ const EDITABLE_STATUSES = [
 
 const PAYMENT_METHODS = ["CARD", "CASH", "APPLE_PAY", "GOOGLE_PAY", "ACCOUNT"];
 
+function getDispatcherName(booking: any): string {
+  const u = booking.dispatchedByUser;
+  if (!u) return "—";
+  if (u.firstName) return `${u.firstName} ${u.lastName}`.trim();
+  return u.phone ?? "—";
+}
+
 export default function BookingsPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
@@ -79,7 +86,13 @@ export default function BookingsPage() {
     onSuccess: () => {
       toast.success("Dispatching to nearest available driver…");
       qc.invalidateQueries({ queryKey: ["bookings"] });
-      setSelected(null);
+      // Refresh selected to show updated dispatchedBy
+      if (selected) {
+        api
+          .get(`/admin/bookings/${selected.id}`)
+          .then((r) => setSelected(r.data.data))
+          .catch(() => {});
+      }
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.error ?? "Dispatch failed"),
@@ -91,7 +104,6 @@ export default function BookingsPage() {
     onSuccess: (_, { id }) => {
       toast.success("Booking updated");
       qc.invalidateQueries({ queryKey: ["bookings"] });
-      // Refresh selected
       api
         .get(`/admin/bookings/${id}`)
         .then((r) => setSelected(r.data.data))
@@ -215,6 +227,7 @@ export default function BookingsPage() {
                 "Status",
                 "Fare",
                 "Driver",
+                "Dispatched By",
                 "Created",
               ]}
               isEmpty={!filtered.length}
@@ -269,6 +282,17 @@ export default function BookingsPage() {
                     {b.driver ? (
                       <p className="text-xs" style={{ color: "var(--text)" }}>
                         {b.driver.user.firstName} {b.driver.user.lastName}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-600">—</p>
+                    )}
+                  </td>
+                  {/* TfL: Dispatcher column */}
+                  <td className="px-4 py-3">
+                    {b.dispatchedByUser ? (
+                      <p className="text-xs" style={{ color: "var(--text)" }}>
+                        {b.dispatchedByUser.firstName}{" "}
+                        {b.dispatchedByUser.lastName}
                       </p>
                     ) : (
                       <p className="text-xs text-slate-600">—</p>
@@ -396,6 +420,45 @@ export default function BookingsPage() {
                 </p>
               </div>
             )}
+
+            {/* ── TfL Compliance: Dispatch Record ── */}
+            <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] text-xs">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                TfL Dispatch Record
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-slate-500 mb-0.5">Dispatched By</p>
+                  <p style={{ color: "var(--text)" }} className="font-medium">
+                    {getDispatcherName(selected)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 mb-0.5">Dispatched At</p>
+                  <p style={{ color: "var(--text)" }} className="font-medium">
+                    {selected.dispatchedAt
+                      ? format(
+                          new Date(selected.dispatchedAt),
+                          "dd MMM yyyy HH:mm"
+                        )
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+              {!selected.dispatchedByUser &&
+                [
+                  "DISPATCHED",
+                  "DRIVER_ASSIGNED",
+                  "DRIVER_EN_ROUTE",
+                  "DRIVER_ARRIVED",
+                  "IN_PROGRESS",
+                  "COMPLETED",
+                ].includes(selected.status) && (
+                  <p className="text-amber-500 mt-2 text-[10px]">
+                    ⚠ Dispatcher not recorded — predates compliance update
+                  </p>
+                )}
+            </div>
 
             <div className="space-y-2 pt-1">
               {["PENDING", "CONFIRMED"].includes(selected.status) && (

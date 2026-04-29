@@ -91,7 +91,7 @@ async function main() {
     update: {},
     create: {
       id: "sample-corp",
-      companyName: "Acme Corp Ltd",
+      name: "Acme Corp Ltd", // ← was companyName
       contactName: "John Smith",
       contactEmail: "john@acme.com",
       contactPhone: "+447123456789",

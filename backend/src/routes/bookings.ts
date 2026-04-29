@@ -80,7 +80,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // ─── Create booking ───
+  // ─── Create booking (passenger) ───
   fastify.post(
     "/bookings",
     { preHandler: [fastify.authenticate] },
@@ -138,7 +138,6 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Notify admin
       fastify.io.to("admin").emit(SocketEvent.ADMIN_BOOKING_CREATED, booking);
 
       // Auto-dispatch if ASAP
@@ -158,7 +157,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Get booking by ID ───
+  // ─── Get booking by ID (passenger) ───
   fastify.get(
     "/bookings/:id",
     { preHandler: [fastify.authenticate] },
@@ -240,30 +239,34 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const { reason } = request.body as { reason?: string };
+      const { reason } = (request.body as any) ?? {};
 
       const booking = await fastify.prisma.booking.findUnique({
         where: { id },
       });
       if (!booking)
-        return reply.status(404).send({ success: false, error: "Not found" });
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
 
       const cancellable: BookingStatus[] = [
         BookingStatus.PENDING,
         BookingStatus.CONFIRMED,
         BookingStatus.DRIVER_ASSIGNED,
       ];
-      if (!cancellable.includes(booking.status as BookingStatus)) {
+      if (!cancellable.includes(booking.status))
         return reply.status(400).send({
           success: false,
-          error: "Booking cannot be cancelled at this stage",
+          error: "Booking cannot be cancelled in its current status",
         });
-      }
 
-      await fastify.prisma.$transaction([
+      await Promise.all([
         fastify.prisma.booking.update({
           where: { id },
-          data: { status: BookingStatus.CANCELLED, cancellationReason: reason },
+          data: {
+            status: BookingStatus.CANCELLED,
+            cancellationReason: reason ?? "Cancelled by passenger",
+          },
         }),
         fastify.prisma.bookingStatusHistory.create({
           data: {
@@ -301,7 +304,6 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       } = request.query as Record<string, string>;
 
       const where: any = {};
-      //if (status) where.status = status
       if (status) {
         const statuses = status.split(",").map((s: string) => s.trim());
         where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
@@ -319,6 +321,16 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           include: {
             passenger: { include: { user: true } },
             driver: { include: { user: true, vehicle: true } },
+            dispatchedByUser: {
+              // TfL: dispatcher record
+              select: {
+                id: true,
+                phone: true,
+                firstName: true,
+                lastName: true,
+                adminProfile: { select: { id: true } },
+              },
+            },
           },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),
@@ -363,6 +375,8 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         })
         .parse(request.body);
 
+      const adminUserId = request.user.userId; // TfL: record who created
+
       let passenger = body.passengerId
         ? await fastify.prisma.passenger.findUnique({
             where: { id: body.passengerId },
@@ -373,35 +387,15 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           })
         : null;
 
-      // Auto-create passenger if not found (admin booking on behalf of new customer)
-      // if (!passenger && body.passengerPhone) {
-      //   const nameParts = (body.passengerName ?? 'Unknown').split(' ')
-      //   const newUser = await fastify.prisma.user.create({
-      //     data: {
-      //       phone: body.passengerPhone,
-      //       email: body.passengerEmail || undefined,
-      //       firstName: nameParts[0] ?? 'Unknown',
-      //       lastName: nameParts.slice(1).join(' ') || 'Customer',
-      //       role: 'PASSENGER',
-      //       isVerified: false,
-      //       passenger: { create: {} },
-      //     },
-      //     include: { passenger: true },
-      //   })
-      //   passenger = newUser.passenger
-      // }
-      // Auto-create passenger if not found (admin booking on behalf of new customer)
       if (!passenger && body.passengerPhone) {
         const nameParts = (body.passengerName ?? "Unknown").split(" ");
 
-        // Find existing user first (phone already registered as DRIVER/ADMIN)
         const existingUser = await fastify.prisma.user.findUnique({
           where: { phone: body.passengerPhone },
           include: { passenger: true },
         });
 
         if (existingUser) {
-          // User exists but no passenger record — create one
           if (!existingUser.passenger) {
             const newPassenger = await fastify.prisma.passenger.create({
               data: { userId: existingUser.id },
@@ -411,7 +405,6 @@ export async function bookingRoutes(fastify: FastifyInstance) {
             passenger = existingUser.passenger;
           }
         } else {
-          // Truly new user — create user + passenger together
           const newUser = await fastify.prisma.user.create({
             data: {
               phone: body.passengerPhone,
@@ -483,6 +476,9 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           requiredCarFeatures: body.requiredCarFeatures ?? [],
           requiredDriverFeatures: body.requiredDriverFeatures ?? [],
           department: body.department,
+          // TfL: record admin who created this booking
+          dispatchedBy: adminUserId,
+          dispatchedAt: new Date(),
         },
       });
 
@@ -504,4 +500,3 @@ export async function bookingRoutes(fastify: FastifyInstance) {
     }
   );
 }
-// ─── Admin: manual dispatch ───
