@@ -600,23 +600,57 @@ export async function driverRoutes(fastify: FastifyInstance) {
             seats: z.number().int().default(4),
             motExpiry: z.string(),
             insuranceExpiry: z.string(),
+            phvLicenceNumber: z.string().optional(),
+            phvLicenceExpiry: z.string().optional(),
+            phvDiscNumber: z.string().optional(),
           }),
         })
         .parse(request.body);
 
       try {
         const result = await fastify.prisma.$transaction(async (tx) => {
-          const user = await tx.user.create({
-            data: {
-              firstName: body.firstName,
-              lastName: body.lastName,
-              phone: body.phone,
-              email: body.email,
-              role: "DRIVER",
-              isVerified: true,
-              isActive: true,
-            },
+          // Check if user already exists (e.g. passenger becoming a driver)
+          const existingUser = await tx.user.findUnique({
+            where: { phone: body.phone },
           });
+
+          if (existingUser) {
+            const existingDriver = await tx.driver.findUnique({
+              where: { userId: existingUser.id },
+            });
+            if (existingDriver) {
+              throw Object.assign(
+                new Error("Driver already exists for this user"),
+                { code: "P2002", meta: { target: ["phone"] } }
+              );
+            }
+          }
+
+          const user =
+            existingUser ??
+            (await tx.user.create({
+              data: {
+                firstName: body.firstName,
+                lastName: body.lastName,
+                phone: body.phone,
+                email: body.email,
+                role: "DRIVER",
+                isVerified: true,
+                isActive: true,
+              },
+            }));
+
+          if (existingUser) {
+            await tx.user.update({
+              where: { id: existingUser.id },
+              data: {
+                firstName: body.firstName || existingUser.firstName,
+                lastName: body.lastName || existingUser.lastName,
+                ...(body.email && { email: body.email }),
+              },
+            });
+          }
+
           const driver = await tx.driver.create({
             data: {
               userId: user.id,
@@ -639,6 +673,11 @@ export async function driverRoutes(fastify: FastifyInstance) {
               seats: body.vehicle.seats,
               motExpiry: new Date(body.vehicle.motExpiry),
               insuranceExpiry: new Date(body.vehicle.insuranceExpiry),
+              phvLicenceNumber: body.vehicle.phvLicenceNumber ?? null,
+              phvLicenceExpiry: body.vehicle.phvLicenceExpiry
+                ? new Date(body.vehicle.phvLicenceExpiry)
+                : null,
+              phvDiscNumber: body.vehicle.phvDiscNumber ?? null,
             },
           });
           return { user, driver, vehicle };
