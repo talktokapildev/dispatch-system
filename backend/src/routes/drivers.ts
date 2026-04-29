@@ -697,6 +697,164 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Admin: edit driver ───
+  fastify.put(
+    "/admin/drivers/:driverId",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { driverId } = request.params as { driverId: string };
+      const body = z
+        .object({
+          firstName: z.string().min(1).optional(),
+          lastName: z.string().min(1).optional(),
+          phone: z.string().optional(),
+          email: z.string().email().optional().nullable(),
+          pcoBadgeNumber: z.string().optional(),
+          pcoLicenseExpiry: z.string().optional(),
+          drivingLicenseNumber: z.string().optional(),
+          vehicle: z
+            .object({
+              make: z.string().optional(),
+              model: z.string().optional(),
+              year: z.number().int().optional(),
+              colour: z.string().optional(),
+              licensePlate: z.string().optional(),
+              class: z.nativeEnum(VehicleClass).optional(),
+              seats: z.number().int().optional(),
+              motExpiry: z.string().optional(),
+              insuranceExpiry: z.string().optional(),
+              phvLicenceNumber: z.string().optional().nullable(),
+              phvLicenceExpiry: z.string().optional().nullable(),
+              phvDiscNumber: z.string().optional().nullable(),
+            })
+            .optional(),
+        })
+        .parse(request.body);
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { id: driverId },
+        include: { user: true, vehicle: true },
+      });
+      if (!driver)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Driver not found" });
+
+      await fastify.prisma.$transaction(async (tx) => {
+        if (
+          body.firstName ||
+          body.lastName ||
+          body.phone ||
+          body.email !== undefined
+        ) {
+          await tx.user.update({
+            where: { id: driver.userId },
+            data: {
+              ...(body.firstName && { firstName: body.firstName }),
+              ...(body.lastName && { lastName: body.lastName }),
+              ...(body.phone && { phone: body.phone }),
+              ...(body.email !== undefined && { email: body.email }),
+            },
+          });
+        }
+        await tx.driver.update({
+          where: { id: driverId },
+          data: {
+            ...(body.pcoBadgeNumber && { pcoBadgeNumber: body.pcoBadgeNumber }),
+            ...(body.pcoLicenseExpiry && {
+              pcoLicenseExpiry: new Date(body.pcoLicenseExpiry),
+            }),
+            ...(body.drivingLicenseNumber && {
+              drivingLicenseNumber: body.drivingLicenseNumber,
+            }),
+          },
+        });
+        if (body.vehicle && driver.vehicle) {
+          await tx.vehicle.update({
+            where: { driverId },
+            data: {
+              ...(body.vehicle.make && { make: body.vehicle.make }),
+              ...(body.vehicle.model && { model: body.vehicle.model }),
+              ...(body.vehicle.year && { year: body.vehicle.year }),
+              ...(body.vehicle.colour !== undefined && {
+                colour: body.vehicle.colour,
+              }),
+              ...(body.vehicle.licensePlate && {
+                licensePlate: body.vehicle.licensePlate.toUpperCase(),
+              }),
+              ...(body.vehicle.class && { class: body.vehicle.class }),
+              ...(body.vehicle.seats && { seats: body.vehicle.seats }),
+              ...(body.vehicle.motExpiry && {
+                motExpiry: new Date(body.vehicle.motExpiry),
+              }),
+              ...(body.vehicle.insuranceExpiry && {
+                insuranceExpiry: new Date(body.vehicle.insuranceExpiry),
+              }),
+              ...(body.vehicle.phvLicenceNumber !== undefined && {
+                phvLicenceNumber: body.vehicle.phvLicenceNumber,
+              }),
+              ...(body.vehicle.phvLicenceExpiry !== undefined && {
+                phvLicenceExpiry: body.vehicle.phvLicenceExpiry
+                  ? new Date(body.vehicle.phvLicenceExpiry)
+                  : null,
+              }),
+              ...(body.vehicle.phvDiscNumber !== undefined && {
+                phvDiscNumber: body.vehicle.phvDiscNumber,
+              }),
+            },
+          });
+        }
+      });
+
+      const updated = await fastify.prisma.driver.findUnique({
+        where: { id: driverId },
+        include: { user: true, vehicle: true },
+      });
+      return reply.send({ success: true, data: updated });
+    }
+  );
+
+  // ─── Admin: delete driver ───
+  fastify.delete(
+    "/admin/drivers/:driverId",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { driverId } = request.params as { driverId: string };
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { id: driverId },
+        include: { user: true },
+      });
+      if (!driver)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Driver not found" });
+
+      await fastify.prisma.$transaction(async (tx) => {
+        await tx.booking.updateMany({
+          where: { driverId },
+          data: { driverId: null },
+        });
+        await tx.driverEarning.deleteMany({ where: { driverId } });
+        await tx.driverDocument.deleteMany({ where: { driverId } });
+        await tx.vehicle.deleteMany({ where: { driverId } });
+        await tx.driver.delete({ where: { id: driverId } });
+        await tx.pushToken.deleteMany({ where: { userId: driver.userId } });
+        await tx.otpCode.deleteMany({ where: { userId: driver.userId } });
+        await tx.refreshToken.deleteMany({ where: { userId: driver.userId } });
+        // Only delete user if they have no other roles (e.g. passenger record)
+        const passenger = await tx.passenger.findUnique({
+          where: { userId: driver.userId },
+        });
+        if (!passenger) {
+          await tx.user.delete({ where: { id: driver.userId } });
+        }
+      });
+
+      return reply.send({ success: true });
+    }
+  );
+
   // ─── Admin: delete passenger ───
   fastify.delete(
     "/admin/passengers/:id",
