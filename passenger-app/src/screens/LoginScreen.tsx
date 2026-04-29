@@ -56,7 +56,11 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/otp/verify", { phone, code: otp });
+      const { data } = await api.post("/auth/otp/verify", {
+        phone,
+        code: otp,
+        requestedRole: "PASSENGER",
+      });
       const { token, user } = data.data;
 
       if (user.role !== "PASSENGER") {

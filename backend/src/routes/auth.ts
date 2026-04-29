@@ -16,6 +16,7 @@ const sendOtpSchema = z.object({
 const verifyOtpSchema = z.object({
   phone: z.string(),
   code: z.string().length(OTP_LENGTH),
+  requestedRole: z.enum(["PASSENGER", "DRIVER"]).optional(),
 });
 
 const adminLoginSchema = z.object({
@@ -117,6 +118,10 @@ export async function authRoutes(fastify: FastifyInstance) {
     // Find or create user
     let user = await fastify.prisma.user.findUnique({
       where: { phone: body.phone },
+      include: {
+        passenger: true,
+        driver: true,
+      },
     });
 
     const isNewUser = !user;
@@ -132,13 +137,14 @@ export async function authRoutes(fastify: FastifyInstance) {
           isVerified: true,
           passenger: { create: {} },
         },
+        include: { passenger: true, driver: true },
       });
       fastify.log.info(
         isDemoNumber
           ? `[Demo] Created demo passenger account for ${body.phone}`
           : `New passenger created for ${body.phone}`
       );
-    } else if (user.role === "PASSENGER") {
+    } else if (user.role === "PASSENGER" && !user.driver) {
       await fastify.prisma.passenger.upsert({
         where: { userId: user.id },
         update: {},
@@ -146,9 +152,31 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Determine effective role — if user has both passenger and driver records,
+    // use requestedRole to pick the right context
+    const hasPassenger = !!user.passenger;
+    const hasDriver = !!user.driver;
+    let effectiveRole = user.role;
+
+    if (hasPassenger && hasDriver) {
+      // Dual-role user — use requestedRole if provided, else fall back to primary role
+      if (body.requestedRole === "DRIVER") effectiveRole = "DRIVER";
+      else effectiveRole = "PASSENGER";
+    } else if (hasDriver) {
+      effectiveRole = "DRIVER";
+    }
+
+    // Validate the requested role is available for this user
+    if (body.requestedRole === "DRIVER" && !hasDriver) {
+      return reply.status(403).send({
+        success: false,
+        error: "No driver account found for this number",
+      });
+    }
+
     const token = fastify.jwt.sign({
       userId: user.id,
-      role: user.role,
+      role: effectiveRole,
       phone: user.phone,
     });
 
@@ -170,7 +198,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         user: {
           id: user.id,
           phone: user.phone,
-          role: user.role,
+          role: effectiveRole,
           firstName: user.firstName,
           lastName: user.lastName,
           isVerified: user.isVerified,
