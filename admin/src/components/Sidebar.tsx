@@ -15,12 +15,12 @@ import {
   Settings,
   Sun,
   Moon,
+  ClipboardList,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/api";
 import { useTheme } from "@/app/providers";
 import { clsx } from "clsx";
 
-// Dark forest green from the OrangeRide logo — "Ride" text colour
 const RIDE_GREEN = "#2d5a1b";
 
 const nav = [
@@ -32,6 +32,7 @@ const nav = [
   { href: "/corporate", label: "Corporate", icon: Building2 },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/staff", label: "Staff Register", icon: ClipboardList }, // TfL Condition 19
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
   { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -58,12 +59,10 @@ export function Sidebar() {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            {/* Icon: orange square with white car, matching logo car colour */}
             <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center shrink-0">
               <Car size={16} className="text-white" />
             </div>
             <div>
-              {/* "Orange" in brand orange, "Ride" in logo dark green */}
               <p className="text-sm font-bold leading-none">
                 <span className="text-brand-500">Orange</span>
                 <span style={{ color: RIDE_GREEN }}>Ride</span>
@@ -76,8 +75,6 @@ export function Sidebar() {
               </p>
             </div>
           </div>
-
-          {/* Theme toggle */}
           <button
             onClick={toggle}
             title={`Switch to ${isDark ? "light" : "dark"} mode`}

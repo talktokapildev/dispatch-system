@@ -281,6 +281,11 @@ model AdminProfile {
   permissions Json     @default("[]")
   createdAt   DateTime @default(now())
 
+   // TfL Condition 19: staff register
+  dateOfBirth          DateTime?
+  dbsCertificateNumber String?
+  dbsCheckDate         DateTime?
+
   user User @relation(fields: [userId], references: [id])
 }
 

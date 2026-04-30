@@ -1,13 +1,13 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { BookingStatus, DriverStatus } from "@prisma/client";
-import { subDays, startOfDay, endOfDay, format } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
 import bcrypt from "bcryptjs";
 
 const corporateSchema = z.object({
-  name: z.string().min(2), // ← was companyName, CorporateAccount.name in schema
+  name: z.string().min(2),
   contactName: z.string().min(2),
   contactEmail: z.string().email(),
   contactPhone: z.string(),
@@ -15,7 +15,6 @@ const corporateSchema = z.object({
   invoicingEmail: z.string().email(),
   paymentTermsDays: z.coerce.number().int().default(30),
   creditLimit: z.coerce.number().default(0),
-  // Portal login fields (required on create)
   portalEmail: z.string().email().optional(),
   portalPassword: z.string().min(8).optional(),
   portalFirstName: z.string().min(1).optional(),
@@ -94,18 +93,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
           },
           _sum: { actualFare: true },
         }),
-        // Daily totals for chart
         fastify.prisma.$queryRaw`
-        SELECT
-          DATE(created_at) as date,
-          COUNT(*) as total,
-          COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed,
-          SUM(COALESCE(actual_fare, estimated_fare)) FILTER (WHERE status = 'COMPLETED') as revenue
-        FROM "Booking"
-        WHERE created_at >= ${weekAgo}
-        GROUP BY DATE(created_at)
-        ORDER BY date ASC
-      `,
+          SELECT
+            DATE(created_at) as date,
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed,
+            SUM(COALESCE(actual_fare, estimated_fare)) FILTER (WHERE status = 'COMPLETED') as revenue
+          FROM "Booking"
+          WHERE created_at >= ${weekAgo}
+          GROUP BY DATE(created_at)
+          ORDER BY date ASC
+        `,
         fastify.prisma.driverDocument.count({ where: { status: "PENDING" } }),
         fastify.prisma.driverDocument.count({
           where: {
@@ -129,10 +127,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             revenue: totalRevToday._sum.actualFare ?? 0,
           },
           weeklyChart: weeklyStats,
-          alerts: {
-            pendingDocuments,
-            expiringDocuments,
-          },
+          alerts: { pendingDocuments, expiringDocuments },
         },
       });
     }
@@ -143,12 +138,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     "/admin/reports/revenue",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
-      const {
-        from,
-        to,
-        groupBy = "day",
-      } = request.query as Record<string, string>;
-
+      const { from, to } = request.query as Record<string, string>;
       const fromDate = from ? new Date(from) : subDays(new Date(), 30);
       const toDate = to ? new Date(to) : new Date();
 
@@ -181,7 +171,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
           (acc[b.paymentMethod] ?? 0) + (b.actualFare ?? b.estimatedFare);
         return acc;
       }, {} as Record<string, number>);
-
       const byType = bookings.reduce((acc, b) => {
         acc[b.type] = (acc[b.type] ?? 0) + 1;
         return acc;
@@ -210,11 +199,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           user: { select: { firstName: true, lastName: true } },
           vehicle: {
-            select: {
-              licensePlate: true,
-              make: true,
-              phvLicenceNumber: true,
-            },
+            select: { licensePlate: true, make: true, phvLicenceNumber: true },
           },
         },
       });
@@ -247,13 +232,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { archived } = request.query as { archived?: string };
-      const showArchived = archived === "true";
       const accounts = await fastify.prisma.corporateAccount.findMany({
-        where: { isActive: !showArchived },
-        include: {
-          _count: { select: { passengers: true, bookings: true } },
-        },
-        orderBy: { name: "asc" }, // ← was companyName
+        where: { isActive: archived !== "true" },
+        include: { _count: { select: { passengers: true, bookings: true } } },
+        orderBy: { name: "asc" },
       });
       return reply.send({ success: true, data: accounts });
     }
@@ -264,7 +246,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const body = corporateSchema.parse(request.body);
-
       const {
         portalEmail,
         portalPassword,
@@ -273,12 +254,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
         ...accountData
       } = body;
 
-      // Create corporate account
       const account = await fastify.prisma.corporateAccount.create({
-        data: accountData, // now contains `name` not `companyName`
+        data: accountData,
       });
 
-      // Create portal login user if email + password provided
       let portalUser = null;
       if (portalEmail && portalPassword) {
         const existing = await fastify.prisma.user.findUnique({
@@ -292,7 +271,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
             .status(400)
             .send({ success: false, error: "Email already in use" });
         }
-
         const hash = await bcrypt.hash(portalPassword, 12);
         portalUser = await fastify.prisma.user.create({
           data: {
@@ -331,13 +309,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const body = corporateSchema.partial().parse(request.body);
       const account = await fastify.prisma.corporateAccount.update({
         where: { id },
-        data: body, // now contains `name` not `companyName`
+        data: body,
       });
       return reply.send({ success: true, data: account });
     }
   );
 
-  // ─── Add portal login to existing corporate account ───
   fastify.post(
     "/admin/corporate/:id/login",
     { preHandler: [fastify.authenticateAdmin] },
@@ -387,12 +364,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
           role: true,
         },
       });
-
       return reply.status(201).send({ success: true, data: user });
     }
   );
 
-  // ─── Archive corporate account ───
   fastify.patch(
     "/admin/corporate/:id/archive",
     { preHandler: [fastify.authenticateAdmin] },
@@ -410,7 +385,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Reactivate corporate account ───
   fastify.patch(
     "/admin/corporate/:id/reactivate",
     { preHandler: [fastify.authenticateAdmin] },
@@ -428,7 +402,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Delete corporate account (only if no bookings) ───
   fastify.delete(
     "/admin/corporate/:id",
     { preHandler: [fastify.authenticateAdmin] },
@@ -469,7 +442,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         },
         include: { user: true, vehicle: true },
       });
-
       const enriched = drivers.map((d) => ({
         id: d.id,
         name: `${d.user.firstName} ${d.user.lastName}`,
@@ -483,7 +455,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         bearing: d.currentBearing,
         lastSeen: d.lastLocationAt,
       }));
-
       return reply.send({ success: true, data: enriched });
     }
   );
@@ -514,13 +485,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Dispatch a booking to nearest driver ───
+  // ─── Dispatch booking ───
   fastify.post(
     "/admin/bookings/:id/dispatch",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const adminUserId = request.user.userId; // TfL: record who dispatched
+      const adminUserId = request.user.userId;
       const maps = new MapsService();
       const dispatch = new DispatchService(
         fastify.prisma,
@@ -536,14 +507,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
         return reply
           .status(404)
           .send({ success: false, error: "Booking not found" });
-      if (!["PENDING", "CONFIRMED"].includes(booking.status)) {
+      if (!["PENDING", "CONFIRMED"].includes(booking.status))
         return reply.status(400).send({
           success: false,
           error: `Cannot dispatch a booking with status ${booking.status}`,
         });
-      }
 
-      // TfL Condition 6: record the staff member who dispatched + normalise status
       await fastify.prisma.booking.update({
         where: { id },
         data: {
@@ -552,7 +521,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
           dispatchedAt: new Date(),
         },
       });
-
       await dispatch.dispatchBooking(id);
       return reply.send({
         success: true,
@@ -561,7 +529,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Manually assign a specific driver ───
+  // ─── Manually assign driver ───
   fastify.post(
     "/admin/bookings/:id/assign/:driverId",
     { preHandler: [fastify.authenticateAdmin] },
@@ -570,7 +538,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         id: string;
         driverId: string;
       };
-      const adminUserId = request.user.userId; // TfL: record who assigned
+      const adminUserId = request.user.userId;
       const maps = new MapsService();
       const dispatch = new DispatchService(
         fastify.prisma,
@@ -579,7 +547,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
         maps
       );
 
-      // TfL: record dispatcher before assigning
       await fastify.prisma.booking.update({
         where: { id },
         data: {
@@ -588,7 +555,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
           dispatchedAt: new Date(),
         },
       });
-
       await dispatch.manualAssign(id, driverId);
       return reply.send({ success: true, message: "Driver assigned" });
     }
@@ -620,7 +586,6 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Booking not found" });
 
-      // TfL: if manually setting to DRIVER_ASSIGNED, record dispatcher
       const dispatcherUpdate =
         body.status === "DRIVER_ASSIGNED" && !booking.dispatchedBy
           ? { dispatchedBy: request.user.userId, dispatchedAt: new Date() }
@@ -653,7 +618,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           passenger: { include: { user: true } },
           driver: { include: { user: true } },
-          dispatchedByUser: dispatcherInclude, // TfL
+          dispatchedByUser: dispatcherInclude,
         },
       });
 
@@ -661,12 +626,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         bookingId: id,
         status: updated.status,
       });
-
       return reply.send({ success: true, data: updated });
     }
   );
 
-  // ─── Get single booking (admin) ───
+  // ─── Get single booking ───
   fastify.get(
     "/admin/bookings/:id",
     { preHandler: [fastify.authenticateAdmin] },
@@ -677,12 +641,159 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           passenger: { include: { user: true } },
           driver: { include: { user: true, vehicle: true } },
-          dispatchedByUser: dispatcherInclude, // TfL
+          dispatchedByUser: dispatcherInclude,
         },
       });
       if (!booking)
         return reply.status(404).send({ success: false, error: "Not found" });
       return reply.send({ success: true, data: booking });
+    }
+  );
+
+  // ═══════════════════════════════════════════════════════
+  // TfL Condition 19: STAFF REGISTER
+  // ═══════════════════════════════════════════════════════
+
+  // ─── GET /admin/staff — list all admin/dispatcher users with DBS details ───
+  fastify.get(
+    "/admin/staff",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (_request, reply) => {
+      const staff = await fastify.prisma.user.findMany({
+        where: {
+          role: { in: ["ADMIN", "DISPATCHER"] },
+          isActive: true,
+        },
+        include: {
+          adminProfile: {
+            select: {
+              id: true,
+              permissions: true,
+              dateOfBirth: true,
+              dbsCertificateNumber: true,
+              dbsCheckDate: true,
+            },
+          },
+        },
+        orderBy: { firstName: "asc" },
+      });
+
+      return reply.send({ success: true, data: staff });
+    }
+  );
+
+  // ─── PATCH /admin/staff/:userId — update DBS + DOB for a staff member ───
+  fastify.patch(
+    "/admin/staff/:userId",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { userId } = request.params as { userId: string };
+      const body = request.body as {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        dateOfBirth?: string | null;
+        dbsCertificateNumber?: string | null;
+        dbsCheckDate?: string | null;
+      };
+
+      // Update user fields if provided
+      if (body.firstName || body.lastName || body.email) {
+        await fastify.prisma.user.update({
+          where: { id: userId },
+          data: {
+            ...(body.firstName && { firstName: body.firstName }),
+            ...(body.lastName && { lastName: body.lastName }),
+            ...(body.email && { email: body.email }),
+          },
+        });
+      }
+
+      // Update adminProfile DBS fields
+      const profile = await fastify.prisma.adminProfile.upsert({
+        where: { userId },
+        update: {
+          ...(body.dateOfBirth !== undefined && {
+            dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+          }),
+          ...(body.dbsCertificateNumber !== undefined && {
+            dbsCertificateNumber: body.dbsCertificateNumber,
+          }),
+          ...(body.dbsCheckDate !== undefined && {
+            dbsCheckDate: body.dbsCheckDate
+              ? new Date(body.dbsCheckDate)
+              : null,
+          }),
+        },
+        create: {
+          userId,
+          permissions: [],
+          dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+          dbsCertificateNumber: body.dbsCertificateNumber ?? null,
+          dbsCheckDate: body.dbsCheckDate ? new Date(body.dbsCheckDate) : null,
+        },
+      });
+
+      return reply.send({ success: true, data: profile });
+    }
+  );
+
+  // ─── POST /admin/staff — create a new staff member ───
+  fastify.post(
+    "/admin/staff",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const body = request.body as {
+        firstName: string;
+        lastName: string;
+        phone: string;
+        email?: string;
+        role: "ADMIN" | "DISPATCHER";
+        password: string;
+        dateOfBirth?: string;
+        dbsCertificateNumber?: string;
+        dbsCheckDate?: string;
+      };
+
+      const existing = await fastify.prisma.user.findUnique({
+        where: { phone: body.phone },
+      });
+      if (existing)
+        return reply
+          .status(400)
+          .send({ success: false, error: "Phone number already in use" });
+
+      const passwordHash = await bcrypt.hash(body.password, 12);
+
+      const user = await fastify.prisma.user.create({
+        data: {
+          phone: body.phone,
+          email: body.email || undefined,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          role: body.role,
+          isVerified: true,
+          passwordHash,
+          adminProfile: {
+            create: {
+              permissions:
+                body.role === "ADMIN"
+                  ? ["ALL"]
+                  : ["BOOKINGS", "DRIVERS", "MAP"],
+              dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+              dbsCertificateNumber: body.dbsCertificateNumber ?? null,
+              dbsCheckDate: body.dbsCheckDate
+                ? new Date(body.dbsCheckDate)
+                : null,
+            },
+          },
+        },
+        include: {
+          adminProfile: true,
+        },
+      });
+
+      return reply.status(201).send({ success: true, data: user });
     }
   );
 }
