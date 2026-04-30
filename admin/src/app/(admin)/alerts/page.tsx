@@ -8,11 +8,15 @@ import {
   FileText,
   CheckCircle,
   MessageSquareWarning,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { SectionHeader, Spinner } from "@/components/ui";
+import { useState } from "react";
 
 export default function AlertsPage() {
   const qc = useQueryClient();
+  const [showResolved, setShowResolved] = useState(false);
 
   const { data: complaints, isLoading: loadingComplaints } = useQuery({
     queryKey: ["complaints"],
@@ -72,11 +76,21 @@ export default function AlertsPage() {
   const unresolvedComplaints = (complaints ?? []).filter(
     (c: any) => !c.acknowledged
   );
+  const resolvedComplaints = (complaints ?? []).filter(
+    (c: any) => c.acknowledged
+  );
   const totalAlerts =
     (critical?.length ?? 0) +
     (warning?.length ?? 0) +
     (pendingDocs?.length ?? 0) +
     unresolvedComplaints.length;
+
+  const parseComplaint = (feedback: string) => {
+    const lines = (feedback ?? "").replace("[COMPLAINT] ", "").split("\n");
+    const category = lines[0]?.replace("Category: ", "") ?? "";
+    const description = lines.slice(1).join("\n").trim();
+    return { category, description };
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -87,17 +101,20 @@ export default function AlertsPage() {
         }
       />
 
-      {totalAlerts === 0 && !l1 && !loadingComplaints && (
-        <div className="card p-12 flex flex-col items-center text-center">
-          <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center mb-3">
-            <CheckCircle size={20} className="text-green-400" />
+      {totalAlerts === 0 &&
+        !l1 &&
+        !loadingComplaints &&
+        resolvedComplaints.length === 0 && (
+          <div className="card p-12 flex flex-col items-center text-center">
+            <div className="w-12 h-12 rounded-2xl bg-green-500/20 flex items-center justify-center mb-3">
+              <CheckCircle size={20} className="text-green-400" />
+            </div>
+            <p className="text-sm font-medium text-white">All clear</p>
+            <p className="text-xs text-slate-500 mt-1">
+              No complaints, expiring documents or pending reviews
+            </p>
           </div>
-          <p className="text-sm font-medium text-white">All clear</p>
-          <p className="text-xs text-slate-500 mt-1">
-            No complaints, expiring documents or pending reviews
-          </p>
-        </div>
-      )}
+        )}
 
       {/* ── Passenger Complaints (TfL Condition 7) ── */}
       {loadingComplaints ? (
@@ -105,27 +122,36 @@ export default function AlertsPage() {
           <Spinner size={20} />
         </div>
       ) : (
-        unresolvedComplaints.length > 0 && (
+        (unresolvedComplaints.length > 0 || resolvedComplaints.length > 0) && (
           <div className="card border-orange-500/20">
             <div className="flex items-center gap-2 p-4 border-b border-[var(--border)]">
               <MessageSquareWarning size={14} className="text-orange-400" />
               <p className="text-sm font-semibold text-white">
-                Passenger Complaints ({unresolvedComplaints.length})
+                Passenger Complaints
+                {unresolvedComplaints.length > 0 && (
+                  <span className="ml-1.5 text-orange-400">
+                    ({unresolvedComplaints.length} open)
+                  </span>
+                )}
+                {unresolvedComplaints.length === 0 && (
+                  <span className="ml-1.5 text-green-400">(all resolved)</span>
+                )}
               </p>
               <span className="ml-auto text-[10px] text-slate-500">
                 TfL Condition 7
               </span>
             </div>
+
+            {unresolvedComplaints.length === 0 && (
+              <div className="px-4 py-4 text-xs text-slate-500 text-center">
+                No open complaints
+              </div>
+            )}
+
+            {/* Unresolved */}
             <div className="divide-y divide-[#1e2d42]">
               {unresolvedComplaints.map((c: any) => {
-                // Parse complaint text: "[COMPLAINT] Category: X\nDescription"
-                const lines = (c.feedback ?? "")
-                  .replace("[COMPLAINT] ", "")
-                  .split("\n");
-                const categoryLine = lines[0] ?? "";
-                const category = categoryLine.replace("Category: ", "");
-                const description = lines.slice(1).join("\n").trim();
-
+                const { category, description } = parseComplaint(c.feedback);
                 return (
                   <div key={c.id} className="px-4 py-3 space-y-1.5">
                     <div className="flex items-start justify-between gap-3">
@@ -150,7 +176,7 @@ export default function AlertsPage() {
                           </span>
                         </p>
                         {description && (
-                          <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                          <p className="text-xs text-slate-400 mt-1">
                             {description}
                           </p>
                         )}
@@ -158,9 +184,9 @@ export default function AlertsPage() {
                       <button
                         onClick={() => acknowledgeMutation.mutate(c.id)}
                         disabled={acknowledgeMutation.isPending}
-                        className="shrink-0 text-[10px] text-slate-400 hover:text-green-400 border border-[var(--border)] hover:border-green-500/40 rounded px-2 py-1 transition-colors"
+                        className="shrink-0 text-[10px] text-slate-400 hover:text-green-400 border border-[var(--border)] hover:border-green-500/40 rounded px-2 py-1 transition-colors whitespace-nowrap"
                       >
-                        ✓ Acknowledge
+                        ✓ Resolve
                       </button>
                     </div>
                   </div>
@@ -168,16 +194,66 @@ export default function AlertsPage() {
               })}
             </div>
 
-            {/* Show resolved complaints collapsed */}
-            {(complaints ?? []).filter((c: any) => c.acknowledged).length >
-              0 && (
-              <div className="px-4 py-2 border-t border-[var(--border)]">
-                <p className="text-[10px] text-slate-600">
-                  +{" "}
-                  {(complaints ?? []).filter((c: any) => c.acknowledged).length}{" "}
-                  resolved complaint(s)
-                </p>
-              </div>
+            {/* Show/hide resolved toggle */}
+            {resolvedComplaints.length > 0 && (
+              <>
+                <button
+                  onClick={() => setShowResolved(!showResolved)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 border-t border-[var(--border)] text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  <span>
+                    {resolvedComplaints.length} resolved complaint
+                    {resolvedComplaints.length > 1 ? "s" : ""}
+                  </span>
+                  {showResolved ? (
+                    <ChevronUp size={14} />
+                  ) : (
+                    <ChevronDown size={14} />
+                  )}
+                </button>
+
+                {showResolved && (
+                  <div className="divide-y divide-[#1e2d42]">
+                    {resolvedComplaints.map((c: any) => {
+                      const { category, description } = parseComplaint(
+                        c.feedback
+                      );
+                      return (
+                        <div key={c.id} className="px-4 py-3 opacity-60">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle
+                              size={12}
+                              className="text-green-400 mt-0.5 shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-slate-400">
+                                  {category}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-500">
+                                  {c.reference}
+                                </span>
+                                <span className="text-[10px] text-slate-600">
+                                  {format(new Date(c.updatedAt), "dd MMM yyyy")}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {c.passenger?.user?.firstName}{" "}
+                                {c.passenger?.user?.lastName}
+                              </p>
+                              {description && (
+                                <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
+                                  {description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )
