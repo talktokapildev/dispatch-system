@@ -691,4 +691,92 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, message: "Account deleted" });
     }
   );
+
+  // ─── POST /passengers/bookings/:id/complaint ───────────────────────────────
+  // TfL Condition 7: formal complaints procedure
+  // Stores complaint against booking + notifies admin via socket
+  fastify.post(
+    "/passengers/bookings/:id/complaint",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const { id } = request.params as { id: string };
+      const { category, description } = request.body as {
+        category: string;
+        description: string;
+      };
+
+      if (!category || !description?.trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Category and description are required",
+        });
+      }
+
+      const passenger = await getPassenger(userId);
+      if (!passenger)
+        return reply.status(403).send({ success: false, error: "Not found" });
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id },
+      });
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+      if (booking.passengerId !== passenger.id)
+        return reply
+          .status(403)
+          .send({ success: false, error: "Access denied" });
+
+      // Store complaint in booking feedback field
+      const complaintText = `[COMPLAINT] Category: ${category}\n${description.trim()}`;
+      await fastify.prisma.booking.update({
+        where: { id },
+        data: { feedback: complaintText },
+      });
+
+      // Get passenger name for notification
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+      });
+      const passengerName = `${user?.firstName ?? ""} ${
+        user?.lastName ?? ""
+      }`.trim();
+
+      // Notify admin via socket
+      fastify.io.to("admin").emit("admin:complaint", {
+        bookingId: id,
+        reference: booking.reference,
+        passengerName,
+        passengerPhone: user?.phone,
+        category,
+        description: description.trim(),
+        submittedAt: new Date().toISOString(),
+      });
+
+      // Store as notification for admin
+      await fastify.prisma.notification.create({
+        data: {
+          userId,
+          title: `Complaint: ${category}`,
+          body: `Booking ${booking.reference} — ${description
+            .trim()
+            .slice(0, 100)}`,
+          data: {
+            type: "COMPLAINT",
+            bookingId: id,
+            reference: booking.reference,
+            category,
+          },
+        },
+      });
+
+      fastify.log.info(
+        `Complaint submitted: booking=${booking.reference} category="${category}" passenger=${passengerName}`
+      );
+
+      return reply.send({ success: true, message: "Complaint submitted" });
+    }
+  );
 }

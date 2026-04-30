@@ -5,9 +5,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   Animated,
-  Alert,
   ActivityIndicator,
   Clipboard,
+  Modal,
+  ScrollView,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../lib/api";
@@ -20,6 +25,17 @@ const OPERATOR_BANK = {
   accountNo: "11762260",
 };
 
+const COMPLAINT_CATEGORIES = [
+  "Driver behaviour",
+  "Vehicle condition",
+  "Late arrival",
+  "Wrong route taken",
+  "Overcharged",
+  "Safety concern",
+  "Lost property",
+  "Other",
+];
+
 export default function RideCompleteScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { booking } = route.params;
@@ -27,6 +43,13 @@ export default function RideCompleteScreen({ route, navigation }: any) {
   const [submitting, setSubmitting] = useState(false);
   const [rated, setRated] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Complaint state
+  const [complaintVisible, setComplaintVisible] = useState(false);
+  const [complaintCategory, setComplaintCategory] = useState("");
+  const [complaintDescription, setComplaintDescription] = useState("");
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
+  const [complaintSubmitted, setComplaintSubmitted] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -67,13 +90,53 @@ export default function RideCompleteScreen({ route, navigation }: any) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const submitComplaint = async () => {
+    if (!complaintCategory) {
+      Alert.alert(
+        "Please select a category",
+        "Choose what your complaint is about."
+      );
+      return;
+    }
+    if (!complaintDescription.trim()) {
+      Alert.alert(
+        "Please describe the issue",
+        "Add a brief description of what happened."
+      );
+      return;
+    }
+    setComplaintSubmitting(true);
+    try {
+      await api.post(`/passengers/bookings/${booking.id}/complaint`, {
+        category: complaintCategory,
+        description: complaintDescription.trim(),
+      });
+      setComplaintSubmitted(true);
+      setComplaintVisible(false);
+      Alert.alert(
+        "Complaint Received",
+        `Your complaint has been submitted. Reference: ${booking?.reference}\n\nWe will respond within 48 hours.`
+      );
+    } catch {
+      Alert.alert(
+        "Error",
+        "Failed to submit complaint. Please email admin@orangeride.co.uk with your booking reference."
+      );
+    } finally {
+      setComplaintSubmitting(false);
+    }
+  };
+
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const paymentMethod = booking?.paymentMethod ?? "CASH";
   const s = styles(Colors);
 
   return (
     <SafeAreaView style={s.container}>
-      <View style={s.inner}>
+      <ScrollView
+        contentContainerStyle={s.inner}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Animated check */}
         <Animated.View
           style={[
@@ -106,7 +169,7 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           <Text style={s.copyHint}>{copied ? "✓ Copied" : "tap to copy"}</Text>
         </TouchableOpacity>
 
-        {/* Payment instructions based on method */}
+        {/* Payment instructions */}
         {paymentMethod === "CASH" && (
           <View
             style={[
@@ -222,6 +285,20 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           )
         )}
 
+        {/* Report an Issue — TfL Condition 7 */}
+        {!complaintSubmitted ? (
+          <TouchableOpacity
+            style={s.reportBtn}
+            onPress={() => setComplaintVisible(true)}
+          >
+            <Text style={s.reportBtnText}>⚠ Report an Issue</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={s.reportedCard}>
+            <Text style={s.reportedText}>✓ Complaint submitted</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={s.doneBtn}
           onPress={() =>
@@ -230,7 +307,143 @@ export default function RideCompleteScreen({ route, navigation }: any) {
         >
           <Text style={s.doneBtnText}>Back to Home</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
+
+      {/* ── Complaint Modal ── */}
+      <Modal
+        visible={complaintVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setComplaintVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <SafeAreaView
+            style={[s.modalContainer, { backgroundColor: Colors.bg }]}
+          >
+            <View style={[s.modalHeader, { borderBottomColor: Colors.border }]}>
+              <Text style={[s.modalTitle, { color: Colors.text }]}>
+                Report an Issue
+              </Text>
+              <TouchableOpacity onPress={() => setComplaintVisible(false)}>
+                <Text style={[s.modalClose, { color: Colors.muted }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={s.modalBody}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Booking reference */}
+              <View
+                style={[
+                  s.modalRefCard,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                ]}
+              >
+                <Text style={[s.modalRefLabel, { color: Colors.muted }]}>
+                  Booking Reference
+                </Text>
+                <Text style={[s.modalRefValue, { color: Colors.brand }]}>
+                  {booking?.reference}
+                </Text>
+              </View>
+
+              {/* Category */}
+              <Text style={[s.sectionLabel, { color: Colors.text }]}>
+                What is your complaint about? *
+              </Text>
+              <View style={s.categoryGrid}>
+                {COMPLAINT_CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      s.categoryChip,
+                      {
+                        borderColor:
+                          complaintCategory === cat
+                            ? Colors.brand
+                            : Colors.border,
+                        backgroundColor:
+                          complaintCategory === cat
+                            ? Colors.brand + "15"
+                            : Colors.card,
+                      },
+                    ]}
+                    onPress={() => setComplaintCategory(cat)}
+                  >
+                    <Text
+                      style={[
+                        s.categoryChipText,
+                        {
+                          color:
+                            complaintCategory === cat
+                              ? Colors.brand
+                              : Colors.muted,
+                        },
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Description */}
+              <Text style={[s.sectionLabel, { color: Colors.text }]}>
+                Describe what happened *
+              </Text>
+              <TextInput
+                style={[
+                  s.descInput,
+                  {
+                    backgroundColor: Colors.card,
+                    borderColor: Colors.border,
+                    color: Colors.text,
+                  },
+                ]}
+                placeholder="Please provide details of your complaint..."
+                placeholderTextColor={Colors.muted}
+                multiline
+                numberOfLines={5}
+                textAlignVertical="top"
+                value={complaintDescription}
+                onChangeText={setComplaintDescription}
+                maxLength={500}
+              />
+              <Text style={[s.charCount, { color: Colors.muted }]}>
+                {complaintDescription.length}/500
+              </Text>
+
+              <Text style={[s.disclaimer, { color: Colors.muted }]}>
+                Your complaint will be reviewed by OrangeRide. We aim to respond
+                within 48 hours. You may also contact us directly at
+                admin@orangeride.co.uk.
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  s.submitBtn,
+                  { backgroundColor: Colors.brand },
+                  complaintSubmitting && { opacity: 0.7 },
+                ]}
+                onPress={submitComplaint}
+                disabled={complaintSubmitting}
+              >
+                {complaintSubmitting ? (
+                  <ActivityIndicator color="#000" size="small" />
+                ) : (
+                  <Text style={s.submitBtnText}>Submit Complaint</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -241,10 +454,9 @@ const styles = (
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
     inner: {
-      flex: 1,
       padding: Spacing.lg,
       alignItems: "center",
-      justifyContent: "center",
+      paddingBottom: Spacing.xl,
     },
     checkCircle: {
       width: 80,
@@ -323,7 +535,6 @@ const styles = (
       textAlign: "center",
     },
     copyHint: { fontSize: FontSize.xs, color: C.muted },
-    // Payment card
     paymentCard: {
       width: "100%",
       flexDirection: "row",
@@ -343,7 +554,6 @@ const styles = (
       lineHeight: 20,
       fontFamily: "monospace",
     },
-    // Rating
     ratingSection: {
       alignItems: "center",
       marginBottom: Spacing.md,
@@ -363,12 +573,103 @@ const styles = (
     skipText: { fontSize: FontSize.sm, color: C.muted },
     ratedCard: { marginBottom: Spacing.md },
     ratedText: { fontSize: FontSize.md, color: C.success, fontWeight: "600" },
+    // Report an issue
+    reportBtn: {
+      width: "100%",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+      padding: Spacing.md,
+      alignItems: "center",
+      marginBottom: Spacing.sm,
+    },
+    reportBtnText: { fontSize: FontSize.sm, color: C.muted, fontWeight: "500" },
+    reportedCard: {
+      width: "100%",
+      padding: Spacing.md,
+      alignItems: "center",
+      marginBottom: Spacing.sm,
+    },
+    reportedText: { fontSize: FontSize.sm, color: C.success },
     doneBtn: {
       width: "100%",
       backgroundColor: C.brand,
       borderRadius: Radius.md,
       padding: Spacing.lg,
       alignItems: "center",
+      marginTop: Spacing.sm,
     },
     doneBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
+    // Modal
+    modalContainer: { flex: 1 },
+    modalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: Spacing.lg,
+      borderBottomWidth: 1,
+    },
+    modalTitle: { fontSize: FontSize.lg, fontWeight: "700" },
+    modalClose: { fontSize: FontSize.md },
+    modalBody: { flex: 1, padding: Spacing.lg },
+    modalRefCard: {
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      padding: Spacing.md,
+      marginBottom: Spacing.lg,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    modalRefLabel: { fontSize: FontSize.xs },
+    modalRefValue: {
+      fontSize: FontSize.sm,
+      fontWeight: "700",
+      fontFamily: "monospace",
+    },
+    sectionLabel: {
+      fontSize: FontSize.sm,
+      fontWeight: "600",
+      marginBottom: Spacing.sm,
+      marginTop: Spacing.sm,
+    },
+    categoryGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: Spacing.xs,
+      marginBottom: Spacing.md,
+    },
+    categoryChip: {
+      borderWidth: 1,
+      borderRadius: Radius.full,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: Spacing.xs,
+    },
+    categoryChipText: { fontSize: FontSize.xs, fontWeight: "500" },
+    descInput: {
+      borderWidth: 1,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      fontSize: FontSize.sm,
+      minHeight: 120,
+      marginBottom: Spacing.xs,
+    },
+    charCount: {
+      fontSize: FontSize.xs,
+      textAlign: "right",
+      marginBottom: Spacing.md,
+    },
+    disclaimer: {
+      fontSize: FontSize.xs,
+      lineHeight: 18,
+      marginBottom: Spacing.lg,
+      textAlign: "center",
+    },
+    submitBtn: {
+      borderRadius: Radius.md,
+      padding: Spacing.lg,
+      alignItems: "center",
+      marginBottom: Spacing.xl,
+    },
+    submitBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
   });
