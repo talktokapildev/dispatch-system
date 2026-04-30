@@ -698,16 +698,26 @@ export async function adminRoutes(fastify: FastifyInstance) {
         dbsCheckDate?: string | null;
       };
 
-      // Update user fields if provided
-      if (body.firstName || body.lastName || body.phone || body.email) {
+      // Update user fields — fetch current user first to avoid phone unique constraint
+      const currentUser = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+      });
+      if (!currentUser)
+        return reply
+          .status(404)
+          .send({ success: false, error: "User not found" });
+
+      const userUpdate: any = {};
+      if (body.firstName) userUpdate.firstName = body.firstName;
+      if (body.lastName) userUpdate.lastName = body.lastName;
+      if (body.email) userUpdate.email = body.email;
+      if (body.phone && body.phone !== currentUser.phone)
+        userUpdate.phone = body.phone;
+
+      if (Object.keys(userUpdate).length > 0) {
         await fastify.prisma.user.update({
           where: { id: userId },
-          data: {
-            ...(body.firstName && { firstName: body.firstName }),
-            ...(body.lastName && { lastName: body.lastName }),
-            ...(body.phone && { phone: body.phone }),
-            ...(body.email && { email: body.email }),
-          },
+          data: userUpdate,
         });
       }
 
