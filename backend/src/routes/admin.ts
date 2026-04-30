@@ -691,6 +691,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const body = request.body as {
         firstName?: string;
         lastName?: string;
+        phone?: string;
         email?: string;
         dateOfBirth?: string | null;
         dbsCertificateNumber?: string | null;
@@ -698,12 +699,13 @@ export async function adminRoutes(fastify: FastifyInstance) {
       };
 
       // Update user fields if provided
-      if (body.firstName || body.lastName || body.email) {
+      if (body.firstName || body.lastName || body.phone || body.email) {
         await fastify.prisma.user.update({
           where: { id: userId },
           data: {
             ...(body.firstName && { firstName: body.firstName }),
             ...(body.lastName && { lastName: body.lastName }),
+            ...(body.phone && { phone: body.phone }),
             ...(body.email && { email: body.email }),
           },
         });

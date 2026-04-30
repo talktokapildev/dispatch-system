@@ -116,6 +116,7 @@ export default function StaffRegisterPage() {
     setEditForm({
       firstName: member.firstName,
       lastName: member.lastName,
+      phone: member.phone ?? "",
       email: member.email ?? "",
       dateOfBirth: member.adminProfile?.dateOfBirth
         ? member.adminProfile.dateOfBirth.split("T")[0]
@@ -358,7 +359,18 @@ export default function StaffRegisterPage() {
                     onChange={set("lastName", "edit")}
                   />
                 </div>
-                <div className="col-span-2">
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Phone
+                  </label>
+                  <input
+                    className="input w-full font-mono"
+                    placeholder="+447..."
+                    value={editForm.phone}
+                    onChange={set("phone", "edit")}
+                  />
+                </div>
+                <div>
                   <label className="text-xs text-slate-400 mb-1 block">
                     Email
                   </label>
@@ -430,6 +442,7 @@ export default function StaffRegisterPage() {
                     body: {
                       firstName: editForm.firstName,
                       lastName: editForm.lastName,
+                      phone: editForm.phone || undefined,
                       email: editForm.email || null,
                       dateOfBirth: editForm.dateOfBirth || null,
                       dbsCertificateNumber:
