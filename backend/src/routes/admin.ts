@@ -808,4 +808,71 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(201).send({ success: true, data: user });
     }
   );
+
+  // ═══════════════════════════════════════════════════════
+  // TfL Condition 7: COMPLAINTS
+  // ═══════════════════════════════════════════════════════
+
+  // ─── GET /admin/complaints — all bookings with complaints ───
+  fastify.get(
+    "/admin/complaints",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { acknowledged } = request.query as { acknowledged?: string };
+
+      const bookings = await fastify.prisma.booking.findMany({
+        where: {
+          feedback: { startsWith: "[COMPLAINT]" },
+          ...(acknowledged === "true"
+            ? { operatorNotes: { contains: "[ACK]" } }
+            : acknowledged === "false"
+            ? { NOT: { operatorNotes: { contains: "[ACK]" } } }
+            : {}),
+        },
+        include: {
+          passenger: { include: { user: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      // Add acknowledged flag derived from operatorNotes
+      const result = bookings.map((b) => ({
+        ...b,
+        acknowledged: b.operatorNotes?.includes("[ACK]") ?? false,
+      }));
+
+      return reply.send({ success: true, data: result });
+    }
+  );
+
+  // ─── PATCH /admin/complaints/:bookingId/acknowledge ───
+  fastify.patch(
+    "/admin/complaints/:bookingId/acknowledge",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { bookingId } = request.params as { bookingId: string };
+      const adminUserId = request.user.userId;
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+
+      // Append acknowledgement to operatorNotes
+      const ackNote = `[ACK] Acknowledged by ${adminUserId} at ${new Date().toISOString()}`;
+      const updatedNotes = booking.operatorNotes
+        ? `${booking.operatorNotes}\n${ackNote}`
+        : ackNote;
+
+      await fastify.prisma.booking.update({
+        where: { id: bookingId },
+        data: { operatorNotes: updatedNotes },
+      });
+
+      return reply.send({ success: true });
+    }
+  );
 }
