@@ -21,6 +21,11 @@ import { pricingRoutes } from "./routes/pricing";
 import { corporateRoutes } from "./routes/corporate";
 import { surchargeZoneRoutes } from "./routes/surcharge-zones";
 
+// How long a PENDING booking can sit before being auto-cancelled (30 minutes)
+const STALE_BOOKING_THRESHOLD_MS = 30 * 60 * 1000;
+// How often to run the cleanup job (every 5 minutes)
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
 async function buildServer() {
   const fastify = Fastify({
     logger: {
@@ -100,6 +105,69 @@ async function buildServer() {
   return fastify;
 }
 
+// ─── Auto-cancel stale PENDING bookings ──────────────────────────────────────
+// Runs every 5 minutes. Cancels any PENDING booking older than 30 minutes
+// that was never dispatched. Prevents stale test/failed bookings from
+// being offered to drivers when they come online.
+async function startStaleBiookingCleanup(
+  fastify: Awaited<ReturnType<typeof buildServer>>
+) {
+  const run = async () => {
+    try {
+      const cutoff = new Date(Date.now() - STALE_BOOKING_THRESHOLD_MS);
+
+      const stale = await fastify.prisma.booking.findMany({
+        where: {
+          status: "PENDING",
+          createdAt: { lt: cutoff },
+        },
+        select: { id: true, reference: true, createdAt: true },
+      });
+
+      if (!stale.length) return;
+
+      fastify.log.warn(
+        `[Cleanup] Auto-cancelling ${
+          stale.length
+        } stale PENDING booking(s): ${stale.map((b) => b.reference).join(", ")}`
+      );
+
+      for (const booking of stale) {
+        await fastify.prisma.$transaction([
+          fastify.prisma.booking.update({
+            where: { id: booking.id },
+            data: {
+              status: "CANCELLED",
+              cancellationReason:
+                "Auto-cancelled: no driver found within 30 minutes",
+            },
+          }),
+          fastify.prisma.bookingStatusHistory.create({
+            data: {
+              bookingId: booking.id,
+              status: "CANCELLED",
+              note: "Auto-cancelled by system: no driver found within 30 minutes",
+            },
+          }),
+        ]);
+
+        // Notify admin via socket
+        fastify.io.to("admin").emit("admin:booking:updated", {
+          bookingId: booking.id,
+          status: "CANCELLED",
+        });
+      }
+    } catch (err) {
+      //fastify.log.error("[Cleanup] Stale booking cleanup error:", err);
+      fastify.log.error({ err }, "[Cleanup] Stale booking cleanup error");
+    }
+  };
+
+  // Run once immediately on startup, then every 5 minutes
+  await run();
+  setInterval(run, CLEANUP_INTERVAL_MS);
+}
+
 async function start() {
   const server = await buildServer();
 
@@ -108,7 +176,15 @@ async function start() {
     await server.listen({ port, host: "0.0.0.0" });
     console.log(`\n🚖 Dispatch API running on http://localhost:${port}`);
     console.log(`📡 WebSocket ready`);
-    console.log(`🌍 Environment: ${config.NODE_ENV}\n`);
+    console.log(`🌍 Environment: ${config.NODE_ENV}`);
+    console.log(
+      `🧹 Stale booking cleanup: every ${
+        CLEANUP_INTERVAL_MS / 60000
+      } min (threshold: ${STALE_BOOKING_THRESHOLD_MS / 60000} min)\n`
+    );
+
+    // Start background cleanup job
+    startStaleBiookingCleanup(server);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
