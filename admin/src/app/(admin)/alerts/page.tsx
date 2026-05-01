@@ -10,6 +10,7 @@ import {
   MessageSquareWarning,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import { SectionHeader, Spinner } from "@/components/ui";
 import { useState } from "react";
@@ -17,6 +18,8 @@ import { useState } from "react";
 export default function AlertsPage() {
   const qc = useQueryClient();
   const [showResolved, setShowResolved] = useState(false);
+  const [resolving, setResolving] = useState<any>(null); // complaint being resolved
+  const [resolutionNote, setResolutionNote] = useState("");
 
   const { data: complaints, isLoading: loadingComplaints } = useQuery({
     queryKey: ["complaints"],
@@ -54,9 +57,15 @@ export default function AlertsPage() {
   });
 
   const acknowledgeMutation = useMutation({
-    mutationFn: (bookingId: string) =>
-      api.patch(`/admin/complaints/${bookingId}/acknowledge`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["complaints"] }),
+    mutationFn: ({ bookingId, note }: { bookingId: string; note: string }) =>
+      api.patch(`/admin/complaints/${bookingId}/acknowledge`, {
+        resolutionNote: note,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["complaints"] });
+      setResolving(null);
+      setResolutionNote("");
+    },
   });
 
   const daysUntil = (date: string) =>
@@ -90,6 +99,13 @@ export default function AlertsPage() {
     const category = lines[0]?.replace("Category: ", "") ?? "";
     const description = lines.slice(1).join("\n").trim();
     return { category, description };
+  };
+
+  // Parse resolution note from operatorNotes field
+  const parseResolutionNote = (operatorNotes: string | null) => {
+    if (!operatorNotes) return null;
+    const match = operatorNotes.match(/\[ACK\][^\n]*Note: ([^\n]+)/);
+    return match ? match[1].trim() : null;
   };
 
   return (
@@ -182,8 +198,10 @@ export default function AlertsPage() {
                         )}
                       </div>
                       <button
-                        onClick={() => acknowledgeMutation.mutate(c.id)}
-                        disabled={acknowledgeMutation.isPending}
+                        onClick={() => {
+                          setResolving(c);
+                          setResolutionNote("");
+                        }}
                         className="shrink-0 text-[10px] text-slate-400 hover:text-green-400 border border-[var(--border)] hover:border-green-500/40 rounded px-2 py-1 transition-colors whitespace-nowrap"
                       >
                         ✓ Resolve
@@ -194,7 +212,7 @@ export default function AlertsPage() {
               })}
             </div>
 
-            {/* Show/hide resolved toggle */}
+            {/* Show/hide resolved */}
             {resolvedComplaints.length > 0 && (
               <>
                 <button
@@ -218,8 +236,9 @@ export default function AlertsPage() {
                       const { category, description } = parseComplaint(
                         c.feedback
                       );
+                      const note = parseResolutionNote(c.operatorNotes);
                       return (
-                        <div key={c.id} className="px-4 py-3 opacity-60">
+                        <div key={c.id} className="px-4 py-3 opacity-70">
                           <div className="flex items-start gap-3">
                             <CheckCircle
                               size={12}
@@ -246,6 +265,11 @@ export default function AlertsPage() {
                                   {description}
                                 </p>
                               )}
+                              {note && (
+                                <p className="text-xs text-green-600 mt-1">
+                                  ✓ Resolution: {note}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -259,7 +283,7 @@ export default function AlertsPage() {
         )
       )}
 
-      {/* Critical — expiring within 7 days */}
+      {/* Critical */}
       {critical?.length > 0 && (
         <AlertSection
           icon={AlertTriangle}
@@ -311,7 +335,7 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* Warning — 8–30 days */}
+      {/* Warning */}
       {warning?.length > 0 && (
         <AlertSection
           icon={Clock}
@@ -322,7 +346,7 @@ export default function AlertsPage() {
         />
       )}
 
-      {/* Upcoming — 31–60 days */}
+      {/* Upcoming */}
       {upcoming?.length > 0 && (
         <AlertSection
           icon={Clock}
@@ -331,6 +355,86 @@ export default function AlertsPage() {
           items={upcoming}
           daysUntil={daysUntil}
         />
+      )}
+
+      {/* ── Resolve complaint modal ── */}
+      {resolving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-white">
+                Resolve Complaint
+              </h3>
+              <button
+                onClick={() => setResolving(null)}
+                className="text-slate-500 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Complaint summary */}
+            <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] text-xs space-y-1">
+              <p className="text-orange-400 font-semibold">
+                {parseComplaint(resolving.feedback).category}
+              </p>
+              <p className="text-slate-400 font-mono">{resolving.reference}</p>
+              <p className="text-slate-400">
+                {resolving.passenger?.user?.firstName}{" "}
+                {resolving.passenger?.user?.lastName}
+              </p>
+              {parseComplaint(resolving.feedback).description && (
+                <p className="text-slate-500 pt-1">
+                  {parseComplaint(resolving.feedback).description}
+                </p>
+              )}
+            </div>
+
+            {/* Resolution note */}
+            <div>
+              <label className="text-xs text-slate-400 mb-1.5 block">
+                Resolution note <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                className="input w-full resize-none text-sm"
+                rows={4}
+                placeholder="Describe what action was taken to resolve this complaint…"
+                value={resolutionNote}
+                onChange={(e) => setResolutionNote(e.target.value)}
+                autoFocus
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                This note will be visible to the passenger in their ride
+                history.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setResolving(null)}
+                className="flex-1 btn-ghost py-2.5 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  acknowledgeMutation.mutate({
+                    bookingId: resolving.id,
+                    note: resolutionNote,
+                  })
+                }
+                disabled={
+                  !resolutionNote.trim() || acknowledgeMutation.isPending
+                }
+                className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-40"
+              >
+                {acknowledgeMutation.isPending
+                  ? "Resolving…"
+                  : "✓ Mark Resolved"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

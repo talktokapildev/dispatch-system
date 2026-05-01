@@ -28,6 +28,12 @@ function parseComplaint(feedback: string | null) {
   return { category, description };
 }
 
+function parseResolution(operatorNotes: string | null): string | null {
+  if (!operatorNotes) return null;
+  const match = operatorNotes.match(/\[ACK\].*?Note: (.+?)(?:\n|$)/s);
+  return match ? match[1].trim() : null;
+}
+
 export default function RideHistoryScreen({ navigation }: any) {
   const { Colors } = useTheme();
   const [bookings, setBookings] = useState<any[]>([]);
@@ -109,6 +115,8 @@ export default function RideHistoryScreen({ navigation }: any) {
           const statusColor = STATUS_COLORS[item.status] ?? Colors.muted;
           const fare = item.actualFare ?? item.estimatedFare ?? 0;
           const complaint = parseComplaint(item.feedback);
+          const resolutionNote = parseResolution(item.operatorNotes);
+          const isResolved = !!resolutionNote;
           const isExpanded = expanded === item.id;
 
           return (
@@ -168,13 +176,22 @@ export default function RideHistoryScreen({ navigation }: any) {
                       { borderTopColor: Colors.border },
                     ]}
                   >
-                    <Text style={s.complaintIcon}>⚠</Text>
+                    <Text style={s.complaintIcon}>
+                      {isResolved ? "✅" : "⚠"}
+                    </Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.complaintCategory}>
+                      <Text
+                        style={[
+                          s.complaintCategory,
+                          { color: isResolved ? Colors.success : "#f97316" },
+                        ]}
+                      >
                         Complaint: {complaint.category}
                       </Text>
                       <Text style={s.complaintStatus}>
-                        Under review · We aim to respond within 48 hours
+                        {isResolved
+                          ? `Resolved — ${resolutionNote}`
+                          : "Under review · We aim to respond within 48 hours"}
                       </Text>
                     </View>
                     <Text style={[s.complaintChevron, { color: Colors.muted }]}>
@@ -202,14 +219,16 @@ export default function RideHistoryScreen({ navigation }: any) {
                       >
                         {complaint.description || "(No description provided)"}
                       </Text>
-                      <Text
-                        style={[
-                          s.complaintDetailLabel,
-                          { color: Colors.muted, marginTop: Spacing.sm },
-                        ]}
-                      >
-                        Contact us: admin@orangeride.co.uk
-                      </Text>
+                      {!isResolved && (
+                        <Text
+                          style={[
+                            s.complaintDetailLabel,
+                            { color: Colors.muted, marginTop: Spacing.sm },
+                          ]}
+                        >
+                          Contact us: admin@orangeride.co.uk
+                        </Text>
+                      )}
                     </View>
                   )}
                 </>
@@ -282,20 +301,21 @@ const styles = (
     // Complaint
     complaintBanner: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: Spacing.sm,
       marginTop: Spacing.sm,
       paddingTop: Spacing.sm,
       borderTopWidth: 1,
     },
-    complaintIcon: { fontSize: 14 },
-    complaintCategory: {
+    complaintIcon: { fontSize: 14, marginTop: 1 },
+    complaintCategory: { fontSize: FontSize.xs, fontWeight: "600" },
+    complaintStatus: {
       fontSize: FontSize.xs,
-      color: "#f97316",
-      fontWeight: "600",
+      color: C.muted,
+      marginTop: 1,
+      lineHeight: 16,
     },
-    complaintStatus: { fontSize: FontSize.xs, color: C.muted, marginTop: 1 },
-    complaintChevron: { fontSize: 10 },
+    complaintChevron: { fontSize: 10, marginTop: 2 },
     complaintDetail: {
       marginTop: Spacing.sm,
       paddingTop: Spacing.sm,

@@ -846,12 +846,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
   );
 
   // ─── PATCH /admin/complaints/:bookingId/acknowledge ───
+  // Replace the existing acknowledge route in admin.ts with this version
   fastify.patch(
     "/admin/complaints/:bookingId/acknowledge",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { bookingId } = request.params as { bookingId: string };
+      const { resolutionNote } = request.body as { resolutionNote?: string };
       const adminUserId = request.user.userId;
+
+      if (!resolutionNote?.trim()) {
+        return reply.status(400).send({
+          success: false,
+          error: "Resolution note is required",
+        });
+      }
 
       const booking = await fastify.prisma.booking.findUnique({
         where: { id: bookingId },
@@ -861,11 +870,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Booking not found" });
 
-      // Append acknowledgement to operatorNotes
-      const ackNote = `[ACK] Acknowledged by ${adminUserId} at ${new Date().toISOString()}`;
+      // Store ACK with resolution note — parsed by passenger app to show status
+      const ackEntry = `[ACK] Resolved by ${adminUserId} at ${new Date().toISOString()} | Note: ${resolutionNote.trim()}`;
       const updatedNotes = booking.operatorNotes
-        ? `${booking.operatorNotes}\n${ackNote}`
-        : ackNote;
+        ? `${booking.operatorNotes}\n${ackEntry}`
+        : ackEntry;
 
       await fastify.prisma.booking.update({
         where: { id: bookingId },
