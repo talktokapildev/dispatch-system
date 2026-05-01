@@ -86,13 +86,13 @@ export default function CorporatePage() {
     try {
       if (confirmAction === "archive") {
         await api.patch(`/admin/corporate/${selected.id}/archive`);
-        toast.success(`${selected.companyName} archived`);
+        toast.success(`${selected.name} archived`);
       } else if (confirmAction === "reactivate") {
         await api.patch(`/admin/corporate/${selected.id}/reactivate`);
-        toast.success(`${selected.companyName} reactivated`);
+        toast.success(`${selected.name} reactivated`);
       } else if (confirmAction === "delete") {
         await api.delete(`/admin/corporate/${selected.id}`);
-        toast.success(`${selected.companyName} deleted`);
+        toast.success(`${selected.name} deleted`);
       }
       setConfirmAction(null);
       setSelected(null);
@@ -180,11 +180,11 @@ export default function CorporatePage() {
                           : "bg-violet-500/20 text-violet-400"
                       }`}
                     >
-                      {a.companyName[0]}
+                      {a.name?.[0] ?? "?"}
                     </div>
                     <div>
                       <p className="text-xs font-medium text-white flex items-center gap-2">
-                        {a.companyName}
+                        {a.name}
                         {!a.isActive && (
                           <span className="text-[10px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded">
                             Archived
@@ -226,7 +226,7 @@ export default function CorporatePage() {
           setSelected(null);
           setAddingLogin(false);
         }}
-        title={selected?.companyName ?? ""}
+        title={selected?.name ?? ""}
       >
         {selected && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
@@ -482,11 +482,11 @@ export default function CorporatePage() {
         <div className="space-y-4">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             {confirmAction === "archive" &&
-              `Archive ${selected?.companyName}? Their portal access will be suspended. You can reactivate at any time.`}
+              `Archive ${selected?.name}? Their portal access will be suspended. You can reactivate at any time.`}
             {confirmAction === "reactivate" &&
-              `Reactivate ${selected?.companyName}? Portal access will be restored.`}
+              `Reactivate ${selected?.name}? Portal access will be restored.`}
             {confirmAction === "delete" &&
-              `Permanently delete ${selected?.companyName}? This cannot be undone.`}
+              `Permanently delete ${selected?.name}? This cannot be undone.`}
           </p>
           <div className="flex justify-end gap-3">
             <button
@@ -532,7 +532,7 @@ export default function CorporatePage() {
         >
           <div className="grid grid-cols-2 gap-3">
             {[
-              { name: "companyName", label: "Company Name", full: true },
+              { name: "name", label: "Company Name", full: true },
               { name: "contactName", label: "Contact Name" },
               { name: "contactPhone", label: "Contact Phone" },
               { name: "contactEmail", label: "Contact Email", type: "email" },
