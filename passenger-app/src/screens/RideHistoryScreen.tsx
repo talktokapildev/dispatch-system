@@ -12,12 +12,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback } from "react";
 
 const STATUS_COLORS: Record<string, string> = {
   COMPLETED: "#22c55e",
@@ -71,9 +74,19 @@ export default function RideHistoryScreen({ navigation }: any) {
   const [lostDescription, setLostDescription] = useState("");
   const [lostSubmitting, setLostSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchBookings(1);
-  }, []);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchBookings(1);
+    setRefreshing(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookings(1);
+    }, [])
+  );
 
   const fetchBookings = async (p: number) => {
     if (p === 1) setLoading(true);
@@ -202,6 +215,13 @@ export default function RideHistoryScreen({ navigation }: any) {
         onEndReached={() => {
           if (hasMore && !loadingMore) fetchBookings(page + 1);
         }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.brand}
+          />
+        }
         onEndReachedThreshold={0.3}
         ListFooterComponent={
           loadingMore ? (
