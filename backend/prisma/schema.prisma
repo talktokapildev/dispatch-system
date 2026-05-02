@@ -235,6 +235,9 @@ model Vehicle {
   seats            Int          @default(4)
   motExpiry        DateTime
   insuranceExpiry  DateTime
+  emissionStandard String?      // e.g. "Euro 6", "Electric", "Hybrid"
+  isUlezCompliant  Boolean      @default(false)
+  
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

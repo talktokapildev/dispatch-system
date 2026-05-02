@@ -14,6 +14,15 @@ import {
 
 const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE"];
 const VEHICLE_CLASSES = ["STANDARD", "EXECUTIVE", "MPV", "MINIBUS"];
+const EMISSION_STANDARDS = [
+  "",
+  "Euro 4",
+  "Euro 5",
+  "Euro 6",
+  "Electric",
+  "Hybrid",
+  "Plug-in Hybrid",
+];
 
 const EMPTY_FORM = {
   firstName: "",
@@ -35,6 +44,8 @@ const EMPTY_FORM = {
   phvLicenceNumber: "",
   phvLicenceExpiry: "",
   phvDiscNumber: "",
+  emissionStandard: "", // TfL Item 5
+  isUlezCompliant: "false", // TfL Item 5
 };
 
 export default function DriversPage() {
@@ -126,6 +137,8 @@ export default function DriversPage() {
       phvLicenceNumber: d.vehicle?.phvLicenceNumber ?? "",
       phvLicenceExpiry: d.vehicle?.phvLicenceExpiry?.split("T")[0] ?? "",
       phvDiscNumber: d.vehicle?.phvDiscNumber ?? "",
+      emissionStandard: d.vehicle?.emissionStandard ?? "",
+      isUlezCompliant: d.vehicle?.isUlezCompliant ? "true" : "false",
     });
     setFormError("");
     setShowAdd(true);
@@ -183,6 +196,8 @@ export default function DriversPage() {
         phvLicenceNumber: form.phvLicenceNumber.trim() || undefined,
         phvLicenceExpiry: form.phvLicenceExpiry || undefined,
         phvDiscNumber: form.phvDiscNumber.trim() || undefined,
+        emissionStandard: form.emissionStandard || undefined, // TfL Item 5
+        isUlezCompliant: form.isUlezCompliant === "true", // TfL Item 5
       },
     };
 
@@ -300,6 +315,7 @@ export default function DriversPage() {
               "Rating",
               "Total Jobs",
               "PCO Expiry",
+              "ULEZ",
               "Location",
             ]}
             isEmpty={!filtered.length}
@@ -373,10 +389,22 @@ export default function DriversPage() {
                       {format(pcoExpiry, "dd MMM yyyy")}
                     </span>
                   </td>
+                  {/* TfL Item 5: ULEZ column */}
+                  <td className="px-4 py-3">
+                    {d.vehicle?.isUlezCompliant ? (
+                      <span className="text-xs text-green-400 font-medium">
+                        ✓ ULEZ
+                      </span>
+                    ) : d.vehicle ? (
+                      <span className="text-xs text-red-400">✗ Non-ULEZ</span>
+                    ) : (
+                      <span className="text-xs text-slate-600">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     {d.liveLocation ? (
                       <span className="text-xs text-green-400 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />{" "}
                         Live
                       </span>
                     ) : (
@@ -390,7 +418,7 @@ export default function DriversPage() {
         )}
       </div>
 
-      {/* ── Add Driver Modal ── */}
+      {/* ── Add/Edit Driver Modal ── */}
       <Modal
         open={showAdd}
         onClose={() => {
@@ -519,28 +547,6 @@ export default function DriversPage() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">
-                  MOT Expiry <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.motExpiry}
-                  onChange={set("motExpiry")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Insurance Expiry <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.insuranceExpiry}
-                  onChange={set("insuranceExpiry")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
                   Model <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -612,6 +618,28 @@ export default function DriversPage() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">
+                  MOT Expiry <span className="text-red-400">*</span>
+                </label>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={form.motExpiry}
+                  onChange={set("motExpiry")}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Insurance Expiry <span className="text-red-400">*</span>
+                </label>
+                <input
+                  className="input w-full"
+                  type="date"
+                  value={form.insuranceExpiry}
+                  onChange={set("insuranceExpiry")}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
                   PHV Licence No.
                 </label>
                 <input
@@ -646,33 +674,75 @@ export default function DriversPage() {
             </div>
           </div>
 
-          {formError && (
-            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              {formError}
+          {/* TfL Item 5: ULEZ / Emission */}
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">
+              Emissions & ULEZ
             </p>
-          )}
-
-          <div className="flex gap-3 pt-1">
-            <button
-              onClick={() => setShowAdd(false)}
-              className="flex-1 btn-ghost py-2.5 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={submit}
-              disabled={addDriver.isPending || editDriver.isPending}
-              className="flex-2 flex-1 px-6 py-2.5 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-black text-sm font-semibold transition-colors"
-            >
-              {addDriver.isPending || editDriver.isPending
-                ? editing
-                  ? "Saving…"
-                  : "Creating…"
-                : editing
-                ? "Save Changes"
-                : "Create Driver"}
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  Emission Standard
+                </label>
+                <select
+                  className="input w-full"
+                  value={form.emissionStandard}
+                  onChange={set("emissionStandard")}
+                >
+                  {EMISSION_STANDARDS.map((s) => (
+                    <option key={s} value={s}>
+                      {s || "Not specified"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">
+                  ULEZ Compliant
+                </label>
+                <select
+                  className="input w-full"
+                  value={form.isUlezCompliant}
+                  onChange={set("isUlezCompliant")}
+                >
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-600 mt-2">
+              ULEZ compliance required for vehicles operating in the London
+              Ultra Low Emission Zone.
+            </p>
           </div>
+        </div>
+
+        {formError && (
+          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-3">
+            {formError}
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-3">
+          <button
+            onClick={() => setShowAdd(false)}
+            className="flex-1 btn-ghost py-2.5 text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={addDriver.isPending || editDriver.isPending}
+            className="flex-2 flex-1 px-6 py-2.5 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-black text-sm font-semibold transition-colors"
+          >
+            {addDriver.isPending || editDriver.isPending
+              ? editing
+                ? "Saving…"
+                : "Creating…"
+              : editing
+              ? "Save Changes"
+              : "Create Driver"}
+          </button>
         </div>
       </Modal>
 
@@ -744,7 +814,7 @@ export default function DriversPage() {
                   {selected.vehicle.year} {selected.vehicle.make}{" "}
                   {selected.vehicle.model} · {selected.vehicle.colour}
                 </p>
-                <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                <div className="flex gap-4 mt-1 text-xs text-slate-500 flex-wrap">
                   <span>
                     Plate:{" "}
                     <span className="font-mono text-slate-300">
@@ -753,6 +823,28 @@ export default function DriversPage() {
                   </span>
                   <span>Class: {selected.vehicle.class}</span>
                   <span>Seats: {selected.vehicle.seats}</span>
+                </div>
+                {/* TfL Item 5: Emissions display */}
+                <div className="flex gap-4 mt-2 text-xs flex-wrap">
+                  {selected.vehicle.emissionStandard && (
+                    <span className="text-slate-400">
+                      Emission:{" "}
+                      <span className="text-slate-200">
+                        {selected.vehicle.emissionStandard}
+                      </span>
+                    </span>
+                  )}
+                  <span
+                    className={
+                      selected.vehicle.isUlezCompliant
+                        ? "text-green-400 font-medium"
+                        : "text-red-400"
+                    }
+                  >
+                    {selected.vehicle.isUlezCompliant
+                      ? "✓ ULEZ Compliant"
+                      : "✗ Non-ULEZ"}
+                  </span>
                 </div>
               </div>
             )}
@@ -781,6 +873,7 @@ export default function DriversPage() {
           </div>
         )}
       </Modal>
+
       {/* Delete confirm */}
       <Modal
         open={!!deleteId}

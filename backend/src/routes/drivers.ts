@@ -603,6 +603,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
             phvLicenceNumber: z.string().optional(),
             phvLicenceExpiry: z.string().optional(),
             phvDiscNumber: z.string().optional(),
+            emissionStandard: z.string().optional(),
+            isUlezCompliant: z.boolean().default(false),
           }),
         })
         .parse(request.body);
@@ -678,6 +680,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
                 ? new Date(body.vehicle.phvLicenceExpiry)
                 : null,
               phvDiscNumber: body.vehicle.phvDiscNumber ?? null,
+              emissionStandard: body.vehicle.emissionStandard ?? null,
+              isUlezCompliant: body.vehicle.isUlezCompliant ?? false,
             },
           });
           return { user, driver, vehicle };
@@ -726,6 +730,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
               phvLicenceNumber: z.string().optional().nullable(),
               phvLicenceExpiry: z.string().optional().nullable(),
               phvDiscNumber: z.string().optional().nullable(),
+              emissionStandard: z.string().optional().nullable(),
+              isUlezCompliant: z.boolean().optional(),
             })
             .optional(),
         })
@@ -800,6 +806,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
               }),
               ...(body.vehicle.phvDiscNumber !== undefined && {
                 phvDiscNumber: body.vehicle.phvDiscNumber,
+              }),
+              ...(body.vehicle.emissionStandard !== undefined && {
+                emissionStandard: body.vehicle.emissionStandard,
+              }),
+              ...(body.vehicle.isUlezCompliant !== undefined && {
+                isUlezCompliant: body.vehicle.isUlezCompliant,
               }),
             },
           });
