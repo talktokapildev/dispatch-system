@@ -913,10 +913,11 @@ function ComplianceSection() {
   });
 
   // Find operator (System Admin / first ADMIN user)
+  // Prefer ADMIN role — that's the operator (Kapil). Fall back to first staff if needed.
   const operator =
-    (staff ?? []).find(
-      (s: any) => s.role === "ADMIN" || s.role === "DISPATCHER"
-    ) ?? (staff ?? [])[0];
+    (staff ?? []).find((s: any) => s.role === "ADMIN") ??
+    (staff ?? []).find((s: any) => s.role === "DISPATCHER") ??
+    (staff ?? [])[0];
 
   const dbs = operator?.adminProfile;
   const dbsCheckDate = dbs?.dbsCheckDate ? new Date(dbs.dbsCheckDate) : null;
@@ -986,9 +987,12 @@ function ComplianceSection() {
                   <p style={{ color: "var(--text-muted)" }} className="mb-0.5">
                     Operator
                   </p>
-                  <p className="font-medium" style={{ color: "var(--text)" }}>
+                  <a
+                    href="/staff"
+                    className="font-medium text-brand-400 hover:underline"
+                  >
                     {operator?.firstName} {operator?.lastName}
-                  </p>
+                  </a>
                 </div>
                 <div>
                   <p style={{ color: "var(--text-muted)" }} className="mb-0.5">
