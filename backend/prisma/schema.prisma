@@ -11,6 +11,13 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────
 
+enum LostPropertyStatus {
+  REPORTED
+  FOUND
+  RETURNED
+  CLOSED
+}
+
 enum UserRole {
   PASSENGER
   DRIVER
@@ -165,6 +172,8 @@ model Passenger {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  lostProperties     LostProperty[]
+
   user             User              @relation(fields: [userId], references: [id])
   corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
   bookings         Booking[]
@@ -237,7 +246,7 @@ model Vehicle {
   insuranceExpiry  DateTime
   emissionStandard String?      // e.g. "Euro 6", "Electric", "Hybrid"
   isUlezCompliant  Boolean      @default(false)
-  
+
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -412,6 +421,8 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  lostProperties LostProperty[]
+
   passenger        Passenger         @relation(fields: [passengerId], references: [id])
   driver           Driver?           @relation(fields: [driverId], references: [id])
   corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
@@ -582,4 +593,21 @@ model SurchargeZone {
   updatedAt    DateTime @updatedAt
 
   @@index([isActive])
+}
+
+model LostProperty {
+  id           String             @id @default(uuid())
+  bookingId    String
+  passengerId  String
+  description  String
+  contactPhone String
+  status       LostPropertyStatus @default(REPORTED)
+  adminNotes   String?
+  reportedAt   DateTime           @default(now())
+  resolvedAt   DateTime?
+  booking      Booking            @relation(fields: [bookingId], references: [id])
+  passenger    Passenger          @relation(fields: [passengerId], references: [id])
+  @@index([bookingId])
+  @@index([passengerId])
+  @@index([status])
 }

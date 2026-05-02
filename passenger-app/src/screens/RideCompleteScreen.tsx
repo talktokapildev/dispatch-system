@@ -51,6 +51,12 @@ export default function RideCompleteScreen({ route, navigation }: any) {
   const [complaintSubmitting, setComplaintSubmitting] = useState(false);
   const [complaintSubmitted, setComplaintSubmitted] = useState(false);
 
+  // Lost property state
+  const [lostPropertyVisible, setLostPropertyVisible] = useState(false);
+  const [lostDescription, setLostDescription] = useState("");
+  const [lostSubmitting, setLostSubmitting] = useState(false);
+  const [lostSubmitted, setLostSubmitted] = useState(false);
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -127,6 +133,36 @@ export default function RideCompleteScreen({ route, navigation }: any) {
     }
   };
 
+  const submitLostProperty = async () => {
+    if (!lostDescription.trim()) {
+      Alert.alert(
+        "Please describe the item",
+        "Tell us what you left in the vehicle."
+      );
+      return;
+    }
+    setLostSubmitting(true);
+    try {
+      await api.post(`/passengers/bookings/${booking.id}/lost-property`, {
+        description: lostDescription.trim(),
+      });
+      setLostSubmitted(true);
+      setLostPropertyVisible(false);
+      Alert.alert(
+        "Lost Property Reported",
+        `Your report has been submitted. Reference: ${booking?.reference}\n\nWe will contact you if the item is found.`
+      );
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        err.response?.data?.error ??
+          "Failed to submit. Please email admin@orangeride.co.uk with your booking reference."
+      );
+    } finally {
+      setLostSubmitting(false);
+    }
+  };
+
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const paymentMethod = booking?.paymentMethod ?? "CASH";
   const s = styles(Colors);
@@ -162,7 +198,7 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           </View>
         </View>
 
-        {/* Reference — tappable to copy */}
+        {/* Reference */}
         <TouchableOpacity style={s.refCard} onPress={copyReference}>
           <Text style={s.refLabel}>Reference</Text>
           <Text style={s.refValue}>{booking?.reference}</Text>
@@ -191,7 +227,6 @@ export default function RideCompleteScreen({ route, navigation }: any) {
             </View>
           </View>
         )}
-
         {paymentMethod === "BANK_TRANSFER" && (
           <View
             style={[
@@ -225,7 +260,6 @@ export default function RideCompleteScreen({ route, navigation }: any) {
             </View>
           </View>
         )}
-
         {paymentMethod === "CARD" && (
           <View
             style={[
@@ -299,6 +333,20 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           </View>
         )}
 
+        {/* Lost Property — TfL Condition 9 */}
+        {!lostSubmitted ? (
+          <TouchableOpacity
+            style={s.reportBtn}
+            onPress={() => setLostPropertyVisible(true)}
+          >
+            <Text style={s.reportBtnText}>🎒 Report Lost Property</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={s.reportedCard}>
+            <Text style={s.reportedText}>✓ Lost property reported</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={s.doneBtn}
           onPress={() =>
@@ -333,12 +381,10 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                 </Text>
               </TouchableOpacity>
             </View>
-
             <ScrollView
               style={s.modalBody}
               showsVerticalScrollIndicator={false}
             >
-              {/* Booking reference */}
               <View
                 style={[
                   s.modalRefCard,
@@ -352,8 +398,6 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                   {booking?.reference}
                 </Text>
               </View>
-
-              {/* Category */}
               <Text style={[s.sectionLabel, { color: Colors.text }]}>
                 What is your complaint about? *
               </Text>
@@ -392,8 +436,6 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                   </TouchableOpacity>
                 ))}
               </View>
-
-              {/* Description */}
               <Text style={[s.sectionLabel, { color: Colors.text }]}>
                 Describe what happened *
               </Text>
@@ -418,13 +460,11 @@ export default function RideCompleteScreen({ route, navigation }: any) {
               <Text style={[s.charCount, { color: Colors.muted }]}>
                 {complaintDescription.length}/500
               </Text>
-
               <Text style={[s.disclaimer, { color: Colors.muted }]}>
                 Your complaint will be reviewed by OrangeRide. We aim to respond
                 within 48 hours. You may also contact us directly at
                 admin@orangeride.co.uk.
               </Text>
-
               <TouchableOpacity
                 style={[
                   s.submitBtn,
@@ -438,6 +478,96 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                   <ActivityIndicator color="#000" size="small" />
                 ) : (
                   <Text style={s.submitBtnText}>Submit Complaint</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Lost Property Modal ── */}
+      <Modal
+        visible={lostPropertyVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setLostPropertyVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <SafeAreaView
+            style={[s.modalContainer, { backgroundColor: Colors.bg }]}
+          >
+            <View style={[s.modalHeader, { borderBottomColor: Colors.border }]}>
+              <Text style={[s.modalTitle, { color: Colors.text }]}>
+                Report Lost Property
+              </Text>
+              <TouchableOpacity onPress={() => setLostPropertyVisible(false)}>
+                <Text style={[s.modalClose, { color: Colors.muted }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={s.modalBody}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={[
+                  s.modalRefCard,
+                  { backgroundColor: Colors.card, borderColor: Colors.border },
+                ]}
+              >
+                <Text style={[s.modalRefLabel, { color: Colors.muted }]}>
+                  Booking Reference
+                </Text>
+                <Text style={[s.modalRefValue, { color: Colors.brand }]}>
+                  {booking?.reference}
+                </Text>
+              </View>
+              <Text style={[s.sectionLabel, { color: Colors.text }]}>
+                Describe the item(s) left behind *
+              </Text>
+              <TextInput
+                style={[
+                  s.descInput,
+                  {
+                    backgroundColor: Colors.card,
+                    borderColor: Colors.border,
+                    color: Colors.text,
+                  },
+                ]}
+                placeholder="e.g. Black iPhone 14, left on rear seat..."
+                placeholderTextColor={Colors.muted}
+                multiline
+                numberOfLines={5}
+                textAlignVertical="top"
+                value={lostDescription}
+                onChangeText={setLostDescription}
+                maxLength={500}
+                autoFocus
+              />
+              <Text style={[s.charCount, { color: Colors.muted }]}>
+                {lostDescription.length}/500
+              </Text>
+              <Text style={[s.disclaimer, { color: Colors.muted }]}>
+                We will contact your driver and notify you if the item is found.
+                You can also contact us at admin@orangeride.co.uk.
+              </Text>
+              <TouchableOpacity
+                style={[
+                  s.submitBtn,
+                  { backgroundColor: Colors.brand },
+                  lostSubmitting && { opacity: 0.7 },
+                ]}
+                onPress={submitLostProperty}
+                disabled={lostSubmitting}
+              >
+                {lostSubmitting ? (
+                  <ActivityIndicator color="#000" size="small" />
+                ) : (
+                  <Text style={s.submitBtnText}>Submit Report</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -573,7 +703,6 @@ const styles = (
     skipText: { fontSize: FontSize.sm, color: C.muted },
     ratedCard: { marginBottom: Spacing.md },
     ratedText: { fontSize: FontSize.md, color: C.success, fontWeight: "600" },
-    // Report an issue
     reportBtn: {
       width: "100%",
       borderRadius: Radius.md,
@@ -600,7 +729,6 @@ const styles = (
       marginTop: Spacing.sm,
     },
     doneBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
-    // Modal
     modalContainer: { flex: 1 },
     modalHeader: {
       flexDirection: "row",
