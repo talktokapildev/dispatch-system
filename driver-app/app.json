@@ -3,7 +3,7 @@
     "name": "OrangeRide Driver",
     "newArchEnabled": false,
     "slug": "orangeride-driver",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -24,9 +24,7 @@
         "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
         "ITSAppUsesNonExemptEncryption": false
       },
-      "backgroundModes": [
-        "location"
-      ],
+      "backgroundModes": ["location"],
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       }
