@@ -189,6 +189,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
                 vehicle: true,
               },
             },
+            lostProperties: true,
           },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),

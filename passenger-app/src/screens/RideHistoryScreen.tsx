@@ -153,17 +153,13 @@ export default function RideHistoryScreen({ navigation }: any) {
       await api.post(`/passengers/bookings/${lostBooking.id}/lost-property`, {
         description: lostDescription.trim(),
       });
-      // Mark in list
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === lostBooking.id ? { ...b, lostPropertyReported: true } : b
-        )
-      );
+      const ref = lostBooking.reference;
       setLostBooking(null);
       setLostDescription("");
+      await fetchBookings(1);
       Alert.alert(
         "Lost Property Reported",
-        `Reference: ${lostBooking.reference}\n\nWe will contact you if the item is found.`
+        `Reference: ${ref}\n\nWe will contact you if the item is found.`
       );
     } catch (err: any) {
       Alert.alert(
@@ -231,7 +227,10 @@ export default function RideHistoryScreen({ navigation }: any) {
           const isExpanded = expanded === item.id;
           const isCompleted = item.status === "COMPLETED";
           const hasComplaint = !!complaint;
-          const hasLostProperty = !!item.lostPropertyReported;
+          const lostProperty = item.lostProperties?.[0] ?? null;
+          const hasLostProperty = !!lostProperty;
+          const lostPropertyStatus = lostProperty?.status ?? null;
+          const lostPropertyNotes = lostProperty?.adminNotes ?? null;
 
           return (
             <View style={s.card}>
@@ -319,11 +318,33 @@ export default function RideHistoryScreen({ navigation }: any) {
                       </Text>
                     </TouchableOpacity>
                   ) : (
-                    <View style={s.actionBtn}>
-                      <Text style={[s.actionBtnText, { color: Colors.brand }]}>
-                        🎒 Reported
+                    <TouchableOpacity
+                      style={s.actionBtn}
+                      onPress={() =>
+                        setExpanded(isExpanded ? null : item.id + "_lost")
+                      }
+                    >
+                      <Text
+                        style={[
+                          s.actionBtnText,
+                          {
+                            color:
+                              lostPropertyStatus === "RETURNED"
+                                ? Colors.success
+                                : lostPropertyStatus === "FOUND"
+                                ? Colors.info
+                                : Colors.brand,
+                          },
+                        ]}
+                      >
+                        🎒{" "}
+                        {lostPropertyStatus === "RETURNED"
+                          ? "Returned"
+                          : lostPropertyStatus === "FOUND"
+                          ? "Found!"
+                          : "Reported"}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   )}
                 </View>
               )}
@@ -394,6 +415,35 @@ export default function RideHistoryScreen({ navigation }: any) {
                     </View>
                   )}
                 </>
+              )}
+
+              {/* Lost property detail — expandable */}
+              {hasLostProperty && expanded === item.id + "_lost" && (
+                <View
+                  style={[s.complaintDetail, { borderTopColor: Colors.border }]}
+                >
+                  <Text
+                    style={[s.complaintDetailLabel, { color: Colors.muted }]}
+                  >
+                    Lost item: {lostProperty.description}
+                  </Text>
+                  {lostPropertyNotes ? (
+                    <Text
+                      style={[s.complaintDetailText, { color: Colors.text }]}
+                    >
+                      Update: {lostPropertyNotes}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={[
+                        s.complaintDetailLabel,
+                        { color: Colors.muted, marginTop: Spacing.xs },
+                      ]}
+                    >
+                      We will contact you if the item is found.
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
           );
