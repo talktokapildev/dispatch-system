@@ -60,14 +60,16 @@ export default async function adminCareHomeRoutes(fastify: FastifyInstance) {
         contactEmail,
         contactPhone,
         invoicingEmail,
-        paymentTermsDays: paymentTermsDays ?? 30,
+        paymentTermsDays: paymentTermsDays
+          ? parseInt(String(paymentTermsDays))
+          : 30,
         notes,
         staff: {
           create: {
             name: staffName,
             email: staffEmail,
             passwordHash,
-            phone: staffPhone,
+            phone: staffPhone || undefined,
           },
         },
       },
@@ -86,7 +88,16 @@ export default async function adminCareHomeRoutes(fastify: FastifyInstance) {
           residents: { where: { isActive: true }, orderBy: { name: "asc" } },
           staff: true,
           invoices: { orderBy: { createdAt: "desc" }, take: 12 },
-          _count: { select: { bookings: true } },
+          bookings: {
+            include: { resident: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
+          recurringBookings: {
+            include: { resident: true },
+            orderBy: { createdAt: "desc" },
+          },
+          _count: { select: { bookings: true, residents: true } },
         },
       });
       if (!account) return reply.status(404).send({ error: "Not found" });
