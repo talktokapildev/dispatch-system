@@ -16,6 +16,7 @@ import {
   Sun,
   Moon,
   ClipboardList,
+  Heart,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -30,6 +31,7 @@ const nav = [
   { href: "/drivers", label: "Drivers", icon: Car },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/corporate", label: "Corporate", icon: Building2 },
+  { href: "/carehome", label: "Care Homes", icon: Heart },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/staff", label: "Staff Register", icon: ClipboardList }, // TfL Condition 19

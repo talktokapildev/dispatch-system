@@ -1,0 +1,29 @@
+{
+  "name": "carehome-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3003",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "zustand": "^4.5.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.383.0",
+    "react-hot-toast": "^2.4.1",
+    "date-fns": "^3.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8"
+  }
+}
