@@ -16,7 +16,7 @@ export default function PortalLayout({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("corp_token");
       if (!token) router.replace("/login");
     }
   }, []);
