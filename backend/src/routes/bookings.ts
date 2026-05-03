@@ -421,7 +421,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         }
       }
 
-      if (!passenger)
+      if (!passenger && body.type !== "CAREHOME")
         return reply
           .status(400)
           .send({ success: false, error: "Passenger not found" });
@@ -444,7 +444,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       const booking = await fastify.prisma.booking.create({
         data: {
           reference: generateRef(),
-          passengerId: passenger.id,
+          passengerId: passenger?.id,
           type: body.type,
           status: BookingStatus.CONFIRMED,
           pickupAddress: body.pickupAddress,

@@ -20,6 +20,8 @@ import { passengerRoutes } from "./routes/passengers";
 import { pricingRoutes } from "./routes/pricing";
 import { corporateRoutes } from "./routes/corporate";
 import { surchargeZoneRoutes } from "./routes/surcharge-zones";
+import adminCareHomeRoutes from "./routes/admin/carehome";
+import careHomeRoutes from "./routes/carehome";
 
 // How long a PENDING booking can sit before being auto-cancelled (30 minutes)
 const STALE_BOOKING_THRESHOLD_MS = 30 * 60 * 1000;
@@ -67,6 +69,8 @@ async function buildServer() {
   await fastify.register(pricingRoutes, { prefix });
   await fastify.register(corporateRoutes, { prefix });
   await fastify.register(surchargeZoneRoutes, { prefix });
+  await fastify.register(adminCareHomeRoutes, { prefix });
+  await fastify.register(careHomeRoutes, { prefix });
 
   // ─── Health check ───
   fastify.get("/health", async () => ({

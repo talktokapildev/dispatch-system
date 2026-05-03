@@ -226,10 +226,12 @@ export class DispatchService {
         const driverName =
           acceptedBooking.driver?.user.firstName ?? "Your driver";
         const plate = acceptedBooking.driver?.vehicle?.licensePlate ?? "";
-        const passengerUserId = acceptedBooking.passenger.userId;
-        this.notifications
-          .notifyDriverAssigned(passengerUserId, driverName, plate)
-          .catch(() => {});
+        if (acceptedBooking.passenger) {
+          const passengerUserId = acceptedBooking.passenger.userId;
+          this.notifications
+            .notifyDriverAssigned(passengerUserId, driverName, plate)
+            .catch(() => {});
+        }
       }
     } catch {}
   }
@@ -362,6 +364,7 @@ export class DispatchService {
         },
       });
       if (notifBooking) {
+        if (!notifBooking.passenger) return;
         const passengerUserId = notifBooking.passenger.userId;
         const driverFirstName =
           notifBooking.driver?.user.firstName ?? "Your driver";

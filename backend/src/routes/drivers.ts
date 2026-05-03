@@ -311,7 +311,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
         timestamp: Date.now(),
       });
       fastify.io
-        .to(`passenger:${booking.passenger.userId}`)
+        .to(`passenger:${booking.passenger?.userId}`)
         .emit("passenger:status_update", {
           bookingId,
           status: "DRIVER_CANCELLED",
@@ -324,9 +324,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
       });
 
       // Push notification to passenger
-      notifications
-        .notifyDriverCancelled(booking.passenger.userId)
-        .catch(() => {});
+      // To:
+      if (booking.passenger) {
+        notifications
+          .notifyDriverCancelled(booking.passenger.userId)
+          .catch(() => {});
+      }
 
       // Re-dispatch
       const dispatch = new DispatchService(
@@ -400,12 +403,14 @@ export async function driverRoutes(fastify: FastifyInstance) {
           include: { passenger: true },
         });
         if (booking) {
-          fastify.io
-            .to(`passenger:${booking.passenger.userId}`)
-            .emit("passenger:status_update", {
-              bookingId,
-              status,
-            });
+          if (booking.passenger) {
+            fastify.io
+              .to(`passenger:${booking.passenger.userId}`)
+              .emit("passenger:status_update", {
+                bookingId,
+                status,
+              });
+          }
         }
       }
 
