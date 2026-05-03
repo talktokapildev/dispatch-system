@@ -17,6 +17,7 @@ import {
   Moon,
   ClipboardList,
   Heart,
+  X,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -34,26 +35,25 @@ const nav = [
   { href: "/carehome", label: "Care Homes", icon: Heart },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/staff", label: "Staff Register", icon: ClipboardList }, // TfL Condition 19
+  { href: "/staff", label: "Staff Register", icon: ClipboardList },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
   { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const { theme, toggle } = useTheme();
   const isDark = theme === "dark";
 
-  return (
-    <aside
-      className="w-60 shrink-0 h-screen flex flex-col sticky top-0"
-      style={{
-        background: "var(--sidebar-bg)",
-        borderRight: "1px solid var(--border)",
-      }}
-    >
+  const content = (
+    <div className="flex flex-col h-full">
       {/* Logo */}
       <div
         className="px-5 pt-6 pb-5"
@@ -77,21 +77,35 @@ export function Sidebar() {
               </p>
             </div>
           </div>
-          <button
-            onClick={toggle}
-            title={`Switch to ${isDark ? "light" : "dark"} mode`}
-            className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
-            style={{
-              background: "var(--table-hover)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            {isDark ? (
-              <Sun size={13} className="text-brand-400" />
-            ) : (
-              <Moon size={13} className="text-slate-500" />
-            )}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Theme toggle */}
+            <button
+              onClick={toggle}
+              title={`Switch to ${isDark ? "light" : "dark"} mode`}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
+              style={{
+                background: "var(--table-hover)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {isDark ? (
+                <Sun size={13} className="text-brand-400" />
+              ) : (
+                <Moon size={13} className="text-slate-500" />
+              )}
+            </button>
+            {/* Close button — mobile only */}
+            <button
+              onClick={onClose}
+              className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
+              style={{
+                background: "var(--table-hover)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              <X size={14} style={{ color: "var(--text-muted)" }} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -100,7 +114,7 @@ export function Sidebar() {
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
-            <Link key={href} href={href}>
+            <Link key={href} href={href} onClick={onClose}>
               <span className={clsx("sidebar-link", active && "active")}>
                 <Icon size={16} />
                 {label}
@@ -142,6 +156,47 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* ── Desktop sidebar ── always visible lg+ */}
+      <aside
+        className="hidden lg:flex lg:flex-col w-60 shrink-0 h-screen sticky top-0"
+        style={{
+          background: "var(--sidebar-bg)",
+          borderRight: "1px solid var(--border)",
+        }}
+      >
+        {content}
+      </aside>
+
+      {/* ── Mobile backdrop ── */}
+      <div
+        className={clsx(
+          "fixed inset-0 bg-black/40 z-40 lg:hidden transition-opacity duration-200",
+          open
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
+        )}
+        onClick={onClose}
+      />
+
+      {/* ── Mobile drawer ── */}
+      <aside
+        className={clsx(
+          "fixed top-0 left-0 h-full w-64 z-50 lg:hidden flex flex-col",
+          "transform transition-transform duration-250 ease-out",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+        style={{
+          background: "var(--sidebar-bg)",
+          borderRight: "1px solid var(--border)",
+        }}
+      >
+        {content}
+      </aside>
+    </>
   );
 }
