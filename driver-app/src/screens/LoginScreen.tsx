@@ -85,7 +85,7 @@ export default function LoginScreen({
   const s = styles(Colors);
 
   return (
-    <SafeAreaView style={s.container}>
+    <SafeAreaView style={s.container} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={s.inner}
@@ -169,7 +169,7 @@ const styles = (
   C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["Colors"]
 ) =>
   StyleSheet.create({
-    container: { flex: 1, backgroundColor: C.bg },
+    container: { flex: 1, backgroundColor: C.loginBg },
     inner: { flex: 1, justifyContent: "center", padding: Spacing.lg },
     logoSection: { alignItems: "center", marginBottom: Spacing.xxl },
     logoBox: {
