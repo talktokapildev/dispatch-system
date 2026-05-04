@@ -3,7 +3,7 @@
     "name": "OrangeRide Driver",
     "newArchEnabled": false,
     "slug": "orangeride-driver",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -37,7 +37,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 8,
+      "versionCode": 9,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",

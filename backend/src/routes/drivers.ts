@@ -170,6 +170,61 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Heartbeat — re-registers driver in Redis while online ───────────────
+  // Called every 2 minutes by the driver app while AVAILABLE.
+  // Ensures driver stays in drivers:online set even if Redis restarted.
+  fastify.patch(
+    "/drivers/heartbeat",
+    { preHandler: [fastify.authenticateDriver] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const body = locationSchema.safeParse(request.body);
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Driver not found" });
+
+      // Only heartbeat if driver is actually AVAILABLE or ON_JOB
+      if (
+        driver.status !== DriverStatus.AVAILABLE &&
+        driver.status !== DriverStatus.ON_JOB
+      ) {
+        return reply.send({ success: true });
+      }
+
+      // Re-add to online set (idempotent — safe to call repeatedly)
+      await fastify.redis.sadd(RedisKeys.onlineDrivers(), driver.id);
+
+      // Refresh location if provided
+      if (body.success) {
+        await fastify.prisma.driver.update({
+          where: { id: driver.id },
+          data: {
+            currentLatitude: body.data.latitude,
+            currentLongitude: body.data.longitude,
+            currentBearing: body.data.bearing,
+            lastLocationAt: new Date(),
+          },
+        });
+        await fastify.redis.setex(
+          RedisKeys.driverLocation(driver.id),
+          300,
+          JSON.stringify({
+            lat: body.data.latitude,
+            lng: body.data.longitude,
+            bearing: body.data.bearing,
+          })
+        );
+      }
+
+      return reply.send({ success: true });
+    }
+  );
+
   // ─── Accept job ───
   fastify.post(
     "/drivers/jobs/:bookingId/accept",

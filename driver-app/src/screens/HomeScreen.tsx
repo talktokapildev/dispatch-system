@@ -9,14 +9,18 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { api, useAuthStore } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
+import { BackgroundLocationDisclosure } from "../components/BackgroundLocationDisclosure";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
+
+const DISCLOSURE_ACCEPTED_KEY = "bg_location_disclosure_accepted";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -25,7 +29,8 @@ export default function HomeScreen({ navigation }: any) {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
   const [loading, setLoading] = useState(false);
-  const { getInitialLocation } = useLocationTracking();
+  const [showDisclosure, setShowDisclosure] = useState(false);
+  const { getInitialLocation, locationRef } = useLocationTracking();
 
   const STATUS_COLORS: Record<string, string> = {
     OFFLINE: Colors.muted,
@@ -62,7 +67,6 @@ export default function HomeScreen({ navigation }: any) {
     } catch {}
   };
 
-  // ADD this new function:
   const refreshDriverProfile = async () => {
     try {
       const { data } = await api.get("/auth/me");
@@ -83,22 +87,69 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
+  // Check if driver has already accepted the disclosure
+  const hasAcceptedDisclosure = async (): Promise<boolean> => {
+    try {
+      const val = await AsyncStorage.getItem(DISCLOSURE_ACCEPTED_KEY);
+      return val === "true";
+    } catch {
+      return false;
+    }
+  };
+
+  const acceptDisclosure = async () => {
+    try {
+      await AsyncStorage.setItem(DISCLOSURE_ACCEPTED_KEY, "true");
+    } catch {}
+    setShowDisclosure(false);
+    await proceedGoOnline();
+  };
+
+  const declineDisclosure = () => {
+    setShowDisclosure(false);
+  };
+
   const toggleOnline = async () => {
     const newStatus = status === "OFFLINE" ? "AVAILABLE" : "OFFLINE";
-    setLoading(true);
-    try {
-      await api.patch("/drivers/status", { status: newStatus });
-      setStatus(newStatus);
 
-      // Stop background location when going offline
-      if (newStatus === "OFFLINE") {
+    if (newStatus === "OFFLINE") {
+      // Going offline — no disclosure needed, just proceed
+      setLoading(true);
+      try {
+        await api.patch("/drivers/status", { status: newStatus });
+        setStatus(newStatus);
         const isRegistered = await TaskManager.isTaskRegisteredAsync(
           "background-location-task"
         );
         if (isRegistered) {
           await Location.stopLocationUpdatesAsync("background-location-task");
         }
+      } catch (err: any) {
+        Alert.alert(
+          "Error",
+          err.response?.data?.error ?? "Failed to update status"
+        );
+      } finally {
+        setLoading(false);
       }
+      return;
+    }
+
+    // Going online — check if disclosure already accepted
+    const alreadyAccepted = await hasAcceptedDisclosure();
+    if (alreadyAccepted) {
+      await proceedGoOnline();
+    } else {
+      // Show prominent disclosure before requesting background location
+      setShowDisclosure(true);
+    }
+  };
+
+  const proceedGoOnline = async () => {
+    setLoading(true);
+    try {
+      await api.patch("/drivers/status", { status: "AVAILABLE" });
+      setStatus("AVAILABLE");
     } catch (err: any) {
       Alert.alert(
         "Error",
@@ -119,6 +170,31 @@ export default function HomeScreen({ navigation }: any) {
 
   const isOnline = status !== "OFFLINE";
   const s = styles(Colors);
+
+  // ─── Heartbeat — keep driver in Redis while online ───────────────────────
+  useEffect(() => {
+    if (!isOnline) return;
+
+    const sendHeartbeat = async () => {
+      try {
+        const loc = locationRef.current;
+        await api.patch(
+          "/drivers/heartbeat",
+          loc
+            ? {
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+                bearing: 0,
+              }
+            : {}
+        );
+      } catch {}
+    };
+
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isOnline]);
 
   return (
     <SafeAreaView style={s.container}>
@@ -244,6 +320,13 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         )}
       </ScrollView>
+
+      {/* Background location disclosure modal */}
+      <BackgroundLocationDisclosure
+        visible={showDisclosure}
+        onAccept={acceptDisclosure}
+        onDecline={declineDisclosure}
+      />
     </SafeAreaView>
   );
 }

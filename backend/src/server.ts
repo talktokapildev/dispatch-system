@@ -10,6 +10,7 @@ import databasePlugin from "./plugins/database";
 import redisPlugin from "./plugins/redis";
 import authPlugin from "./plugins/auth";
 import socketPlugin from "./plugins/socket";
+import { RedisKeys } from "./plugins/redis";
 
 // Routes
 import { authRoutes } from "./routes/auth";
@@ -172,6 +173,35 @@ async function startStaleBiookingCleanup(
   setInterval(run, CLEANUP_INTERVAL_MS);
 }
 
+// ─── Reseed Redis drivers:online on startup ───────────────────────────────
+// If Railway redeploys or Redis restarts, the drivers:online set is wiped.
+// On startup, find all drivers whose DB status is AVAILABLE or ON_JOB
+// and re-add them to Redis so they can receive dispatch immediately.
+async function reseedOnlineDrivers(
+  fastify: Awaited<ReturnType<typeof buildServer>>
+) {
+  try {
+    const activeDrivers = await fastify.prisma.driver.findMany({
+      where: {
+        status: { in: ["AVAILABLE", "ON_JOB"] },
+      },
+      select: { id: true, status: true },
+    });
+
+    if (!activeDrivers.length) return;
+
+    for (const driver of activeDrivers) {
+      await fastify.redis.sadd(RedisKeys.onlineDrivers(), driver.id);
+    }
+
+    fastify.log.info(
+      `[Startup] Reseeded ${activeDrivers.length} driver(s) into Redis drivers:online`
+    );
+  } catch (err) {
+    fastify.log.error({ err }, "[Startup] Failed to reseed online drivers");
+  }
+}
+
 async function start() {
   const server = await buildServer();
 
@@ -189,6 +219,7 @@ async function start() {
 
     // Start background cleanup job
     startStaleBiookingCleanup(server);
+    reseedOnlineDrivers(server);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
