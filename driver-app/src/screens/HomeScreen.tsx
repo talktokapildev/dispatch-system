@@ -53,6 +53,14 @@ export default function HomeScreen({ navigation }: any) {
     if (status === "AVAILABLE" || status === "ON_JOB") startLocationTracking();
   }, [status]);
 
+  // Re-run fetch when store finishes hydrating from AsyncStorage
+  useEffect(() => {
+    if (_hasHydrated) {
+      fetchEarnings();
+      refreshDriverProfile();
+    }
+  }, [_hasHydrated]);
+
   const fetchEarnings = async () => {
     try {
       const today = new Date().toISOString().split("T")[0];
@@ -71,8 +79,11 @@ export default function HomeScreen({ navigation }: any) {
     try {
       const { data } = await api.get("/auth/me");
       const freshDriver = data.data.driver;
-      if (freshDriver && token && user) {
-        setAuth(token, user, freshDriver);
+      // Read current store state directly — avoids stale closure values
+      const { token: currentToken, user: currentUser } =
+        useAuthStore.getState();
+      if (freshDriver && currentToken && currentUser) {
+        setAuth(currentToken, currentUser, freshDriver);
       }
     } catch {}
   };
