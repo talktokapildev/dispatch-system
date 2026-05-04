@@ -35,14 +35,18 @@ export default function TripMap({
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // Include all visible points
-    const coords = [
-      ...(driverLocation ? [driverLocation] : []),
-      pickup,
-      ...(dropoff && (stage === "offer" || stage === "to_dropoff")
-        ? [dropoff]
-        : []),
-    ];
+    // Use route coords if available — they span the full route
+    // Fall back to just the marker points
+    const coords =
+      routeCoords && routeCoords.length > 1
+        ? routeCoords
+        : [
+            ...(driverLocation ? [driverLocation] : []),
+            pickup,
+            ...(dropoff && (stage === "offer" || stage === "to_dropoff")
+              ? [dropoff]
+              : []),
+          ];
 
     if (coords.length > 0) {
       setTimeout(() => {
@@ -63,6 +67,7 @@ export default function TripMap({
     pickup.latitude,
     dropoff?.latitude,
     stage,
+    routeCoords?.length, // ← add this so it re-fits when route loads
   ]);
 
   const darkMapStyle = [
