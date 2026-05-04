@@ -204,17 +204,13 @@ export default function HomeScreen({ navigation }: any) {
           <View>
             <Text style={s.greeting}>Good {getTimeOfDay()},</Text>
             <Text style={s.name}>
-              {_hasHydrated
-                ? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()
-                : ""}
+              {`${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()}
             </Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
             <View style={s.avatar}>
               <Text style={s.avatarText}>
-                {_hasHydrated
-                  ? `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`
-                  : ""}
+                {`${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`}
               </Text>
             </View>
           </TouchableOpacity>
