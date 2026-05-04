@@ -69,6 +69,12 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "driver-auth",
       storage: createJSONStorage(() => AsyncStorage),
+      // Exclude _hasHydrated from persistence so it always starts false
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        driver: state.driver,
+      }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
