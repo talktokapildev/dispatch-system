@@ -57,12 +57,15 @@ function MainTabs() {
 }
 
 function AppNavigator() {
-  const { token, setAuth, logout } = useAuthStore();
+  const { token, _hasHydrated, setAuth, logout } = useAuthStore();
   usePushNotifications();
   const { Colors } = useTheme();
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
+    // Wait for store to hydrate from AsyncStorage before booting
+    if (!_hasHydrated) return;
+
     const boot = async () => {
       if (token) {
         try {
@@ -76,9 +79,10 @@ function AppNavigator() {
       setBooting(false);
     };
     boot();
-  }, []);
+  }, [_hasHydrated]); // ← depends on hydration, not just mount
 
-  if (booting) {
+  // Keep showing spinner until hydrated AND booted
+  if (!_hasHydrated || booting) {
     return (
       <View
         style={{
