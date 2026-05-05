@@ -31,7 +31,8 @@ TaskManager.defineTask(LOCATION_TASK, async ({ data, error }: any) => {
 });
 
 export function useLocationTracking(
-  pollInterval = 8_000
+  pollInterval = 8_000,
+  enabled = false // ← NEW: only start tracking when driver is online
 ): UseLocationTrackingResult {
   const [location, setLocation] = useState<Coords | null>(null);
   const locationRef = useRef<Coords | null>(null);
@@ -76,14 +77,14 @@ export function useLocationTracking(
         await Location.startLocationUpdatesAsync(LOCATION_TASK, {
           accuracy: Location.Accuracy.High,
           timeInterval: pollInterval,
-          distanceInterval: 10, // metres — update if moved 10m
+          distanceInterval: 10,
           foregroundService: {
             notificationTitle: "OrangeRide Driver",
             notificationBody: "Location tracking active",
             notificationColor: "#F97316",
           },
           pausesUpdatesAutomatically: false,
-          showsBackgroundLocationIndicator: true, // iOS blue bar
+          showsBackgroundLocationIndicator: true,
         });
       }
 
@@ -94,8 +95,12 @@ export function useLocationTracking(
     }
   };
 
-  // Foreground watcher — keeps UI map pin moving while app is open
+  // Foreground watcher — only runs when driver is online (enabled = true).
+  // Previously this ran unconditionally on mount, which caused Android to
+  // prompt for location permission before the disclosure was shown → rejected.
   useEffect(() => {
+    if (!enabled) return; // ← do nothing until driver goes online
+
     let active = true;
 
     Location.watchPositionAsync(
@@ -118,14 +123,15 @@ export function useLocationTracking(
     return () => {
       active = false;
       watchRef.current?.remove();
-      // Stop background task on unmount (driver went offline)
+      watchRef.current = null;
+      // Stop background task when driver goes offline
       TaskManager.isTaskRegisteredAsync(LOCATION_TASK).then(
         (registered: any) => {
           if (registered) Location.stopLocationUpdatesAsync(LOCATION_TASK);
         }
       );
     };
-  }, []);
+  }, [enabled]); // ← re-runs when driver toggles online/offline
 
   return { location, locationRef, getInitialLocation };
 }

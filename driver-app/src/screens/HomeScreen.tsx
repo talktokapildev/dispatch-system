@@ -31,7 +31,12 @@ export default function HomeScreen({ navigation }: any) {
   const [todayJobs, setTodayJobs] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showDisclosure, setShowDisclosure] = useState(false);
-  const { getInitialLocation, locationRef } = useLocationTracking();
+
+  const isOnline = status !== "OFFLINE";
+  const { getInitialLocation, locationRef } = useLocationTracking(
+    8_000,
+    isOnline
+  );
 
   const STATUS_COLORS: Record<string, string> = {
     OFFLINE: Colors.muted,
@@ -180,7 +185,6 @@ export default function HomeScreen({ navigation }: any) {
     } catch {}
   };
 
-  const isOnline = status !== "OFFLINE";
   const s = styles(Colors);
 
   // ─── Heartbeat — keep driver in Redis while online ───────────────────────
