@@ -28,6 +28,7 @@ export default function TripMap({
     { latitude: number; longitude: number }[] | null
   >(null);
   const hasLayoutRef = useRef(false);
+  const hasMapReadyRef = useRef(false);
 
   const getCoords = () =>
     routeCoords && routeCoords.length > 1
@@ -53,23 +54,31 @@ export default function TripMap({
     });
   };
 
-  const handleLayout = () => {
-    hasLayoutRef.current = true;
+  // Only fit when BOTH layout and map tiles are ready
+  const tryFit = () => {
+    if (!hasLayoutRef.current || !hasMapReadyRef.current) return;
     if (pendingFitRef.current) {
       fitMap(pendingFitRef.current);
       pendingFitRef.current = null;
     }
   };
 
+  const handleLayout = () => {
+    hasLayoutRef.current = true;
+    tryFit();
+  };
+
+  const handleMapReady = () => {
+    hasMapReadyRef.current = true;
+    tryFit();
+  };
+
   useEffect(() => {
     const coords = getCoords();
     if (coords.length === 0) return;
-
-    if (hasLayoutRef.current) {
-      fitMap(coords);
-    } else {
-      pendingFitRef.current = coords;
-    }
+    // Always update pending — tryFit will fire when both conditions are met
+    pendingFitRef.current = coords;
+    tryFit();
   }, [
     driverLocation?.latitude,
     driverLocation?.longitude,
@@ -111,6 +120,7 @@ export default function TripMap({
     <MapView
       ref={mapRef}
       onLayout={handleLayout}
+      onMapReady={handleMapReady}
       style={[styles.map, style]}
       provider={PROVIDER_GOOGLE}
       customMapStyle={theme === "dark" ? darkMapStyle : []}
