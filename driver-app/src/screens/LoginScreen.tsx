@@ -22,7 +22,7 @@ export default function LoginScreen({
 }: {
   onLogin?: (token: string) => void;
 }) {
-  const { Colors } = useTheme();
+  const { Colors, theme } = useTheme();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("+44");
   const [otp, setOtp] = useState("");
@@ -110,6 +110,7 @@ export default function LoginScreen({
                 placeholder="+447123456789"
                 placeholderTextColor={Colors.muted}
                 autoFocus
+                keyboardAppearance={theme === "dark" ? "dark" : "light"}
               />
               <Text style={s.hint}>
                 Enter the phone number registered with your operator
@@ -139,6 +140,7 @@ export default function LoginScreen({
                 maxLength={6}
                 placeholder="000000"
                 placeholderTextColor={Colors.muted}
+                keyboardAppearance={theme === "dark" ? "dark" : "light"}
               />
               <TouchableOpacity
                 style={[s.btn, loading && s.btnDisabled]}

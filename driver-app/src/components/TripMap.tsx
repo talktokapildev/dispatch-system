@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import MapView, {
   Marker,
@@ -30,13 +30,12 @@ export default function TripMap({
   style,
 }: Props) {
   const { theme } = useTheme();
+  const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapReady || !mapRef.current) return;
 
-    // Use route coords if available — they span the full route
-    // Fall back to just the marker points
     const coords =
       routeCoords && routeCoords.length > 1
         ? routeCoords
@@ -49,6 +48,7 @@ export default function TripMap({
           ];
 
     if (coords.length > 0) {
+      // Small delay still needed after onMapReady fires
       setTimeout(() => {
         mapRef.current?.fitToCoordinates(coords, {
           edgePadding: {
@@ -59,15 +59,16 @@ export default function TripMap({
           },
           animated: true,
         });
-      }, 500);
+      }, 300);
     }
   }, [
+    mapReady,
     driverLocation?.latitude,
     driverLocation?.longitude,
     pickup.latitude,
     dropoff?.latitude,
     stage,
-    routeCoords?.length, // ← add this so it re-fits when route loads
+    routeCoords?.length,
   ]);
 
   const darkMapStyle = [
@@ -101,6 +102,7 @@ export default function TripMap({
   return (
     <MapView
       ref={mapRef}
+      onMapReady={() => setMapReady(true)}
       style={[styles.map, style]}
       provider={PROVIDER_GOOGLE}
       customMapStyle={theme === "dark" ? darkMapStyle : []}

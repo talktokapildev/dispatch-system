@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { DarkColors, LightColors } from "./theme";
+import { Appearance } from "react-native";
 
 type ThemeType = "dark" | "light";
 type ColorSet = typeof DarkColors;
@@ -22,7 +23,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem("driver-theme").then((saved) => {
-      if (saved === "light" || saved === "dark") setTheme(saved);
+      if (saved === "light" || saved === "dark") {
+        setTheme(saved);
+        Appearance.setColorScheme(saved);
+      }
     });
   }, []);
 
@@ -30,6 +34,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const next: ThemeType = theme === "dark" ? "light" : "dark";
     setTheme(next);
     await AsyncStorage.setItem("driver-theme", next);
+    // Sync native UI appearance with app theme
+    Appearance.setColorScheme(next);
   };
 
   return (
