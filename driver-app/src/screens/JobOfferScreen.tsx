@@ -214,6 +214,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
       {/* Full screen map */}
       <View style={StyleSheet.absoluteFill}>
         <TripMap
+          key={offer.bookingId}
           driverLocation={driverLocation ?? undefined}
           pickup={{
             latitude: offer.pickupLatitude,

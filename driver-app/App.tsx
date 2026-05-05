@@ -108,7 +108,11 @@ function AppNavigator() {
             <Stack.Screen
               name="JobOffer"
               component={JobOfferScreen}
-              options={{ presentation: "modal" }}
+              options={{
+                presentation: "card",
+                gestureEnabled: false,
+                animation: "slide_from_bottom",
+              }}
             />
             <Stack.Screen
               name="ActiveJob"
