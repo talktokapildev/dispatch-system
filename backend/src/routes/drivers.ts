@@ -247,7 +247,14 @@ export async function driverRoutes(fastify: FastifyInstance) {
         fastify.io,
         maps
       );
-      await dispatch.acceptJob(bookingId, driver.id);
+      try {
+        await dispatch.acceptJob(bookingId, driver.id);
+      } catch (err: any) {
+        return reply.status(400).send({
+          success: false,
+          error: err.message ?? "Job no longer available",
+        });
+      }
 
       const booking = await fastify.prisma.booking.findUnique({
         where: { id: bookingId },
