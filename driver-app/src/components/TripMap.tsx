@@ -1,11 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import MapView, {
-  Marker,
-  Polyline,
-  PROVIDER_GOOGLE,
-  Region,
-} from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { useTheme } from "../lib/ThemeContext";
 
 interface Props {
@@ -14,11 +9,9 @@ interface Props {
   dropoff?: { latitude: number; longitude: number };
   routeCoords?: { latitude: number; longitude: number }[];
   stage: "offer" | "to_pickup" | "to_dropoff";
-  bottomPadding?: number; // ← add this
+  bottomPadding?: number;
   style?: any;
 }
-
-const toMiles = (km: number) => (km * 0.621371).toFixed(1);
 
 export default function TripMap({
   driverLocation,
@@ -30,39 +23,54 @@ export default function TripMap({
   style,
 }: Props) {
   const { theme } = useTheme();
-  const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapView>(null);
+  const pendingFitRef = useRef<
+    { latitude: number; longitude: number }[] | null
+  >(null);
+  const hasLayoutRef = useRef(false);
+
+  const getCoords = () =>
+    routeCoords && routeCoords.length > 1
+      ? routeCoords
+      : [
+          ...(driverLocation ? [driverLocation] : []),
+          pickup,
+          ...(dropoff && (stage === "offer" || stage === "to_dropoff")
+            ? [dropoff]
+            : []),
+        ];
+
+  const fitMap = (coords: { latitude: number; longitude: number }[]) => {
+    if (!mapRef.current || coords.length === 0) return;
+    mapRef.current.fitToCoordinates(coords, {
+      edgePadding: {
+        top: 120,
+        right: 80,
+        bottom: (bottomPadding ?? 80) + 80,
+        left: 80,
+      },
+      animated: true,
+    });
+  };
+
+  const handleLayout = () => {
+    hasLayoutRef.current = true;
+    if (pendingFitRef.current) {
+      fitMap(pendingFitRef.current);
+      pendingFitRef.current = null;
+    }
+  };
 
   useEffect(() => {
-    if (!mapReady || !mapRef.current) return;
+    const coords = getCoords();
+    if (coords.length === 0) return;
 
-    const coords =
-      routeCoords && routeCoords.length > 1
-        ? routeCoords
-        : [
-            ...(driverLocation ? [driverLocation] : []),
-            pickup,
-            ...(dropoff && (stage === "offer" || stage === "to_dropoff")
-              ? [dropoff]
-              : []),
-          ];
-
-    if (coords.length > 0) {
-      // Small delay still needed after onMapReady fires
-      setTimeout(() => {
-        mapRef.current?.fitToCoordinates(coords, {
-          edgePadding: {
-            top: 120,
-            right: 80,
-            bottom: (bottomPadding ?? 80) + 80,
-            left: 80,
-          },
-          animated: true,
-        });
-      }, 300);
+    if (hasLayoutRef.current) {
+      fitMap(coords);
+    } else {
+      pendingFitRef.current = coords;
     }
   }, [
-    mapReady,
     driverLocation?.latitude,
     driverLocation?.longitude,
     pickup.latitude,
@@ -102,7 +110,7 @@ export default function TripMap({
   return (
     <MapView
       ref={mapRef}
-      onMapReady={() => setMapReady(true)}
+      onLayout={handleLayout}
       style={[styles.map, style]}
       provider={PROVIDER_GOOGLE}
       customMapStyle={theme === "dark" ? darkMapStyle : []}
