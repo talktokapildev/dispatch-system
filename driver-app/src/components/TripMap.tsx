@@ -1,6 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, {
+  Marker,
+  Polyline,
+  PROVIDER_GOOGLE,
+  Region,
+} from "react-native-maps";
 import { useTheme } from "../lib/ThemeContext";
 
 interface Props {
@@ -11,6 +16,33 @@ interface Props {
   stage: "offer" | "to_pickup" | "to_dropoff";
   bottomPadding?: number;
   style?: any;
+}
+
+// Calculate a bounding region that encompasses all coords
+function getBoundingRegion(
+  coords: { latitude: number; longitude: number }[]
+): Region {
+  if (coords.length === 0) {
+    return {
+      latitude: 51.5,
+      longitude: -0.1,
+      latitudeDelta: 0.1,
+      longitudeDelta: 0.1,
+    };
+  }
+  const lats = coords.map((c) => c.latitude);
+  const lngs = coords.map((c) => c.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const padding = 1.5;
+  return {
+    latitude: (minLat + maxLat) / 2,
+    longitude: (minLng + maxLng) / 2,
+    latitudeDelta: Math.max(0.02, (maxLat - minLat) * padding),
+    longitudeDelta: Math.max(0.02, (maxLng - minLng) * padding),
+  };
 }
 
 export default function TripMap({
@@ -76,7 +108,6 @@ export default function TripMap({
   useEffect(() => {
     const coords = getCoords();
     if (coords.length === 0) return;
-    // Always update pending — tryFit will fire when both conditions are met
     pendingFitRef.current = coords;
     tryFit();
   }, [
@@ -87,6 +118,17 @@ export default function TripMap({
     stage,
     routeCoords?.length,
   ]);
+
+  // Calculate initialRegion from all known coords so the map
+  // starts in the right place even before fitToCoordinates fires
+  const initialCoords =
+    routeCoords && routeCoords.length > 1
+      ? routeCoords
+      : [
+          pickup,
+          ...(dropoff ? [dropoff] : []),
+          ...(driverLocation ? [driverLocation] : []),
+        ];
 
   const darkMapStyle = [
     { elementType: "geometry", stylers: [{ color: "#0f1623" }] },
@@ -128,12 +170,7 @@ export default function TripMap({
       showsMyLocationButton={false}
       showsTraffic={false}
       showsBuildings={false}
-      initialRegion={{
-        latitude: pickup.latitude,
-        longitude: pickup.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }}
+      initialRegion={getBoundingRegion(initialCoords)}
     >
       {/* Driver marker */}
       {driverLocation && (
@@ -176,7 +213,7 @@ export default function TripMap({
         />
       )}
 
-      {/* Straight line if no route coords (offer stage) */}
+      {/* Straight line fallback if no route coords */}
       {!routeCoords && dropoff && stage === "offer" && (
         <Polyline
           coordinates={[pickup, dropoff]}
