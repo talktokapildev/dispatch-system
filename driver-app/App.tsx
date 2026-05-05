@@ -63,23 +63,22 @@ function AppNavigator() {
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
-    // Wait for store to hydrate from AsyncStorage before booting
     if (!_hasHydrated) return;
 
     const boot = async () => {
       if (token) {
         try {
           const { data } = await api.get("/auth/me");
-          setAuth(token, data.data.user, data.data.driver);
+          setAuth(token, data.data, data.data.driver);
           initSocket(token);
-        } catch {
+        } catch (e) {
           logout();
         }
       }
       setBooting(false);
     };
     boot();
-  }, [_hasHydrated]); // ← depends on hydration, not just mount
+  }, [_hasHydrated]);
 
   // Keep showing spinner until hydrated AND booted
   if (!_hasHydrated || booting) {
