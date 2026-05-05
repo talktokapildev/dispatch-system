@@ -54,6 +54,11 @@ const socketPlugin: FastifyPluginAsync = fp(async (fastify) => {
       });
       if (driver) {
         socket.data.driverId = driver.id;
+
+        // ← ADD THIS: re-add to Redis on every connect (covers reconnects)
+        if (driver.status === "AVAILABLE" || driver.status === "ON_JOB") {
+          await fastify.redis.sadd(RedisKeys.onlineDrivers(), driver.id);
+        }
         // Join active booking room if any
         const activeBookingId = await fastify.redis.get(
           RedisKeys.activeBooking(driver.id)
@@ -114,7 +119,7 @@ const socketPlugin: FastifyPluginAsync = fp(async (fastify) => {
               status: "OFFLINE",
             });
           }
-        }, 30_000);
+        }, 5 * 60 * 1000);
       }
     });
 

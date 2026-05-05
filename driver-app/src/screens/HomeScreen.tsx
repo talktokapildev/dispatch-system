@@ -19,6 +19,7 @@ import { useLocationTracking } from "../hooks/useLocationTracking";
 import { BackgroundLocationDisclosure } from "../components/BackgroundLocationDisclosure";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
+import { AppState, AppStateStatus } from "react-native";
 
 const DISCLOSURE_ACCEPTED_KEY = "bg_location_disclosure_accepted";
 
@@ -204,7 +205,14 @@ export default function HomeScreen({ navigation }: any) {
 
     sendHeartbeat();
     const interval = setInterval(sendHeartbeat, 2 * 60 * 1000);
-    return () => clearInterval(interval);
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === "active") sendHeartbeat();
+    };
+    const appStateSub = AppState.addEventListener("change", handleAppState);
+    return () => {
+      clearInterval(interval);
+      appStateSub.remove();
+    };
   }, [isOnline]);
 
   return (
