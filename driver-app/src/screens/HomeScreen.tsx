@@ -20,6 +20,7 @@ import { BackgroundLocationDisclosure } from "../components/BackgroundLocationDi
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { AppState, AppStateStatus } from "react-native";
+import { StatusBar } from "expo-status-bar";
 
 const DISCLOSURE_ACCEPTED_KEY = "bg_location_disclosure_accepted";
 
@@ -221,6 +222,7 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={s.container}>
+      <StatusBar style="auto" />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>

@@ -18,6 +18,7 @@ import { decodePolyline, toMiles } from "../lib/mapUtils";
 import TripMap from "../components/TripMap";
 import AddressCard from "../components/AddressCard";
 import { getSocket } from "../lib/socket";
+import { StatusBar } from "expo-status-bar";
 
 const TIMEOUT_SECONDS = 60;
 
@@ -211,6 +212,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
 
   return (
     <View style={s.container}>
+      <StatusBar style="light" />
       {/* Full screen map */}
       <View style={StyleSheet.absoluteFill}>
         <TripMap
