@@ -22,6 +22,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeType>("light");
 
   useEffect(() => {
+    Appearance.setColorScheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
     AsyncStorage.getItem("driver-theme").then((saved) => {
       if (saved === "light" || saved === "dark") {
         setTheme(saved);
