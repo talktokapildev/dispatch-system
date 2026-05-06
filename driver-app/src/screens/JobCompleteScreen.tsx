@@ -1,21 +1,32 @@
 // ─── JobCompleteScreen.tsx ─────────────────────────────────────────────────
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import { api } from "../lib/api";
+import { getSocket } from "../lib/socket";
 
 export default function JobCompleteScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { booking } = route.params;
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Card payment state — only relevant for CASH bookings
+  const [cardPaymentState, setCardPaymentState] = useState<
+    "idle" | "waiting" | "confirmed"
+  >("idle");
+
+  const isCash = (booking?.paymentMethod ?? "CASH") === "CASH";
 
   useEffect(() => {
     Animated.parallel([
@@ -31,6 +42,38 @@ export default function JobCompleteScreen({ route, navigation }: any) {
       }),
     ]).start();
   }, []);
+
+  // Listen for passenger completing card payment
+  useEffect(() => {
+    if (!isCash) return;
+
+    const s = getSocket();
+    if (!s) return;
+
+    const handleConfirmed = (data: any) => {
+      if (data.bookingId !== booking?.id) return;
+      setCardPaymentState("confirmed");
+    };
+
+    s.on("booking:card_payment_confirmed", handleConfirmed);
+    return () => {
+      s.off("booking:card_payment_confirmed", handleConfirmed);
+    };
+  }, [booking?.id, isCash]);
+
+  const handleRequestCardPayment = async () => {
+    setCardPaymentState("waiting");
+    try {
+      await api.post(`/drivers/bookings/${booking.id}/request-card-payment`);
+      // Success means socket was sent to passenger — now wait for confirmation
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        err.response?.data?.error ?? "Could not request card payment"
+      );
+      setCardPaymentState("idle");
+    }
+  };
 
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const driverEarning = fare * 0.85;
@@ -49,8 +92,12 @@ export default function JobCompleteScreen({ route, navigation }: any) {
         </Animated.View>
         <Text style={s.title}>Trip Complete!</Text>
         <Text style={s.subtitle}>
-          Great job. Your payment is being processed.
+          {isCash
+            ? "Collect cash from passenger or request card payment."
+            : "Your payment is being processed."}
         </Text>
+
+        {/* Earnings breakdown */}
         <View style={s.card}>
           <View style={s.row}>
             <Text style={s.rowLabel}>Trip Fare</Text>
@@ -67,10 +114,46 @@ export default function JobCompleteScreen({ route, navigation }: any) {
             <Text style={s.totalValue}>£{driverEarning.toFixed(2)}</Text>
           </View>
         </View>
+
+        {/* Reference */}
         <View style={s.refCard}>
           <Text style={s.refLabel}>Reference</Text>
           <Text style={s.refValue}>{booking?.reference}</Text>
         </View>
+
+        {/* Card payment section — CASH bookings only */}
+        {isCash && (
+          <>
+            {cardPaymentState === "idle" && (
+              <TouchableOpacity
+                style={s.cardPayBtn}
+                onPress={handleRequestCardPayment}
+              >
+                <Text style={s.cardPayBtnText}>
+                  💳 Passenger paying by card
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {cardPaymentState === "waiting" && (
+              <View style={s.cardPayWaiting}>
+                <ActivityIndicator color={Colors.brand} size="small" />
+                <Text style={s.cardPayWaitingText}>
+                  Waiting for passenger to pay...
+                </Text>
+              </View>
+            )}
+
+            {cardPaymentState === "confirmed" && (
+              <View style={s.cardPayConfirmed}>
+                <Text style={s.cardPayConfirmedText}>
+                  ✅ Card payment confirmed
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
         <TouchableOpacity
           style={s.doneBtn}
           onPress={() =>
@@ -153,7 +236,7 @@ const styles = (
       borderWidth: 1,
       borderColor: C.brand + "30",
       padding: Spacing.md,
-      marginBottom: Spacing.xl,
+      marginBottom: Spacing.lg,
     },
     refLabel: { fontSize: FontSize.sm, color: C.muted },
     refValue: {
@@ -161,6 +244,56 @@ const styles = (
       color: C.brand,
       fontWeight: "700",
       fontFamily: "monospace",
+    },
+    cardPayBtn: {
+      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.brand + "40",
+      backgroundColor: C.brand + "08",
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    cardPayBtnText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "600",
+    },
+    cardPayWaiting: {
+      width: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: Spacing.sm,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.brand + "40",
+      backgroundColor: C.brand + "08",
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    cardPayWaitingText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "600",
+    },
+    cardPayConfirmed: {
+      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.success + "40",
+      backgroundColor: C.success + "08",
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    cardPayConfirmedText: {
+      fontSize: FontSize.sm,
+      color: C.success,
+      fontWeight: "700",
     },
     doneBtn: {
       width: "100%",

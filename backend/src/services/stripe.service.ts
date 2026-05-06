@@ -56,7 +56,8 @@ export class StripeService {
   async createPaymentIntent(
     amountPence: number,
     currency: string = "gbp",
-    metadata: Record<string, string> = {}
+    metadata: Record<string, string> = {},
+    captureMethod: "manual" | "automatic" = "manual"
   ): Promise<{
     clientSecret: string;
     paymentIntentId: string;
@@ -65,7 +66,7 @@ export class StripeService {
     const intent = await this.stripe.paymentIntents.create({
       amount: amountPence,
       currency,
-      capture_method: "manual",
+      capture_method: captureMethod,
       automatic_payment_methods: { enabled: true },
       metadata: { ...metadata, stripeMode: this.mode },
     });

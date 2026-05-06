@@ -885,4 +885,114 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, data: report ?? null });
     }
   );
+
+  // ─── POST /passengers/bookings/:id/pay-by-card ─────────────────────────────
+  // Passenger chooses to pay by card after a cash trip completes.
+  // Creates a Stripe PaymentIntent with automatic capture (immediate charge).
+  fastify.post(
+    "/passengers/bookings/:id/pay-by-card",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const { id } = request.params as { id: string };
+
+      const passenger = await getPassenger(userId);
+      if (!passenger)
+        return reply.status(403).send({ success: false, error: "Not found" });
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id },
+        include: { passenger: { include: { user: true } } },
+      });
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+      if (booking.passengerId !== passenger.id)
+        return reply
+          .status(403)
+          .send({ success: false, error: "Access denied" });
+      if (booking.status !== "COMPLETED")
+        return reply
+          .status(400)
+          .send({ success: false, error: "Booking not completed" });
+      if (booking.paymentMethod !== "CASH")
+        return reply
+          .status(400)
+          .send({
+            success: false,
+            error: "Only cash bookings can switch to card",
+          });
+
+      const fare = booking.actualFare ?? booking.estimatedFare;
+
+      const { StripeService } = await import("../services/stripe.service");
+      const stripeService = new StripeService(booking.passenger!.user.phone);
+      const { clientSecret, paymentIntentId } =
+        await stripeService.createPaymentIntent(
+          StripeService.toPence(fare),
+          "gbp",
+          {
+            bookingId: id,
+            reference: booking.reference,
+            type: "post_trip_card",
+          },
+          "automatic" // immediate capture — trip is already complete
+        );
+
+      // Store new paymentIntentId on booking
+      await fastify.prisma.booking.update({
+        where: { id },
+        data: { stripePaymentIntentId: paymentIntentId },
+      });
+
+      return reply.send({ success: true, data: { clientSecret, fare } });
+    }
+  );
+
+  // ─── PATCH /passengers/bookings/:id/mark-card-paid ─────────────────────────
+  // Called by the passenger app after Stripe confirms the payment client-side.
+  // Updates booking paymentMethod to CARD and notifies the driver.
+  fastify.patch(
+    "/passengers/bookings/:id/mark-card-paid",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const { id } = request.params as { id: string };
+
+      const passenger = await getPassenger(userId);
+      if (!passenger)
+        return reply.status(403).send({ success: false, error: "Not found" });
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id },
+        include: { driver: { select: { userId: true } } },
+      });
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+      if (booking.passengerId !== passenger.id)
+        return reply
+          .status(403)
+          .send({ success: false, error: "Access denied" });
+
+      await fastify.prisma.booking.update({
+        where: { id },
+        data: { paymentMethod: "CARD" },
+      });
+
+      // Notify driver so they know cash is no longer expected
+      if (booking.driver) {
+        fastify.io
+          .to(`driver:${booking.driver.userId}`)
+          .emit("booking:card_payment_confirmed", {
+            bookingId: id,
+            reference: booking.reference,
+          });
+      }
+
+      return reply.send({ success: true });
+    }
+  );
 }

@@ -19,6 +19,9 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 
+import { useStripe } from "@stripe/stripe-react-native";
+import { getSocket } from "../lib/socket";
+
 const OPERATOR_BANK = {
   name: "Kapil Dev",
   sortCode: "11-02-16",
@@ -57,6 +60,11 @@ export default function RideCompleteScreen({ route, navigation }: any) {
   const [lostSubmitting, setLostSubmitting] = useState(false);
   const [lostSubmitted, setLostSubmitted] = useState(false);
 
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [cardPaymentState, setCardPaymentState] = useState<
+    "idle" | "loading" | "success"
+  >("idle");
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -74,6 +82,23 @@ export default function RideCompleteScreen({ route, navigation }: any) {
       }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    const s = getSocket();
+    if (!s) return;
+
+    const handleCardRequested = async (data: any) => {
+      if (data.bookingId !== booking.id) return;
+      // Driver triggered card payment — auto-show Stripe sheet on passenger's phone
+      setCardPaymentState("loading");
+      await processCardPayment(data.clientSecret);
+    };
+
+    s.on("booking:card_payment_requested", handleCardRequested);
+    return () => {
+      s.off("booking:card_payment_requested", handleCardRequested);
+    };
+  }, [booking.id]);
 
   const submitRating = async (stars: number) => {
     setRating(stars);
@@ -163,6 +188,64 @@ export default function RideCompleteScreen({ route, navigation }: any) {
     }
   };
 
+  // Shared card payment processor — used by both passenger-triggered and
+  // driver-triggered flows
+  const processCardPayment = async (clientSecret: string) => {
+    const { error: initError } = await initPaymentSheet({
+      paymentIntentClientSecret: clientSecret,
+      merchantDisplayName: "OrangeRide",
+      style: "automatic", // respects passenger app light/dark theme
+      googlePay: {
+        merchantCountryCode: "GB",
+        testEnv: false,
+        currencyCode: "gbp",
+      },
+      applePay: { merchantCountryCode: "GB" },
+      defaultBillingDetails: { address: { country: "GB" } },
+    });
+
+    if (initError) {
+      Alert.alert("Payment setup failed", initError.message);
+      setCardPaymentState("idle");
+      return;
+    }
+
+    const { error: presentError } = await presentPaymentSheet();
+
+    if (presentError) {
+      if (presentError.code !== "Canceled") {
+        Alert.alert("Payment failed", presentError.message);
+      }
+      setCardPaymentState("idle");
+      return;
+    }
+
+    // Payment confirmed by Stripe — notify backend to update booking + alert driver
+    try {
+      await api.patch(`/passengers/bookings/${booking.id}/mark-card-paid`);
+    } catch {
+      // Payment went through — just update locally if backend call fails
+    }
+    setCardPaymentState("success");
+  };
+
+  // Passenger taps "Pay by card instead"
+  const handlePayByCard = async () => {
+    setCardPaymentState("loading");
+    try {
+      const { data } = await api.post(
+        `/passengers/bookings/${booking.id}/pay-by-card`
+      );
+      await processCardPayment(data.data.clientSecret);
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        err.response?.data?.error ?? "Could not set up card payment"
+      );
+      setCardPaymentState("idle");
+    }
+  };
+
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const paymentMethod = booking?.paymentMethod ?? "CASH";
   const s = styles(Colors);
@@ -206,7 +289,46 @@ export default function RideCompleteScreen({ route, navigation }: any) {
         </TouchableOpacity>
 
         {/* Payment instructions */}
-        {paymentMethod === "CASH" && (
+        {paymentMethod === "CASH" && cardPaymentState !== "success" && (
+          <>
+            <View
+              style={[
+                s.paymentCard,
+                {
+                  borderColor: Colors.success + "40",
+                  backgroundColor: Colors.success + "08",
+                },
+              ]}
+            >
+              <Text style={s.paymentIcon}>💵</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.paymentTitle, { color: Colors.success }]}>
+                  Pay by Cash
+                </Text>
+                <Text style={s.paymentText}>
+                  Please pay £{fare.toFixed(2)} to your driver.
+                </Text>
+              </View>
+            </View>
+
+            {cardPaymentState === "idle" && (
+              <TouchableOpacity style={s.cardPayBtn} onPress={handlePayByCard}>
+                <Text style={s.cardPayBtnText}>💳 Pay by card instead</Text>
+              </TouchableOpacity>
+            )}
+
+            {cardPaymentState === "loading" && (
+              <View style={s.cardPayBtn}>
+                <ActivityIndicator color={Colors.brand} size="small" />
+                <Text style={[s.cardPayBtnText, { marginLeft: 8 }]}>
+                  Setting up payment...
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
+        {paymentMethod === "CASH" && cardPaymentState === "success" && (
           <View
             style={[
               s.paymentCard,
@@ -216,13 +338,13 @@ export default function RideCompleteScreen({ route, navigation }: any) {
               },
             ]}
           >
-            <Text style={s.paymentIcon}>💵</Text>
+            <Text style={s.paymentIcon}>✅</Text>
             <View style={{ flex: 1 }}>
               <Text style={[s.paymentTitle, { color: Colors.success }]}>
-                Pay by Cash
+                Paid by Card
               </Text>
               <Text style={s.paymentText}>
-                Please pay £{fare.toFixed(2)} to your driver.
+                £{fare.toFixed(2)} has been charged to your card. Thank you!
               </Text>
             </View>
           </View>
@@ -800,4 +922,21 @@ const styles = (
       marginBottom: Spacing.xl,
     },
     submitBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
+    cardPayBtn: {
+      width: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.brand + "40",
+      backgroundColor: C.brand + "08",
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+    },
+    cardPayBtnText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "600",
+    },
   });
