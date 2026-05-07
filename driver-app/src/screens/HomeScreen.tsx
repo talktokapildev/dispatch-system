@@ -9,20 +9,17 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { api, useAuthStore } from "../lib/api";
 import { useSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
-import { BackgroundLocationDisclosure } from "../components/BackgroundLocationDisclosure";
+
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { AppState, AppStateStatus } from "react-native";
 import { StatusBar } from "expo-status-bar";
-
-const DISCLOSURE_ACCEPTED_KEY = "bg_location_disclosure_accepted";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -31,7 +28,6 @@ export default function HomeScreen({ navigation }: any) {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [showDisclosure, setShowDisclosure] = useState(false);
 
   const isOnline = status !== "OFFLINE";
   const { getInitialLocation, locationRef } = useLocationTracking(
@@ -105,33 +101,10 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  // Check if driver has already accepted the disclosure
-  const hasAcceptedDisclosure = async (): Promise<boolean> => {
-    try {
-      const val = await AsyncStorage.getItem(DISCLOSURE_ACCEPTED_KEY);
-      return val === "true";
-    } catch {
-      return false;
-    }
-  };
-
-  const acceptDisclosure = async () => {
-    try {
-      await AsyncStorage.setItem(DISCLOSURE_ACCEPTED_KEY, "true");
-    } catch {}
-    setShowDisclosure(false);
-    await proceedGoOnline();
-  };
-
-  const declineDisclosure = () => {
-    setShowDisclosure(false);
-  };
-
   const toggleOnline = async () => {
     const newStatus = status === "OFFLINE" ? "AVAILABLE" : "OFFLINE";
 
     if (newStatus === "OFFLINE") {
-      // Going offline — no disclosure needed, just proceed
       setLoading(true);
       try {
         await api.patch("/drivers/status", { status: newStatus });
@@ -153,14 +126,8 @@ export default function HomeScreen({ navigation }: any) {
       return;
     }
 
-    // Going online — check if disclosure already accepted
-    const alreadyAccepted = await hasAcceptedDisclosure();
-    if (alreadyAccepted) {
-      await proceedGoOnline();
-    } else {
-      // Show prominent disclosure before requesting background location
-      setShowDisclosure(true);
-    }
+    // Going online — disclosure already accepted (enforced by LocationDisclosureScreen)
+    await proceedGoOnline();
   };
 
   const proceedGoOnline = async () => {
@@ -341,13 +308,6 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         )}
       </ScrollView>
-
-      {/* Background location disclosure modal */}
-      <BackgroundLocationDisclosure
-        visible={showDisclosure}
-        onAccept={acceptDisclosure}
-        onDecline={declineDisclosure}
-      />
     </SafeAreaView>
   );
 }

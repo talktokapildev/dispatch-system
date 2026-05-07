@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Text, View, ActivityIndicator } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useAuthStore, api } from "./src/lib/api";
 import { initSocket } from "./src/lib/socket";
@@ -18,6 +19,9 @@ import ActiveJobScreen from "./src/screens/ActiveJobScreen";
 import JobCompleteScreen from "./src/screens/JobCompleteScreen";
 import DocumentsScreen from "./src/screens/DocumentsScreen";
 import JobHistoryScreen from "./src/screens/JobHistoryScreen";
+import LocationDisclosureScreen, {
+  DISCLOSURE_ACCEPTED_KEY,
+} from "./src/screens/LocationDisclosureScreen";
 import { usePushNotifications } from "./src/hooks/usePushNotification";
 
 const Stack = createNativeStackNavigator();
@@ -62,26 +66,43 @@ function AppNavigator() {
   const { Colors } = useTheme();
   const [booting, setBooting] = useState(true);
 
+  // Tracks whether the driver has accepted the background location disclosure.
+  // null = not yet loaded from AsyncStorage (still booting)
+  // true = accepted, go straight to Main
+  // false = not accepted, show LocationDisclosureScreen first
+  const [disclosureAccepted, setDisclosureAccepted] = useState<boolean | null>(
+    null
+  );
+
   useEffect(() => {
     if (!_hasHydrated) return;
 
     const boot = async () => {
-      if (token) {
-        try {
-          const { data } = await api.get("/auth/me");
-          setAuth(token, data.data, data.data.driver);
-          initSocket(token);
-        } catch (e) {
-          logout();
-        }
-      }
+      // Load disclosure acceptance alongside auth check
+      const [, disclosureVal] = await Promise.all([
+        (async () => {
+          if (token) {
+            try {
+              const { data } = await api.get("/auth/me");
+              setAuth(token, data.data, data.data.driver);
+              initSocket(token);
+            } catch (e) {
+              logout();
+            }
+          }
+        })(),
+        AsyncStorage.getItem(DISCLOSURE_ACCEPTED_KEY),
+      ]);
+
+      setDisclosureAccepted(disclosureVal === "true");
       setBooting(false);
     };
+
     boot();
   }, [_hasHydrated]);
 
-  // Keep showing spinner until hydrated AND booted
-  if (!_hasHydrated || booting) {
+  // Keep showing spinner until hydrated AND booted (including disclosure check)
+  if (!_hasHydrated || booting || disclosureAccepted === null) {
     return (
       <View
         style={{
@@ -101,8 +122,18 @@ function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
+          // Not logged in — show login
           <Stack.Screen name="Login" component={LoginScreen} />
+        ) : !disclosureAccepted ? (
+          // Logged in but disclosure not yet accepted — show full-screen disclosure.
+          // This is the Google Play-compliant prominent disclosure: a dedicated
+          // full-screen screen in the normal app flow, shown before HomeScreen.
+          <Stack.Screen
+            name="LocationDisclosure"
+            component={LocationDisclosureScreen}
+          />
         ) : (
+          // Fully onboarded — show the main app
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen
