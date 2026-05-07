@@ -40,6 +40,7 @@ export default function HomeScreen({ navigation }: any) {
     AVAILABLE: Colors.success,
     ON_JOB: Colors.brand,
     BREAK: "#f97316",
+    GOING_ONLINE: Colors.brand,
   };
 
   useSocket({
@@ -132,11 +133,9 @@ export default function HomeScreen({ navigation }: any) {
 
   const proceedGoOnline = async () => {
     setLoading(true);
+    setStatus("GOING_ONLINE");
     try {
       const coords = await getInitialLocation();
-
-      // Update location directly — heartbeat requires AVAILABLE status
-      // but we're still OFFLINE at this point. Use the location endpoint instead.
       if (coords) {
         await api.post("/drivers/location", {
           latitude: coords.latitude,
@@ -150,6 +149,7 @@ export default function HomeScreen({ navigation }: any) {
       await api.patch("/drivers/status", { status: "AVAILABLE" });
       setStatus("AVAILABLE");
     } catch (err: any) {
+      setStatus("OFFLINE");
       Alert.alert(
         "Error",
         err.response?.data?.error ?? "Failed to update status"
@@ -237,7 +237,9 @@ export default function HomeScreen({ navigation }: any) {
                   ]}
                 />
                 <Text style={[s.statusText, { color: STATUS_COLORS[status] }]}>
-                  {status.replace("_", " ")}
+                  {status === "GOING_ONLINE"
+                    ? "Going online..."
+                    : status.replace("_", " ")}
                 </Text>
               </View>
             </View>
@@ -249,7 +251,7 @@ export default function HomeScreen({ navigation }: any) {
               thumbColor={isOnline ? Colors.brand : Colors.muted}
             />
           </View>
-          {isOnline && status !== "ON_JOB" && (
+          {isOnline && status !== "ON_JOB" && status !== "GOING_ONLINE" && (
             <TouchableOpacity
               style={[s.breakBtn, status === "BREAK" && s.breakBtnActive]}
               onPress={setBreak}
