@@ -117,7 +117,12 @@ export function useLocationTracking(
         });
       }
     ).then((sub) => {
-      watchRef.current = sub;
+      if (!active) {
+        // Cleanup already ran before promise resolved — remove immediately
+        sub.remove();
+      } else {
+        watchRef.current = sub;
+      }
     });
 
     return () => {
