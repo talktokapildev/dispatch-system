@@ -133,6 +133,20 @@ export default function HomeScreen({ navigation }: any) {
   const proceedGoOnline = async () => {
     setLoading(true);
     try {
+      const coords = await getInitialLocation();
+
+      // Update location directly — heartbeat requires AVAILABLE status
+      // but we're still OFFLINE at this point. Use the location endpoint instead.
+      if (coords) {
+        await api.post("/drivers/location", {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          bearing: 0,
+          speed: 0,
+        });
+      }
+
+      // Now patch status — re-dispatch will find our location in DB
       await api.patch("/drivers/status", { status: "AVAILABLE" });
       setStatus("AVAILABLE");
     } catch (err: any) {
