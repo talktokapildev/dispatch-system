@@ -15,7 +15,7 @@ import { useTheme } from "../lib/ThemeContext";
 
 export const DISCLOSURE_ACCEPTED_KEY = "bg_location_disclosure_accepted";
 
-export default function LocationDisclosureScreen({ navigation }: any) {
+export default function LocationDisclosureScreen({ navigation, route }: any) {
   const { Colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -31,8 +31,7 @@ export default function LocationDisclosureScreen({ navigation }: any) {
     try {
       await AsyncStorage.setItem(DISCLOSURE_ACCEPTED_KEY, "true");
     } catch {}
-    // Navigate to Main — replaces this screen so driver can't go back to it
-    navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+    route.params?.onAccepted?.();
   };
 
   const handleDecline = () => {

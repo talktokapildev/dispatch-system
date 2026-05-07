@@ -131,6 +131,7 @@ function AppNavigator() {
           <Stack.Screen
             name="LocationDisclosure"
             component={LocationDisclosureScreen}
+            initialParams={{ onAccepted: () => setDisclosureAccepted(true) }}
           />
         ) : (
           // Fully onboarded — show the main app
