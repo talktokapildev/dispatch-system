@@ -17,6 +17,8 @@ export function usePushNotifications() {
       return;
     }
 
+    let sub: any;
+
     // Only import and configure expo-notifications in real builds
     setupNotifications();
 
@@ -34,7 +36,7 @@ export function usePushNotifications() {
       });
 
       // Handle tap on notification when app is backgrounded
-      const sub = Notifications.addNotificationResponseReceivedListener(
+      sub = Notifications.addNotificationResponseReceivedListener(
         (response) => {
           const data = response.notification.request.content.data;
           console.log("[Push] Notification tapped:", data);
@@ -42,9 +44,9 @@ export function usePushNotifications() {
       );
 
       await registerToken(Notifications);
-
-      return () => sub.remove();
     }
+
+    return () => sub?.remove();
   }, []);
 
   const registerToken = async (Notifications: any) => {
@@ -73,7 +75,9 @@ export function usePushNotifications() {
     }
 
     try {
-      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: Constants.expoConfig?.extra?.eas?.projectId,
+      });
       const token = tokenData.data;
       tokenRef.current = token;
       await api.post("/notifications/token", { token, platform: Platform.OS });
