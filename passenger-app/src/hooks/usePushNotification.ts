@@ -3,19 +3,16 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { api } from "../lib/api";
 
-// Push notifications require a dev/production build — not supported in Expo Go since SDK 53
-const IS_EXPO_GO = Constants.executionEnvironment === "storeClient";
-
 export function usePushNotifications() {
   const tokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (IS_EXPO_GO) {
-      console.log(
-        "[Push] Skipping — requires a dev/production build, not Expo Go"
-      );
-      return;
-    }
+    // if (IS_EXPO_GO) {
+    //   console.log(
+    //     "[Push] Skipping — requires a dev/production build, not Expo Go"
+    //   );
+    //   return;
+    // }
 
     let sub: any;
 
