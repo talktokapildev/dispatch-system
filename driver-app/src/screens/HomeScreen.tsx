@@ -44,8 +44,25 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   useSocket({
-    "driver:job_offer": (data) =>
-      navigation.navigate("JobOffer", { offer: data }),
+    "driver:job_offer": async (data) => {
+      // Show local notification only when app is backgrounded or screen locked
+      try {
+        if (AppState.currentState !== "active") {
+          const Notifications = await import("expo-notifications");
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "🚖 New job offer",
+              body: `Pickup: ${
+                data.pickupAddress?.split(",")[0]
+              } · £${data.estimatedFare?.toFixed(2)}`,
+              sound: true,
+            },
+            trigger: null,
+          });
+        }
+      } catch {}
+      navigation.navigate("JobOffer", { offer: data });
+    },
     "driver:job_assigned": (data) => {
       navigation.navigate("ActiveJob", { bookingId: data.bookingId });
     },
