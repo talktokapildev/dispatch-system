@@ -66,6 +66,21 @@ export default function HomeScreen({ navigation }: any) {
     "driver:job_assigned": (data) => {
       navigation.navigate("ActiveJob", { bookingId: data.bookingId });
     },
+    "booking:cancelled": async (data) => {
+      try {
+        if (AppState.currentState !== "active") {
+          const Notifications = await import("expo-notifications");
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "❌ Booking cancelled",
+              body: "The passenger has cancelled this booking.",
+              sound: true,
+            },
+            trigger: null,
+          });
+        }
+      } catch {}
+    },
   });
 
   useEffect(() => {
