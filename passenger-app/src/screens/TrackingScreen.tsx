@@ -9,6 +9,7 @@ import {
   ScrollView,
   Animated,
   Dimensions,
+  AppState,
 } from "react-native";
 import { api, useAuthStore } from "../lib/api";
 import { getSocket, initSocket } from "../lib/socket";
@@ -74,8 +75,37 @@ export default function TrackingScreen({ route, navigation }: any) {
     socket.emit("join:booking", { bookingId });
 
     // booking:status_update — emitted by dispatch.service on every status change
-    const onStatusUpdate = (data: any) => {
+    const onStatusUpdate = async (data: any) => {
       if (data.bookingId !== bookingId) return;
+
+      // Show local notification when app is backgrounded or screen locked
+      const notifMap: Record<string, { title: string; body: string }> = {
+        DRIVER_ASSIGNED: {
+          title: "🚖 Driver assigned",
+          body: "Your driver is on the way!",
+        },
+        DRIVER_EN_ROUTE: {
+          title: "🚗 Driver on the way",
+          body: "Your driver is heading to you",
+        },
+        DRIVER_ARRIVED: {
+          title: "📍 Driver has arrived!",
+          body: "Your driver is waiting for you",
+        },
+      };
+      if (AppState.currentState !== "active" && notifMap[data.status]) {
+        try {
+          const Notifications = await import("expo-notifications");
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: notifMap[data.status].title,
+              body: notifMap[data.status].body,
+              sound: true,
+            },
+            trigger: null,
+          });
+        } catch {}
+      }
       setBooking((prev: any) =>
         prev ? { ...prev, status: data.status } : prev
       );
@@ -286,7 +316,7 @@ export default function TrackingScreen({ route, navigation }: any) {
     <View style={s.container}>
       {/* Full-screen map */}
       <TripMap
-        style={StyleSheet.absoluteFill}
+        style={StyleSheet.absoluteFill as any}
         driverLocation={driverLocation ?? undefined}
         pickup={{
           latitude: booking?.pickupLatitude,
