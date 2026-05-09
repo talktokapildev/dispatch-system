@@ -28,6 +28,7 @@ export function usePushNotifications() {
       // Configure foreground behaviour
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
+          shouldShowAlert: true,
           shouldShowBanner: true,
           shouldShowList: true,
           shouldPlaySound: true,
