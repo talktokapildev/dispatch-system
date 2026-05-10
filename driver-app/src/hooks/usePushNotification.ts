@@ -1,28 +1,24 @@
 import { useEffect, useRef } from "react";
-import { Platform } from "react-native";
+import { Platform, Alert } from "react-native"; // ← Alert imported statically
 import Constants from "expo-constants";
-import { api } from "../lib/api";
+import { api, useAuthStore } from "../lib/api"; // ← import useAuthStore
 
 export function usePushNotifications() {
   const tokenRef = useRef<string | null>(null);
+  const { token: authToken } = useAuthStore(); // ← get auth token from store
 
   useEffect(() => {
-    // if (IS_EXPO_GO) {
-    //   console.log(
-    //     "[Push] Skipping — requires a dev/production build, not Expo Go"
-    //   );
-    //   return;
-    // }
+    // Don't attempt token registration until user is authenticated.
+    // Without an auth token, POST /notifications/token returns 401 silently.
+    if (!authToken) return;
 
     let sub: any;
 
-    // Only import and configure expo-notifications in real builds
     setupNotifications();
 
     async function setupNotifications() {
       const Notifications = await import("expo-notifications");
 
-      // Configure foreground behaviour
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowAlert: true,
@@ -33,7 +29,6 @@ export function usePushNotifications() {
         }),
       });
 
-      // Handle tap on notification when app is backgrounded
       sub = Notifications.addNotificationResponseReceivedListener(
         (response) => {
           const data = response.notification.request.content.data;
@@ -43,8 +38,9 @@ export function usePushNotifications() {
 
       await registerToken(Notifications);
     }
+
     return () => sub?.remove();
-  }, []);
+  }, [authToken]); // ← re-run when auth token changes (login/logout)
 
   const registerToken = async (Notifications: any) => {
     const { status: existingStatus } =
@@ -79,7 +75,7 @@ export function usePushNotifications() {
       tokenRef.current = token;
       await api.post("/notifications/token", { token, platform: Platform.OS });
       console.log("[Push] Token registered:", token.slice(0, 30) + "…");
-    } catch (err) {
+    } catch (err: any) {
       console.log("[Push] Could not get push token:", err);
     }
   };

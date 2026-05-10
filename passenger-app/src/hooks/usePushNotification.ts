@@ -76,7 +76,6 @@ export function usePushNotifications() {
       await api.post("/notifications/token", { token, platform: Platform.OS });
       console.log("[Push] Token registered:", token.slice(0, 30) + "…");
     } catch (err: any) {
-      Alert.alert("Push Token Error", err?.message ?? JSON.stringify(err));
       console.log("[Push] Could not get push token:", err);
     }
   };
