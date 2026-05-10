@@ -137,12 +137,23 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
 
         if (existingUser) {
           // Existing user (e.g. passenger) — add DRIVER role if not already present
-          if (!existingUser.roles.includes("DRIVER")) {
-            await tx.user.update({
-              where: { id: existingUser.id },
-              data: { roles: { push: "DRIVER" } },
-            });
-          }
+          // if (!existingUser.roles.includes("DRIVER")) {
+          //   await tx.user.update({
+          //     where: { id: existingUser.id },
+          //     data: { roles: { push: "DRIVER" } },
+          //   });
+          // }
+          const [firstName, ...rest] = application.name.split(" ");
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              roles: existingUser.roles.includes("DRIVER")
+                ? existingUser.roles
+                : { push: "DRIVER" },
+              firstName: firstName ?? existingUser.firstName,
+              lastName: rest.join(" ") || existingUser.lastName,
+            },
+          });
           userId = existingUser.id;
         } else {
           // Brand new user
