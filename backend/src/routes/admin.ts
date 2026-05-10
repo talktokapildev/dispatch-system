@@ -280,7 +280,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             lastName:
               portalLastName ??
               (body.contactName.split(" ").slice(1).join(" ") || "User"),
-            role: "CORPORATE_ADMIN",
+            roles: ["CORPORATE_ADMIN"],
             isVerified: true,
             passwordHash: hash,
             passenger: { create: { corporateAccountId: account.id } },
@@ -290,7 +290,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             email: true,
             firstName: true,
             lastName: true,
-            role: true,
+            roles: true,
           },
         });
       }
@@ -351,7 +351,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           email: portalEmail,
           firstName: portalFirstName,
           lastName: portalLastName,
-          role: "CORPORATE_ADMIN",
+          roles: ["CORPORATE_ADMIN"],
           isVerified: true,
           passwordHash: hash,
           passenger: { create: { corporateAccountId: id } },
@@ -361,7 +361,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           email: true,
           firstName: true,
           lastName: true,
-          role: true,
+          roles: true,
         },
       });
       return reply.status(201).send({ success: true, data: user });
@@ -661,7 +661,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     async (_request, reply) => {
       const staff = await fastify.prisma.user.findMany({
         where: {
-          role: { in: ["ADMIN", "DISPATCHER"] },
+          roles: { hasSome: ["ADMIN", "DISPATCHER"] },
           isActive: true,
         },
         include: {
@@ -783,7 +783,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           email: body.email || undefined,
           firstName: body.firstName,
           lastName: body.lastName,
-          role: body.role,
+          roles: [body.role],
           isVerified: true,
           passwordHash,
           adminProfile: {

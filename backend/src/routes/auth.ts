@@ -1,3 +1,5 @@
+// backend/src/routes/auth.ts
+
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -25,13 +27,10 @@ const adminLoginSchema = z.object({
 });
 
 // ─── Demo accounts ────────────────────────────────────────────────────────────
-// Hardcoded test numbers that bypass OTP for App Store review / demos.
-// OTP is always accepted as 123456 for these numbers only.
 const DEMO_PHONES = ["+447700000001", "+447700000003"];
 const DEMO_OTP = "123456";
 
 // ─── Twilio client (lazy-initialised) ────────────────────────────────────────
-// Only created when env vars are present so local dev still works without them.
 function getTwilioClient(): Twilio.Twilio | null {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
@@ -43,7 +42,6 @@ async function sendSmsOtp(to: string, code: string): Promise<void> {
   const from = process.env.TWILIO_PHONE_NUMBER;
 
   if (!client || !from) {
-    // No Twilio config — log only (local dev fallback)
     console.log(`[OTP fallback] Code for ${to}: ${code}`);
     return;
   }
@@ -56,11 +54,10 @@ async function sendSmsOtp(to: string, code: string): Promise<void> {
 }
 
 export async function authRoutes(fastify: FastifyInstance) {
-  // ─── Send OTP ────────────────────────────────────────────────────────────────
+  // ─── Send OTP ──────────────────────────────────────────────────────────────
   fastify.post("/auth/otp/send", async (request, reply) => {
     const body = sendOtpSchema.parse(request.body);
 
-    // Demo number — skip Redis/Twilio, OTP is always 123456
     if (DEMO_PHONES.includes(body.phone)) {
       fastify.log.info(`[Demo] OTP send skipped for demo number ${body.phone}`);
       return reply.send({ success: true, message: "OTP sent" });
@@ -78,7 +75,6 @@ export async function authRoutes(fastify: FastifyInstance) {
       fastify.log.info(`OTP sent via SMS to ${body.phone}`);
     } catch (err: any) {
       fastify.log.error(`Twilio SMS failed for ${body.phone}: ${err.message}`);
-      // Delete the stored code so the user can retry cleanly
       await fastify.redis.del(key);
       return reply.status(500).send({
         success: false,
@@ -89,7 +85,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, message: "OTP sent" });
   });
 
-  // ─── Verify OTP ──────────────────────────────────────────────────────────────
+  // ─── Verify OTP ────────────────────────────────────────────────────────────
   fastify.post("/auth/otp/verify", async (request, reply) => {
     const body = verifyOtpSchema.parse(request.body);
 
@@ -101,7 +97,6 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     if (!DEMO_PHONES.includes(body.phone)) {
-      // Normal flow — check Redis
       const key = RedisKeys.otpCode(body.phone);
       const storedCode = await fastify.redis.get(key);
 
@@ -127,13 +122,16 @@ export async function authRoutes(fastify: FastifyInstance) {
     const isNewUser = !user;
 
     if (!user) {
+      // Brand new phone — create as PASSENGER by default.
+      // Drivers come via the self-onboarding application flow; they won't
+      // arrive here without an existing approved Driver record.
       const isDemoNumber = DEMO_PHONES.includes(body.phone);
       user = await fastify.prisma.user.create({
         data: {
           phone: body.phone,
           firstName: isDemoNumber ? "Demo" : "",
           lastName: isDemoNumber ? "Passenger" : "",
-          role: "PASSENGER",
+          roles: ["PASSENGER"], // ← was: role: "PASSENGER"
           isVerified: true,
           passenger: { create: {} },
         },
@@ -144,7 +142,8 @@ export async function authRoutes(fastify: FastifyInstance) {
           ? `[Demo] Created demo passenger account for ${body.phone}`
           : `New passenger created for ${body.phone}`
       );
-    } else if (user.role === "PASSENGER" && !user.driver) {
+    } else if (user.roles.includes("PASSENGER") && !user.passenger) {
+      // Existing user with PASSENGER role but no Passenger record — create it
       await fastify.prisma.passenger.upsert({
         where: { userId: user.id },
         update: {},
@@ -152,21 +151,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Determine effective role — if user has both passenger and driver records,
-    // use requestedRole to pick the right context
     const hasPassenger = !!user.passenger;
     const hasDriver = !!user.driver;
-    let effectiveRole = user.role;
 
-    if (hasPassenger && hasDriver) {
-      // Dual-role user — use requestedRole if provided, else fall back to primary role
-      if (body.requestedRole === "DRIVER") effectiveRole = "DRIVER";
-      else effectiveRole = "PASSENGER";
-    } else if (hasDriver) {
-      effectiveRole = "DRIVER";
-    }
-
-    // Validate the requested role is available for this user
+    // ── Validate the requested role is available for this user ────────────────
     if (body.requestedRole === "DRIVER" && !hasDriver) {
       return reply.status(403).send({
         success: false,
@@ -174,9 +162,22 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // ── Determine active role context for this session ────────────────────────
+    // The JWT carries ALL the user's roles. activeRole tells the app which
+    // context this session is for (e.g. driving vs riding).
+    let activeRole: string;
+    if (hasPassenger && hasDriver) {
+      activeRole = body.requestedRole === "DRIVER" ? "DRIVER" : "PASSENGER";
+    } else if (hasDriver) {
+      activeRole = "DRIVER";
+    } else {
+      activeRole = "PASSENGER";
+    }
+
+    // ── Sign JWT with all roles ───────────────────────────────────────────────
     const token = fastify.jwt.sign({
       userId: user.id,
-      role: effectiveRole,
+      roles: user.roles, // ← full roles array
       phone: user.phone,
     });
 
@@ -198,7 +199,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         user: {
           id: user.id,
           phone: user.phone,
-          role: effectiveRole,
+          roles: user.roles, // ← full array
+          activeRole, // ← which context this session is for
           firstName: user.firstName,
           lastName: user.lastName,
           isVerified: user.isVerified,
@@ -207,7 +209,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // ─── Admin login ─────────────────────────────────────────────────────────────
+  // ─── Admin login ───────────────────────────────────────────────────────────
   fastify.post("/auth/admin/login", async (request, reply) => {
     const body = adminLoginSchema.parse(request.body);
 
@@ -222,7 +224,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         .send({ success: false, error: "Invalid credentials" });
     }
 
-    if (!["ADMIN", "DISPATCHER"].includes(user.role)) {
+    // Check user has ADMIN or DISPATCHER role
+    if (!user.roles.some((r) => ["ADMIN", "DISPATCHER"].includes(r))) {
       return reply
         .status(403)
         .send({ success: false, error: "Not an admin account" });
@@ -237,7 +240,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const token = fastify.jwt.sign({
       userId: user.id,
-      role: user.role,
+      roles: user.roles, // ← was: role: user.role
       phone: user.phone,
     });
 
@@ -250,14 +253,14 @@ export async function authRoutes(fastify: FastifyInstance) {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role,
+          roles: user.roles, // ← was: role: user.role
           permissions: user.adminProfile.permissions,
         },
       },
     });
   });
 
-  // ─── Refresh token ───────────────────────────────────────────────────────────
+  // ─── Refresh token ─────────────────────────────────────────────────────────
   fastify.post("/auth/refresh", async (request, reply) => {
     const { refreshToken } = request.body as { refreshToken: string };
 
@@ -274,14 +277,14 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     const newToken = fastify.jwt.sign({
       userId: token.user.id,
-      role: token.user.role,
+      roles: token.user.roles, // ← was: role: token.user.role
       phone: token.user.phone,
     });
 
     return reply.send({ success: true, data: { token: newToken } });
   });
 
-  // ─── Get current user (/auth/me) ─────────────────────────────────────────────
+  // ─── Get current user (/auth/me) ───────────────────────────────────────────
   fastify.get(
     "/auth/me",
     { preHandler: [fastify.authenticate] },
@@ -309,7 +312,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role,
+          roles: user.roles, // ← was: role: user.role
           isVerified: user.isVerified,
           passenger: user.passenger,
           driver: user.driver,

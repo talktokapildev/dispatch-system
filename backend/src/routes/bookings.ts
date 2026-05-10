@@ -411,7 +411,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
               email: body.passengerEmail || undefined,
               firstName: nameParts[0] ?? "Unknown",
               lastName: nameParts.slice(1).join(" ") || "Customer",
-              role: "PASSENGER",
+              roles: ["PASSENGER"],
               isVerified: false,
               passenger: { create: {} },
             },

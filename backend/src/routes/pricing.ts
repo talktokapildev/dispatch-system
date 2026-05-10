@@ -109,7 +109,7 @@ export async function pricingRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const user = request.user;
-      if (!["ADMIN", "DISPATCHER"].includes(user.role)) {
+      if (!user.roles.some((r) => ["ADMIN", "DISPATCHER"].includes(r))) {
         return reply.status(403).send({ success: false, error: "Forbidden" });
       }
       const body = updateConfigSchema.parse(request.body);

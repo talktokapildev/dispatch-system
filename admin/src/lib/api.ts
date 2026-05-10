@@ -1,3 +1,5 @@
+// admin/src/lib/api.ts (or wherever your admin api.ts lives)
+
 import axios from "axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
@@ -25,13 +27,13 @@ api.interceptors.response.use(
   }
 );
 
-// ─── Auth store ───
+// ─── Auth store ───────────────────────────────────────────────────────────────
 interface AdminUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: string;
+  roles: string[]; // ← was: role: string
   permissions: string[];
 }
 
@@ -68,8 +70,6 @@ export const useAuthStore = create<AuthState>()(
       name: "dispatch-auth",
       partialize: (s) => ({ token: s.token, user: s.user }),
       onRehydrateStorage: () => (state) => {
-        // Called once localStorage has been read and state restored.
-        // Safe to check token from here onwards.
         state?.setHasHydrated(true);
       },
     }

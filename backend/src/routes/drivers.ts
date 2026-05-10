@@ -703,7 +703,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
                 lastName: body.lastName,
                 phone: body.phone,
                 email: body.email,
-                role: "DRIVER",
+                roles: ["DRIVER"],
                 isVerified: true,
                 isActive: true,
               },

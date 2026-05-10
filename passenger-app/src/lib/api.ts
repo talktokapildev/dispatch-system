@@ -1,3 +1,5 @@
+// passenger-app/src/lib/api.ts
+
 import axios from "axios";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -39,7 +41,8 @@ interface AuthState {
     phone: string;
     firstName: string;
     lastName: string;
-    role: string;
+    roles: string[]; // ← was: role: string
+    activeRole: string; // ← new: which context this session is for (always "PASSENGER" in passenger app)
   } | null;
   passenger: Passenger | null;
   setAuth: (token: string, user: any, passenger: any) => void;

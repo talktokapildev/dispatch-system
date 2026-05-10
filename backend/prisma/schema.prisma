@@ -1,3 +1,5 @@
+// backend/prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -26,6 +28,12 @@ enum UserRole {
   CORPORATE_ADMIN
 }
 
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum BookingStatus {
   PENDING
   CONFIRMED
@@ -44,7 +52,7 @@ enum BookingType {
   AIRPORT_PICKUP
   AIRPORT_DROPOFF
   CORPORATE
-  CAREHOME 
+  CAREHOME
 }
 
 enum PricingType {
@@ -135,17 +143,17 @@ enum RecurrencePattern {
 // ─────────────────────────────────────────
 
 model User {
-  id            String    @id @default(uuid())
-  phone         String    @unique
-  email         String?   @unique
+  id            String     @id @default(uuid())
+  phone         String     @unique
+  email         String?    @unique
   firstName     String
   lastName      String
-  role          UserRole
-  isActive      Boolean   @default(true)
-  isVerified    Boolean   @default(false)
+  roles         UserRole[] // ← changed from role UserRole (single) to roles UserRole[] (array)
+  isActive      Boolean    @default(true)
+  isVerified    Boolean    @default(false)
   passwordHash  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   passenger          Passenger?
   driver             Driver?
@@ -267,9 +275,8 @@ model Vehicle {
   seats            Int          @default(4)
   motExpiry        DateTime
   insuranceExpiry  DateTime
-  emissionStandard String?      // e.g. "Euro 6", "Electric", "Hybrid"
+  emissionStandard String?
   isUlezCompliant  Boolean      @default(false)
-
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -316,7 +323,7 @@ model AdminProfile {
   permissions Json     @default("[]")
   createdAt   DateTime @default(now())
 
-   // TfL Condition 19: staff register
+  // TfL Condition 19: staff register
   dateOfBirth          DateTime?
   dbsCertificateNumber String?
   dbsCheckDate         DateTime?
@@ -330,7 +337,7 @@ model AdminProfile {
 
 model CorporateAccount {
   id               String   @id @default(uuid())
-  name             String                    // renamed from companyName
+  name             String
   contactName      String
   contactEmail     String
   contactPhone     String
@@ -447,14 +454,14 @@ model Booking {
   lostProperties LostProperty[]
 
   passenger        Passenger?         @relation(fields: [passengerId], references: [id])
-  driver           Driver?           @relation(fields: [driverId], references: [id])
-  corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
-  corporateInvoice CorporateInvoice? @relation(fields: [corporateInvoiceId], references: [id])
+  driver           Driver?            @relation(fields: [driverId], references: [id])
+  corporateAccount CorporateAccount?  @relation(fields: [corporateAccountId], references: [id])
+  corporateInvoice CorporateInvoice?  @relation(fields: [corporateInvoiceId], references: [id])
   statusHistory    BookingStatusHistory[]
   receipt          Receipt?
-  dispatchedByUser User?             @relation("BookingDispatcher", fields: [dispatchedBy], references: [id])
+  dispatchedByUser User?              @relation("BookingDispatcher", fields: [dispatchedBy], references: [id])
 
-  // care home
+  // Care home
   careHomeId         String?
   careHome           CareHomeAccount?  @relation(fields: [careHomeId], references: [id])
   residentId         String?
@@ -638,18 +645,19 @@ model LostProperty {
   adminNotes   String?
   reportedAt   DateTime           @default(now())
   resolvedAt   DateTime?
-  booking      Booking            @relation(fields: [bookingId], references: [id])
-  passenger    Passenger          @relation(fields: [passengerId], references: [id])
+
+  booking   Booking   @relation(fields: [bookingId], references: [id])
+  passenger Passenger @relation(fields: [passengerId], references: [id])
+
   @@index([bookingId])
   @@index([passengerId])
   @@index([status])
 }
 
-
-
 // ─────────────────────────────────────────
-// CARE HOME 
+// CARE HOME
 // ─────────────────────────────────────────
+
 model CareHomeAccount {
   id               String                @id @default(cuid())
   name             String
@@ -664,10 +672,10 @@ model CareHomeAccount {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  residents        CareHomeResident[]
-  bookings         Booking[]
-  invoices         CareHomeInvoice[]
-  staff            CareHomeStaff[]
+  residents         CareHomeResident[]
+  bookings          Booking[]
+  invoices          CareHomeInvoice[]
+  staff             CareHomeStaff[]
   recurringBookings RecurringBooking[]
 }
 
@@ -703,44 +711,90 @@ model CareHomeResident {
 }
 
 model RecurringBooking {
-  id               String          @id @default(cuid())
-  careHomeId       String
-  careHome         CareHomeAccount @relation(fields: [careHomeId], references: [id])
-  residentId       String
-  resident         CareHomeResident @relation(fields: [residentId], references: [id])
-  pickupAddress    String
-  pickupLat        Float?
-  pickupLng        Float?
-  dropoffAddress   String
-  dropoffLat       Float?
-  dropoffLng       Float?
-  pattern          RecurrencePattern
-  dayOfWeek        Int?
-  dayOfMonth       Int?
-  scheduledTime    String
-  distanceMiles    Float?
-  flatFare         Float?
-  notes            String?
-  isActive         Boolean         @default(true)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id             String            @id @default(cuid())
+  careHomeId     String
+  careHome       CareHomeAccount   @relation(fields: [careHomeId], references: [id])
+  residentId     String
+  resident       CareHomeResident  @relation(fields: [residentId], references: [id])
+  pickupAddress  String
+  pickupLat      Float?
+  pickupLng      Float?
+  dropoffAddress String
+  dropoffLat     Float?
+  dropoffLng     Float?
+  pattern        RecurrencePattern
+  dayOfWeek      Int?
+  dayOfMonth     Int?
+  scheduledTime  String
+  distanceMiles  Float?
+  flatFare       Float?
+  notes          String?
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  bookings         Booking[]
+  bookings Booking[]
 }
 
 model CareHomeInvoice {
-  id           String          @id @default(cuid())
-  careHomeId   String
-  careHome     CareHomeAccount @relation(fields: [careHomeId], references: [id])
-  periodFrom   DateTime
-  periodTo     DateTime
-  dueDate      DateTime
-  totalAmount  Float
-  isPaid       Boolean         @default(false)
-  paidAt       DateTime?
-  notes        String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id          String          @id @default(cuid())
+  careHomeId  String
+  careHome    CareHomeAccount @relation(fields: [careHomeId], references: [id])
+  periodFrom  DateTime
+  periodTo    DateTime
+  dueDate     DateTime
+  totalAmount Float
+  isPaid      Boolean         @default(false)
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
-  bookings     Booking[]
+  bookings Booking[]
+}
+
+// ─────────────────────────────────────────
+// DRIVER APPLICATIONS (self-onboarding)
+// ─────────────────────────────────────────
+
+model DriverApplication {
+  id              String            @id @default(cuid())
+  status          ApplicationStatus @default(PENDING)
+  rejectionReason String?
+
+  // Personal details
+  name        String
+  phone       String
+  email       String?
+  dateOfBirth DateTime?
+
+  // Licence details
+  pcoBadgeNumber       String
+  pcoBadgeExpiry       DateTime
+  drivingLicenceNumber String
+
+  // Vehicle details
+  vehicleMake   String
+  vehicleModel  String
+  vehicleReg    String
+  vehicleYear   Int
+  vehicleColour String
+
+  // Document URLs (Cloudinary) — uploaded per-image before submit
+  docPcoBadge        String?
+  docDrivingLicFront String?
+  docDrivingLicBack  String?
+  docPhvLicence      String?
+  docInsurance       String?
+  docMot             String?
+
+  // Review meta
+  reviewedBy String?
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([status])
 }

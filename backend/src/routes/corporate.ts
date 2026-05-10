@@ -72,7 +72,10 @@ export async function corporateRoutes(fastify: FastifyInstance) {
         .send({ success: false, error: "Invalid credentials" });
     }
 
-    if (user.role !== "CORPORATE_ADMIN" && user.role !== "PASSENGER") {
+    if (
+      !user.roles.includes("CORPORATE_ADMIN") &&
+      !user.roles.includes("PASSENGER")
+    ) {
       return reply
         .status(403)
         .send({ success: false, error: "Not a corporate account" });
@@ -93,7 +96,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
 
     const token = fastify.jwt.sign({
       userId: user.id,
-      role: user.role,
+      roles: user.roles,
       phone: user.phone,
     });
 
@@ -106,7 +109,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
-          role: user.role,
+          roles: user.roles,
           corporateAccount: user.passenger.corporateAccount,
         },
       },

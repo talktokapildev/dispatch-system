@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   BookOpen,
@@ -18,18 +19,32 @@ import {
   ClipboardList,
   Heart,
   X,
+  UserCheck,
 } from "lucide-react";
-import { useAuthStore } from "@/lib/api";
+import { useAuthStore, api } from "@/lib/api";
 import { useTheme } from "@/app/providers";
 import { clsx } from "clsx";
 
 const RIDE_GREEN = "#2d5a1b";
 
-const nav = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  badgeKey?: string;
+}
+
+const nav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dispatch", label: "Live Dispatch", icon: MapPin },
   { href: "/bookings", label: "Bookings", icon: BookOpen },
   { href: "/drivers", label: "Drivers", icon: Car },
+  {
+    href: "/applications",
+    label: "Applications",
+    icon: UserCheck,
+    badgeKey: "applications",
+  },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/corporate", label: "Corporate", icon: Building2 },
   { href: "/carehome", label: "Care Homes", icon: Heart },
@@ -51,6 +66,19 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const { user, logout } = useAuthStore();
   const { theme, toggle } = useTheme();
   const isDark = theme === "dark";
+
+  // Pending applications count — badge on Applications nav item
+  const { data: pendingCount = 0 } = useQuery<number>({
+    queryKey: ["applications-pending-count"],
+    queryFn: () =>
+      api
+        .get("/admin/driver-applications", { params: { status: "PENDING" } })
+        .then((r) => r.data.summary?.PENDING ?? 0),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const badges: Record<string, number> = { applications: pendingCount };
 
   const content = (
     <div className="flex flex-col h-full">
@@ -78,7 +106,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* Theme toggle */}
             <button
               onClick={toggle}
               title={`Switch to ${isDark ? "light" : "dark"} mode`}
@@ -94,7 +121,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 <Moon size={13} className="text-slate-500" />
               )}
             </button>
-            {/* Close button — mobile only */}
             <button
               onClick={onClose}
               className="lg:hidden w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:opacity-80"
@@ -111,13 +137,19 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => {
+        {nav.map(({ href, label, icon: Icon, badgeKey }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
+          const badgeCount = badgeKey ? badges[badgeKey] ?? 0 : 0;
           return (
             <Link key={href} href={href} onClick={onClose}>
               <span className={clsx("sidebar-link", active && "active")}>
                 <Icon size={16} />
-                {label}
+                <span className="flex-1">{label}</span>
+                {badgeCount > 0 && (
+                  <span className="ml-auto px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-[10px] font-medium leading-none min-w-[18px] text-center">
+                    {badgeCount}
+                  </span>
+                )}
               </span>
             </Link>
           );
@@ -145,7 +177,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               className="text-[10px] truncate"
               style={{ color: "var(--text-muted)" }}
             >
-              {user?.role}
+              {user?.roles?.[0]}
             </p>
           </div>
           <button
@@ -161,7 +193,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   return (
     <>
-      {/* ── Desktop sidebar ── always visible lg+ */}
+      {/* Desktop sidebar */}
       <aside
         className="hidden lg:flex lg:flex-col w-60 shrink-0 h-screen sticky top-0"
         style={{
@@ -172,7 +204,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {content}
       </aside>
 
-      {/* ── Mobile backdrop ── */}
+      {/* Mobile backdrop */}
       <div
         className={clsx(
           "fixed inset-0 bg-black/40 z-40 lg:hidden transition-opacity duration-200",
@@ -183,7 +215,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         onClick={onClose}
       />
 
-      {/* ── Mobile drawer ── */}
+      {/* Mobile drawer */}
       <aside
         className={clsx(
           "fixed top-0 left-0 h-full w-64 z-50 lg:hidden flex flex-col",
