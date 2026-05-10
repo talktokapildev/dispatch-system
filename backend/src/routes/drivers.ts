@@ -921,12 +921,31 @@ export async function driverRoutes(fastify: FastifyInstance) {
         await tx.pushToken.deleteMany({ where: { userId: driver.userId } });
         await tx.otpCode.deleteMany({ where: { userId: driver.userId } });
         await tx.refreshToken.deleteMany({ where: { userId: driver.userId } });
-        // Only delete user if they have no other roles (e.g. passenger record)
+
+        // ── Role cleanup ──────────────────────────────────────────────────
+        // Remove DRIVER from the user's roles array. Then decide whether to
+        // delete the user entirely or keep them with their remaining roles.
+        const remainingRoles = driver.user.roles.filter((r) => r !== "DRIVER");
+
         const passenger = await tx.passenger.findUnique({
           where: { userId: driver.userId },
         });
-        if (!passenger) {
+
+        if (remainingRoles.length === 0 && !passenger) {
+          // No other roles, no passenger record → delete user entirely
           await tx.user.delete({ where: { id: driver.userId } });
+        } else {
+          // Has other roles (e.g. CORPORATE_ADMIN) or a passenger record →
+          // keep the user but strip the DRIVER role.
+          // If they have a passenger record but no remaining roles, restore PASSENGER.
+          const finalRoles =
+            remainingRoles.length > 0
+              ? remainingRoles
+              : (["PASSENGER"] as any[]);
+          await tx.user.update({
+            where: { id: driver.userId },
+            data: { roles: finalRoles },
+          });
         }
       });
 
