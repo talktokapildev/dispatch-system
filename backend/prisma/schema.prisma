@@ -798,3 +798,9 @@ model DriverApplication {
   @@index([phone])
   @@index([status])
 }
+
+model SystemSetting {
+  key       String   @id   // e.g. "contactPhone", "contactEmail"
+  value     String
+  updatedAt DateTime @updatedAt
+}

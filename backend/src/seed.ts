@@ -103,6 +103,28 @@ async function main() {
   });
 
   console.log("✅ Sample corporate account created");
+
+  // ─── Default system settings ───────────────────────────────────────────────
+  const defaultSettings = [
+    { key: "companyName", value: "OrangeRide" },
+    { key: "licenceNumber", value: "II786" },
+    { key: "contactEmail", value: "admin@orangeride.co.uk" },
+    { key: "contactPhone", value: "+447398341839" },
+    {
+      key: "businessAddress",
+      value: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+    },
+  ];
+
+  for (const setting of defaultSettings) {
+    await prisma.systemSetting.upsert({
+      where: { key: setting.key },
+      update: {}, // Don't overwrite values an admin has already changed
+      create: setting,
+    });
+  }
+  console.log("✅ Default system settings seeded");
+
   console.log("\n🎉 Seed complete!");
   console.log("\n📋 Admin credentials:");
   console.log("   Email: admin@dispatch.com");

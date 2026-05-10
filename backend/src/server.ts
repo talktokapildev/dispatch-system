@@ -25,6 +25,7 @@ import adminCareHomeRoutes from "./routes/admin/carehome";
 import careHomeRoutes from "./routes/carehome";
 import { driverApplicationRoutes } from "./routes/driver-applications";
 import { adminDriverApplicationRoutes } from "./routes/admin/driver-applications";
+import { settingsRoutes } from "./routes/settings";
 
 // How long a PENDING booking can sit before being auto-cancelled (30 minutes)
 const STALE_BOOKING_THRESHOLD_MS = 30 * 60 * 1000;
@@ -76,6 +77,7 @@ async function buildServer() {
   await fastify.register(careHomeRoutes, { prefix });
   fastify.register(driverApplicationRoutes, { prefix });
   fastify.register(adminDriverApplicationRoutes, { prefix });
+  fastify.register(settingsRoutes, { prefix });
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
