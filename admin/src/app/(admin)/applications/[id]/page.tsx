@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Spinner, Modal } from "@/components/ui";
 import toast from "react-hot-toast";
-import { ApplicationStatusBadge } from "../page";
+import { ApplicationStatusBadge } from "../ApplicationStatusBadge";
 
 // ── Document slot definitions ────────────────────────────────────────────────
 const DOCUMENT_SLOTS = [
