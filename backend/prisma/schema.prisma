@@ -411,6 +411,9 @@ model Booking {
   // TfL Compliance: dispatcher record (Condition 6)
   dispatchedBy String?
 
+   // TfL Compliance: PHV licence number at time of booking (Condition — booking record requirement)
+  driverPhvLicenceNumber String?
+
   // Pricing
   pricingType     PricingType   @default(FIXED)
   estimatedFare   Float

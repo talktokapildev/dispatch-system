@@ -167,6 +167,16 @@ export class DispatchService {
       throw new Error("Booking no longer available");
     }
 
+    // TfL booking record requirement (from 1 July 2024):
+    // Store PHV licence number directly on the booking at assignment time,
+    // so it is preserved even if the vehicle is later re-licensed or replaced.
+    const driverWithVehicle = await this.prisma.driver.findUnique({
+      where: { id: driverId },
+      include: { vehicle: true },
+    });
+    const driverPhvLicenceNumber =
+      driverWithVehicle?.vehicle?.phvLicenceNumber ?? null;
+
     await this.prisma.$transaction([
       this.prisma.booking.update({
         where: { id: bookingId },
@@ -175,6 +185,7 @@ export class DispatchService {
           status: BookingStatus.DRIVER_ASSIGNED,
           driverAcceptedAt: new Date(),
           dispatchedAt: new Date(),
+          driverPhvLicenceNumber,
         },
       }),
       this.prisma.bookingStatusHistory.create({
