@@ -413,11 +413,29 @@ export default function BookingsPage() {
 
             {selected.driver && (
               <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] text-xs">
-                <p className="text-slate-500 mb-1">Driver</p>
-                <p style={{ color: "var(--text)" }} className="font-medium">
-                  {selected.driver.user.firstName}{" "}
-                  {selected.driver.user.lastName}
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                  Driver & Vehicle
                 </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-slate-500 mb-0.5">Driver</p>
+                    <p style={{ color: "var(--text)" }} className="font-medium">
+                      {selected.driver.user.firstName}{" "}
+                      {selected.driver.user.lastName}
+                    </p>
+                  </div>
+                  {selected.driver.vehicle && (
+                    <div>
+                      <p className="text-slate-500 mb-0.5">Vehicle Reg</p>
+                      <p
+                        style={{ color: "var(--text)" }}
+                        className="font-mono font-medium uppercase"
+                      >
+                        {selected.driver.vehicle.licensePlate}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -442,6 +460,24 @@ export default function BookingsPage() {
                           "dd MMM yyyy HH:mm"
                         )
                       : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 mb-0.5">PHV Licence No.</p>
+                  <p
+                    style={{ color: "var(--text)" }}
+                    className="font-mono font-medium"
+                  >
+                    {selected.driverPhvLicenceNumber ?? "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-500 mb-0.5">Vehicle Reg</p>
+                  <p
+                    style={{ color: "var(--text)" }}
+                    className="font-mono font-medium uppercase"
+                  >
+                    {selected.driver?.vehicle?.licensePlate ?? "—"}
                   </p>
                 </div>
               </div>
