@@ -13,11 +13,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import { useOperatorSettings } from "../lib/operatorSettings";
 
 import { useStripe } from "@stripe/stripe-react-native";
 import { getSocket } from "../lib/socket";
@@ -41,6 +43,7 @@ const COMPLAINT_CATEGORIES = [
 
 export default function RideCompleteScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
+  const { settings } = useOperatorSettings();
   const { booking } = route.params;
   const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -469,6 +472,18 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           </View>
         )}
 
+        {/* TfL Condition 14 — operating centre contact */}
+        <TouchableOpacity
+          style={s.contactBtn}
+          onPress={() =>
+            Linking.openURL(`tel:${settings.contactPhone.replace(/\s/g, "")}`)
+          }
+        >
+          <Text style={s.contactBtnText}>
+            📞 Contact OrangeRide {settings.contactPhone}
+          </Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={s.doneBtn}
           onPress={() =>
@@ -842,6 +857,21 @@ const styles = (
       marginBottom: Spacing.sm,
     },
     reportedText: { fontSize: FontSize.sm, color: C.success },
+    contactBtn: {
+      width: "100%",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.brand + "30",
+      backgroundColor: C.brand + "08",
+      padding: Spacing.md,
+      alignItems: "center",
+      marginBottom: Spacing.sm,
+    },
+    contactBtnText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "600",
+    },
     doneBtn: {
       width: "100%",
       backgroundColor: C.brand,

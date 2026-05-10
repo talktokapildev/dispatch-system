@@ -10,11 +10,13 @@ import {
   Animated,
   Dimensions,
   AppState,
+  Linking,
 } from "react-native";
 import { api, useAuthStore } from "../lib/api";
 import { getSocket, initSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import { useOperatorSettings } from "../lib/operatorSettings";
 import { decodePolyline } from "../lib/mapUtils";
 import TripMap from "../components/TripMap";
 import DriverCard from "../components/DriverCard";
@@ -43,6 +45,7 @@ const STATUS_CONFIG: Record<
 
 export default function TrackingScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
+  const { settings } = useOperatorSettings();
   const { token } = useAuthStore();
   const { bookingId, booking: initialBooking } = route.params;
 
@@ -439,6 +442,20 @@ export default function TrackingScreen({ route, navigation }: any) {
             </View>
           )}
 
+          {/* TfL Condition 14 — operating centre contact */}
+          <TouchableOpacity
+            style={s.contactBtn}
+            onPress={() =>
+              Linking.openURL(`tel:${settings.contactPhone.replace(/\s/g, "")}`)
+            }
+          >
+            <Text style={s.contactIcon}>📞</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.contactTitle}>Need help?</Text>
+              <Text style={s.contactNumber}>{settings.contactPhone}</Text>
+            </View>
+          </TouchableOpacity>
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </Animated.View>
@@ -531,6 +548,20 @@ const styles = (
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.sm,
     },
+    contactBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.sm,
+      backgroundColor: C.brand + "10",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.brand + "30",
+      padding: Spacing.md,
+      marginBottom: Spacing.sm,
+    },
+    contactIcon: { fontSize: 20 },
+    contactTitle: { fontSize: FontSize.xs, color: C.muted, marginBottom: 2 },
+    contactNumber: { fontSize: FontSize.sm, color: C.brand, fontWeight: "700" },
     noDriverCard: {
       flexDirection: "row",
       alignItems: "center",

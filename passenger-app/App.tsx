@@ -10,6 +10,7 @@ import { StripeProvider } from "@stripe/stripe-react-native";
 
 import { ThemeProvider, useTheme } from "./src/lib/ThemeContext";
 import { useAuthStore } from "./src/lib/api";
+import { useOperatorSettings } from "./src/lib/operatorSettings";
 import { initSocket } from "./src/lib/socket";
 import { usePushNotifications } from "./src/hooks/usePushNotification";
 
@@ -94,10 +95,16 @@ function RootNavigator() {
   const { token, user } = useAuthStore();
 
   usePushNotifications();
+  const { fetchSettings } = useOperatorSettings();
 
   useEffect(() => {
     if (token) initSocket(token);
   }, [token]);
+
+  // Fetch operator settings (contact phone etc.) on mount — public endpoint
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
   const needsProfileSetup =
     token && (!user?.firstName || user.firstName.trim() === "");

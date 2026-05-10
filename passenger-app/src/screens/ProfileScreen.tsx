@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore, api } from "../lib/api";
@@ -14,12 +15,14 @@ import { disconnectSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { usePushNotifications } from "../hooks/usePushNotification";
+import { useOperatorSettings } from "../lib/operatorSettings";
 
 export default function ProfileScreen({ navigation }: any) {
   const { Colors, theme, toggle } = useTheme();
   const { user, logout } = useAuthStore();
   const { unregisterToken } = usePushNotifications();
   const [deleting, setDeleting] = useState(false);
+  const { settings } = useOperatorSettings();
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -135,6 +138,24 @@ export default function ProfileScreen({ navigation }: any) {
           </Text>
         </View>
 
+        {/* TfL Condition 14 — operating centre contact */}
+        <TouchableOpacity
+          style={s.contactCard}
+          onPress={() =>
+            Linking.openURL(`tel:${settings.contactPhone.replace(/\s/g, "")}`)
+          }
+          activeOpacity={0.7}
+        >
+          <Text style={s.contactCardTitle}>📞 Contact & Support</Text>
+          <View style={s.contactRow}>
+            <Text style={s.contactLabel}>OrangeRide Operations</Text>
+            <Text style={s.contactNumber}>{settings.contactPhone}</Text>
+          </View>
+          <Text style={s.contactHint}>
+            Tap to call · Available during operating hours
+          </Text>
+        </TouchableOpacity>
+
         {/* Theme toggle */}
         <TouchableOpacity style={s.themeCard} onPress={toggle}>
           <View style={s.themeRow}>
@@ -247,6 +268,30 @@ const styles = (
     themeIcon: { fontSize: 24 },
     themeLabel: { fontSize: FontSize.sm, fontWeight: "600", color: C.white },
     themeSub: { fontSize: FontSize.xs, color: C.muted, marginTop: 2 },
+    contactCard: {
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.md,
+      backgroundColor: C.card,
+      borderRadius: Radius.lg,
+      borderWidth: 1,
+      borderColor: C.brand + "30",
+      padding: Spacing.lg,
+    },
+    contactCardTitle: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "700",
+      marginBottom: Spacing.sm,
+    },
+    contactRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: Spacing.xs,
+    },
+    contactLabel: { fontSize: FontSize.sm, color: C.muted },
+    contactNumber: { fontSize: FontSize.sm, color: C.white, fontWeight: "700" },
+    contactHint: { fontSize: FontSize.xs, color: C.muted, marginTop: 4 },
     logoutBtn: {
       marginHorizontal: Spacing.lg,
       marginBottom: Spacing.md,
