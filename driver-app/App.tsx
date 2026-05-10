@@ -22,6 +22,9 @@ import JobHistoryScreen from "./src/screens/JobHistoryScreen";
 import LocationDisclosureScreen, {
   DISCLOSURE_ACCEPTED_KEY,
 } from "./src/screens/LocationDisclosureScreen";
+import DriverApplicationScreen from "./src/screens/DriverApplicationScreen";
+import DocumentUploadScreen from "./src/screens/DocumentUploadScreen";
+import ApplicationPendingScreen from "./src/screens/ApplicationPendingScreen";
 import { usePushNotifications } from "./src/hooks/usePushNotification";
 
 const Stack = createNativeStackNavigator();
@@ -65,11 +68,6 @@ function AppNavigator() {
   usePushNotifications();
   const { Colors } = useTheme();
   const [booting, setBooting] = useState(true);
-
-  // Tracks whether the driver has accepted the background location disclosure.
-  // null = not yet loaded from AsyncStorage (still booting)
-  // true = accepted, go straight to Main
-  // false = not accepted, show LocationDisclosureScreen first
   const [disclosureAccepted, setDisclosureAccepted] = useState<boolean | null>(
     null
   );
@@ -78,7 +76,6 @@ function AppNavigator() {
     if (!_hasHydrated) return;
 
     const boot = async () => {
-      // Load disclosure acceptance alongside auth check
       const [, disclosureVal] = await Promise.all([
         (async () => {
           if (token) {
@@ -101,7 +98,6 @@ function AppNavigator() {
     boot();
   }, [_hasHydrated]);
 
-  // Keep showing spinner until hydrated AND booted (including disclosure check)
   if (!_hasHydrated || booting || disclosureAccepted === null) {
     return (
       <View
@@ -122,19 +118,36 @@ function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!token ? (
-          // Not logged in — show login
-          <Stack.Screen name="Login" component={LoginScreen} />
+          // ── Pre-auth screens ──
+          // Login is the initial screen. DriverApplication, DocumentUpload, and
+          // ApplicationPending are navigable from LoginScreen without a token.
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen
+              name="DriverApplication"
+              component={DriverApplicationScreen}
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="DocumentUpload"
+              component={DocumentUploadScreen}
+              options={{ animation: "slide_from_right", gestureEnabled: false }}
+            />
+            <Stack.Screen
+              name="ApplicationPending"
+              component={ApplicationPendingScreen}
+              options={{ animation: "slide_from_right", gestureEnabled: false }}
+            />
+          </>
         ) : !disclosureAccepted ? (
-          // Logged in but disclosure not yet accepted — show full-screen disclosure.
-          // This is the Google Play-compliant prominent disclosure: a dedicated
-          // full-screen screen in the normal app flow, shown before HomeScreen.
+          // ── Background location disclosure ──
           <Stack.Screen
             name="LocationDisclosure"
             component={LocationDisclosureScreen}
             initialParams={{ onAccepted: () => setDisclosureAccepted(true) }}
           />
         ) : (
-          // Fully onboarded — show the main app
+          // ── Main authenticated app ──
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen

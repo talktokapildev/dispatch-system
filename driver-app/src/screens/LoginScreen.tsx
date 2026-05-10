@@ -11,11 +11,15 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
 import { api, useAuthStore } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 
 type Step = "phone" | "otp";
+
+export const APPLICATION_ID_KEY = "driver_application_id";
 
 export default function LoginScreen({
   onLogin,
@@ -23,6 +27,7 @@ export default function LoginScreen({
   onLogin?: (token: string) => void;
 }) {
   const { Colors, theme } = useTheme();
+  const navigation = useNavigation<any>();
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("+44");
   const [otp, setOtp] = useState("");
@@ -38,7 +43,6 @@ export default function LoginScreen({
     setLoading(true);
     try {
       const { data } = await api.post("/auth/otp/send", { phone });
-      // if (data._devCode) Alert.alert('Dev Mode', `Your OTP is: ${data._devCode}`)
       if (data._devCode && process.env.APP_ENV !== "production")
         Alert.alert("Dev Mode", `Your OTP is: ${data._devCode}`);
       setStep("otp");
@@ -63,13 +67,16 @@ export default function LoginScreen({
         requestedRole: "DRIVER",
       });
       const { token, user } = data.data;
-      if (user.role !== "DRIVER") {
+
+      // Guard: only DRIVER active role allowed in driver app
+      if (user.activeRole !== "DRIVER") {
         Alert.alert(
           "Access Denied",
           "This app is for drivers only. Please contact your operator."
         );
         return;
       }
+
       const driverRes = await api.get("/auth/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -79,6 +86,16 @@ export default function LoginScreen({
       Alert.alert("Error", err.response?.data?.error ?? "Invalid code");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // "Apply to drive" — check for existing application first
+  const handleApplyToDrive = async () => {
+    const applicationId = await AsyncStorage.getItem(APPLICATION_ID_KEY);
+    if (applicationId) {
+      navigation.navigate("ApplicationPending", { applicationId });
+    } else {
+      navigation.navigate("DriverApplication");
     }
   };
 
@@ -162,6 +179,16 @@ export default function LoginScreen({
             </>
           )}
         </View>
+
+        {/* Apply to drive — shown on phone step only */}
+        {step === "phone" && (
+          <View style={s.applySection}>
+            <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
+            <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
+              <Text style={s.applyBtnText}>Apply to Drive →</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -223,4 +250,26 @@ const styles = (
     btnText: { color: "#000", fontWeight: "700", fontSize: FontSize.md },
     backBtn: { alignItems: "center", marginTop: Spacing.md },
     backText: { color: C.muted, fontSize: FontSize.sm },
+    // Apply to drive section
+    applySection: {
+      alignItems: "center",
+      marginTop: Spacing.xxl,
+    },
+    applyLabel: {
+      fontSize: FontSize.sm,
+      color: C.muted,
+      marginBottom: Spacing.sm,
+    },
+    applyBtn: {
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.lg,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+    },
+    applyBtnText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "600",
+    },
   });
