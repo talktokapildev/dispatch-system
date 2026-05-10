@@ -209,6 +209,10 @@ export default function DriversPage() {
   };
 
   const drivers: any[] = data?.items ?? data ?? [];
+  const TFL_CAP = 20;
+  const vehicleCount = drivers.length;
+  const atCap = vehicleCount >= TFL_CAP;
+  const nearCap = vehicleCount >= 18 && !atCap;
   const filtered = search
     ? drivers.filter(
         (d) =>
@@ -224,14 +228,17 @@ export default function DriversPage() {
     <div className="space-y-5 animate-fade-in">
       <SectionHeader
         title="Drivers"
-        subtitle={`${drivers.length} registered drivers`}
+        subtitle={`${vehicleCount} / ${TFL_CAP} vehicles (TfL licence limit)`}
         action={
           <button
             onClick={() => {
+              if (atCap) return;
               setShowAdd(true);
               setFormError("");
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 text-black text-sm font-semibold transition-colors"
+            disabled={atCap}
+            title={atCap ? "TfL vehicle cap reached (20/20)" : undefined}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-semibold transition-colors"
           >
             <UserPlus size={15} />
             Add Driver
@@ -269,6 +276,37 @@ export default function DriversPage() {
               </p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TfL vehicle cap banner */}
+      {atCap && (
+        <div className="card p-4 border-red-500/30 bg-red-500/5">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangle size={14} />
+            <span className="text-sm font-medium">
+              TfL vehicle cap reached — {vehicleCount}/{TFL_CAP} vehicles
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1 ml-5">
+            Your Tier 11-20 licence permits a maximum of 20 vehicles. You must
+            remove an existing driver before adding a new one.
+          </p>
+        </div>
+      )}
+      {nearCap && (
+        <div className="card p-4 border-yellow-500/20 bg-yellow-500/5">
+          <div className="flex items-center gap-2 text-yellow-400">
+            <AlertTriangle size={14} />
+            <span className="text-sm font-medium">
+              Approaching TfL vehicle cap — {vehicleCount}/{TFL_CAP} vehicles
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1 ml-5">
+            You can add {TFL_CAP - vehicleCount} more vehicle
+            {TFL_CAP - vehicleCount === 1 ? "" : "s"} before reaching your Tier
+            11-20 licence limit.
+          </p>
         </div>
       )}
 

@@ -676,6 +676,18 @@ export async function driverRoutes(fastify: FastifyInstance) {
         })
         .parse(request.body);
 
+      // ── TfL Licence Condition 11: 20-vehicle cap ──────────────────────────
+      // Tier 11-20 licence: must not exceed 20 PHVs available to carry out
+      // bookings at all operating centres at any time.
+      const TFL_VEHICLE_CAP = 20;
+      const currentVehicleCount = await fastify.prisma.driver.count();
+      if (currentVehicleCount >= TFL_VEHICLE_CAP) {
+        return reply.status(409).send({
+          success: false,
+          error: `TfL vehicle cap reached (${currentVehicleCount}/${TFL_VEHICLE_CAP}). Your Tier 11-20 licence permits a maximum of 20 vehicles. Remove an existing driver before adding a new one.`,
+        });
+      }
+
       try {
         const result = await fastify.prisma.$transaction(async (tx) => {
           // Check if user already exists (e.g. passenger becoming a driver)

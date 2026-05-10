@@ -132,17 +132,18 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
+      // TfL Condition 11: 20-vehicle cap
+      const vehicleCount = await fastify.prisma.driver.count();
+      if (vehicleCount >= 20) {
+        return reply.status(409).send({
+          error: `TfL vehicle cap reached (${vehicleCount}/20). Remove an existing driver before approving this application.`,
+        });
+      }
+
       await fastify.prisma.$transaction(async (tx) => {
         let userId: string;
 
         if (existingUser) {
-          // Existing user (e.g. passenger) — add DRIVER role if not already present
-          // if (!existingUser.roles.includes("DRIVER")) {
-          //   await tx.user.update({
-          //     where: { id: existingUser.id },
-          //     data: { roles: { push: "DRIVER" } },
-          //   });
-          // }
           const [firstName, ...rest] = application.name.split(" ");
           await tx.user.update({
             where: { id: existingUser.id },
