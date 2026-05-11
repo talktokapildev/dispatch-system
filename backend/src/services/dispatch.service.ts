@@ -177,6 +177,19 @@ export class DispatchService {
     const driverPhvLicenceNumber =
       driverWithVehicle?.vehicle?.phvLicenceNumber ?? null;
 
+    // TfL Condition 23: the booking respondent must be recorded.
+    // For auto-dispatched bookings (no human dispatcher), stamp the primary
+    // operator admin account — the system dispatches on behalf of the operator.
+    let dispatchedBy = booking.dispatchedBy ?? null;
+    if (!dispatchedBy) {
+      const primaryAdmin = await this.prisma.user.findFirst({
+        where: { roles: { has: "ADMIN" }, isActive: true },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      dispatchedBy = primaryAdmin?.id ?? null;
+    }
+
     await this.prisma.$transaction([
       this.prisma.booking.update({
         where: { id: bookingId },
@@ -186,6 +199,7 @@ export class DispatchService {
           driverAcceptedAt: new Date(),
           dispatchedAt: new Date(),
           driverPhvLicenceNumber,
+          ...(dispatchedBy && { dispatchedBy }),
         },
       }),
       this.prisma.bookingStatusHistory.create({
