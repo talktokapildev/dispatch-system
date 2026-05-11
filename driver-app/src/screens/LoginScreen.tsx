@@ -179,17 +179,17 @@ export default function LoginScreen({
             </>
           )}
         </View>
-
-        {/* Apply to drive — shown on phone step only */}
-        {step === "phone" && (
-          <View style={s.applySection}>
-            <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
-            <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
-              <Text style={s.applyBtnText}>Apply to Drive →</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </KeyboardAvoidingView>
+
+      {/* Apply to drive — outside KeyboardAvoidingView so keyboard never covers it */}
+      {step === "phone" && (
+        <View style={s.applySection}>
+          <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
+          <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
+            <Text style={s.applyBtnText}>Apply to Drive →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -250,26 +250,28 @@ const styles = (
     btnText: { color: "#000", fontWeight: "700", fontSize: FontSize.md },
     backBtn: { alignItems: "center", marginTop: Spacing.md },
     backText: { color: C.muted, fontSize: FontSize.sm },
-    // Apply to drive section
+    // Apply to drive section — fixed at bottom, outside keyboard avoid view
     applySection: {
       alignItems: "center",
-      marginTop: Spacing.xxl,
+      paddingBottom: Spacing.xl,
+      paddingTop: Spacing.lg,
     },
     applyLabel: {
       fontSize: FontSize.sm,
       color: C.muted,
-      marginBottom: Spacing.sm,
+      marginBottom: Spacing.md,
     },
     applyBtn: {
-      paddingVertical: Spacing.sm,
-      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      paddingHorizontal: Spacing.xxl,
       borderRadius: Radius.md,
-      borderWidth: 1,
-      borderColor: C.border,
+      backgroundColor: C.brand + "20",
+      borderWidth: 1.5,
+      borderColor: C.brand,
     },
     applyBtnText: {
-      fontSize: FontSize.sm,
+      fontSize: FontSize.md,
       color: C.brand,
-      fontWeight: "600",
+      fontWeight: "700",
     },
   });
