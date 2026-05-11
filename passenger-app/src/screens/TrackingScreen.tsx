@@ -59,6 +59,7 @@ export default function TrackingScreen({ route, navigation }: any) {
   >([]);
   const [loading, setLoading] = useState(!initialBooking);
   const [cancelling, setCancelling] = useState(false);
+  const [searchSeconds, setSearchSeconds] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
@@ -137,13 +138,36 @@ export default function TrackingScreen({ route, navigation }: any) {
         return;
       }
       if (data.status === "CANCELLED") {
-        Alert.alert("Trip Cancelled", "Your booking has been cancelled.", [
-          {
-            text: "OK",
-            onPress: () =>
-              navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
-          },
-        ]);
+        // Fetch the latest booking to get the cancellation reason
+        try {
+          const res = await api.get(`/passengers/bookings/${bookingId}`);
+          const reason: string = res.data?.data?.cancellationReason ?? "";
+          const noDriver =
+            reason.toLowerCase().includes("no driver") ||
+            reason.toLowerCase().includes("auto-cancel");
+
+          Alert.alert(
+            noDriver ? "No Driver Available" : "Booking Cancelled",
+            noDriver
+              ? "We couldn't find a driver in your area right now. Please try booking again."
+              : reason || "Your booking has been cancelled.",
+            [
+              {
+                text: noDriver ? "Try Again" : "OK",
+                onPress: () =>
+                  navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+              },
+            ]
+          );
+        } catch {
+          Alert.alert("Booking Cancelled", "Your booking has been cancelled.", [
+            {
+              text: "OK",
+              onPress: () =>
+                navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+            },
+          ]);
+        }
       }
     };
 
@@ -237,6 +261,16 @@ export default function TrackingScreen({ route, navigation }: any) {
       if (poly) setRouteCoords(decodePolyline(poly));
     } catch {}
   };
+
+  // Timer — counts seconds while searching for a driver
+  useEffect(() => {
+    if (booking?.status !== "PENDING") {
+      setSearchSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => setSearchSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [booking?.status]);
 
   const cancelBooking = () => {
     // To:
@@ -343,6 +377,13 @@ export default function TrackingScreen({ route, navigation }: any) {
         <View style={s.waitingOverlay}>
           <ActivityIndicator color={Colors.brand} size="small" />
           <Text style={s.waitingText}>Finding your driver…</Text>
+          <Text style={s.waitingTimer}>
+            {searchSeconds < 60
+              ? `Searching for ${searchSeconds}s`
+              : `Searching for ${Math.floor(searchSeconds / 60)}m ${
+                  searchSeconds % 60
+                }s`}
+          </Text>
         </View>
       )}
 
@@ -483,6 +524,12 @@ const styles = (
       borderColor: C.border,
     },
     waitingText: { fontSize: FontSize.sm, color: C.text },
+    waitingTimer: {
+      fontSize: FontSize.xs,
+      color: C.muted,
+      marginTop: 4,
+      fontVariant: ["tabular-nums"],
+    },
     sheet: {
       position: "absolute",
       bottom: 0,
