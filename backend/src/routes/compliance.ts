@@ -169,6 +169,7 @@ async function runAutomatedChecks(
     vehiclesInsuranceExpiring,
     recentCompleted,
     recentWithDriver,
+    recentWithDispatcher,
   ] = await Promise.all([
     // 1. Vehicle cap
     prisma.driver.count(),
@@ -240,6 +241,15 @@ async function runAutomatedChecks(
         status: "COMPLETED",
         completedAt: { gte: ago30 },
         driverId: { not: null },
+      },
+    }),
+
+    // 17. Recent completed with dispatcher recorded (last 30 days only)
+    prisma.booking.count({
+      where: {
+        status: "COMPLETED",
+        completedAt: { gte: ago30 },
+        dispatchedBy: { not: null },
       },
     }),
   ]);
@@ -449,32 +459,36 @@ async function runAutomatedChecks(
         : undefined,
   };
 
-  // Condition 23 — Respondent on bookings
-  const respondentPct =
+  // Condition 23 — Respondent on bookings (last 30 days only)
+  // Older bookings predate the dispatchedBy field — checking all-time would always fail.
+  // We only check recent bookings so the metric reflects current system behaviour.
+  const recentDispatcherPct =
     recentCompleted > 0
-      ? Math.round(
-          ((recentCompleted - (recentCompleted - recentWithDriver)) /
-            recentCompleted) *
-            100
-        )
-      : 100;
-  const dispatcherPct =
-    completedBookings > 0
-      ? Math.round((completedWithDispatcher / completedBookings) * 100)
+      ? Math.round((recentWithDispatcher / recentCompleted) * 100)
       : 100;
   const respondentCheck: AutomatedCheck = {
     id: "respondent_on_bookings",
     condition: 23,
     title: "Booking Respondent Recorded",
     status:
-      dispatcherPct === 100 ? "PASS" : dispatcherPct >= 80 ? "WARN" : "FAIL",
-    value: `${dispatcherPct}% (${completedWithDispatcher} / ${completedBookings})`,
-    detail: `${completedWithDispatcher} of ${completedBookings} completed bookings have dispatcher/respondent recorded`,
+      recentDispatcherPct === 100
+        ? "PASS"
+        : recentDispatcherPct >= 80
+        ? "WARN"
+        : "FAIL",
+    value:
+      recentCompleted === 0
+        ? "No recent bookings"
+        : `${recentDispatcherPct}% (${recentWithDispatcher} / ${recentCompleted} in last 30 days)`,
+    detail:
+      recentCompleted === 0
+        ? "No completed bookings in the last 30 days to check"
+        : `${recentWithDispatcher} of ${recentCompleted} completed bookings (last 30 days) have dispatcher recorded`,
     requirement:
       "From 1 July 2024, each booking record must include the name of the individual who responded to the booking request.",
     howToFix:
-      dispatcherPct < 100
-        ? "Some older bookings predate the dispatcher tracking feature. New bookings are recorded automatically."
+      recentDispatcherPct < 80
+        ? "Recent bookings are missing dispatcher record. Ensure all bookings are dispatched through the admin panel or auto-dispatch."
         : undefined,
   };
 

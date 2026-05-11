@@ -53,6 +53,12 @@ const nav: NavItem[] = [
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/staff", label: "Staff Register", icon: ClipboardList },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
+  {
+    href: "/compliance",
+    label: "Compliance",
+    icon: ShieldCheck,
+    badgeKey: "compliance",
+  },
   { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -151,7 +151,7 @@ function AutomatedRow({
             <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
               TfL Requirement
             </p>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed">
               {check.requirement}
             </p>
           </div>
@@ -159,18 +159,26 @@ function AutomatedRow({
             <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
               What was checked
             </p>
-            <p className="text-xs text-slate-300">{check.detail}</p>
+            <p className="text-xs" style={{ color: "var(--text)" }}>
+              {check.detail}
+            </p>
           </div>
           {check.howToFix && (
             <div
               className={`p-3 rounded-lg text-xs leading-relaxed ${
                 check.status === "FAIL"
-                  ? "bg-red-500/10 border border-red-500/20 text-red-300"
-                  : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-300"
+                  ? "bg-red-950/60 border border-red-500/30"
+                  : "bg-yellow-950/60 border border-yellow-500/30"
               }`}
             >
-              <span className="font-medium">Action required: </span>
-              {check.howToFix}
+              <span
+                className={`font-semibold ${
+                  check.status === "FAIL" ? "text-red-400" : "text-yellow-400"
+                }`}
+              >
+                Action required:{" "}
+              </span>
+              <span style={{ color: "var(--text)" }}>{check.howToFix}</span>
             </div>
           )}
         </div>
@@ -245,7 +253,7 @@ function ManualRow({
             <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
               TfL Requirement
             </p>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed">
               {check.requirement}
             </p>
           </div>
@@ -253,7 +261,7 @@ function ManualRow({
             <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-1">
               How to confirm
             </p>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed">
               {check.howToConfirm}
             </p>
           </div>
