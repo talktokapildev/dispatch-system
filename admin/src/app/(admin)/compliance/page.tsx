@@ -90,10 +90,14 @@ function AutomatedRow({
   check,
   expanded,
   onToggle,
+  onAction,
+  isActioning,
 }: {
   check: AutomatedCheck;
   expanded: boolean;
   onToggle: () => void;
+  onAction?: () => void;
+  isActioning?: boolean;
 }) {
   const rowBg =
     check.status === "FAIL"
@@ -163,22 +167,40 @@ function AutomatedRow({
               {check.detail}
             </p>
           </div>
+          {/* Weekly upload — Mark as Uploaded action */}
+          {check.id === "weekly_upload" && onAction && (
+            <button
+              onClick={onAction}
+              disabled={isActioning}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-black text-xs font-semibold transition-colors"
+            >
+              {isActioning ? <Spinner size={12} /> : <CheckCircle size={12} />}
+              Mark as Uploaded This Week
+            </button>
+          )}
+
           {check.howToFix && (
             <div
-              className={`p-3 rounded-lg text-xs leading-relaxed ${
-                check.status === "FAIL"
-                  ? "bg-red-950/60 border border-red-500/30"
-                  : "bg-yellow-950/60 border border-yellow-500/30"
-              }`}
+              className="p-3 rounded-lg border text-xs leading-relaxed"
+              style={{
+                backgroundColor:
+                  check.status === "FAIL"
+                    ? "rgba(120, 20, 20, 0.8)"
+                    : "rgba(100, 60, 0, 0.8)",
+                borderColor:
+                  check.status === "FAIL"
+                    ? "rgba(239, 68, 68, 0.4)"
+                    : "rgba(245, 158, 11, 0.4)",
+              }}
             >
               <span
-                className={`font-semibold ${
-                  check.status === "FAIL" ? "text-red-400" : "text-yellow-400"
+                className={`font-semibold mr-1 ${
+                  check.status === "FAIL" ? "text-red-300" : "text-yellow-300"
                 }`}
               >
-                Action required:{" "}
+                Action required:
               </span>
-              <span style={{ color: "var(--text)" }}>{check.howToFix}</span>
+              <span className="text-white">{check.howToFix}</span>
             </div>
           )}
         </div>
@@ -463,6 +485,15 @@ export default function CompliancePage() {
                   check={check}
                   expanded={expandedId === check.id}
                   onToggle={() => toggle(check.id)}
+                  onAction={
+                    check.id === "weekly_upload"
+                      ? () => handleConfirm("weekly_upload")
+                      : undefined
+                  }
+                  isActioning={
+                    confirmingKey === "weekly_upload" &&
+                    confirmMutation.isPending
+                  }
                 />
               ))}
             </div>
@@ -496,54 +527,28 @@ export default function CompliancePage() {
                 />
               ))}
             </div>
-
-            {/* Weekly upload — special confirm button */}
-            <div className="card p-4 border border-[var(--border)]">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--text)" }}
-                  >
-                    Weekly TfL Upload — Mark as Completed
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    After uploading driver + vehicle reports to
-                    tfl.gov.uk/ph-operators, click to record completion. This
-                    resets the 7-day automated check.
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleConfirm("weekly_upload")}
-                  disabled={
-                    confirmMutation.isPending &&
-                    confirmingKey === "weekly_upload"
-                  }
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-black text-xs font-semibold transition-colors shrink-0"
-                >
-                  {confirmMutation.isPending &&
-                  confirmingKey === "weekly_upload" ? (
-                    <Spinner size={12} />
-                  ) : (
-                    <CheckCircle size={12} />
-                  )}
-                  Mark as Uploaded
-                </button>
-              </div>
-            </div>
           </div>
 
           {/* Footer note */}
-          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
-            <strong>Note:</strong> Automated checks run against live database
-            records. Manual confirmations record that you have verified a
-            condition offline. This dashboard does not constitute legal advice —
-            always refer to TfL&apos;s official guidance at{" "}
+          <div
+            className="p-4 rounded-lg border text-xs leading-relaxed"
+            style={{
+              backgroundColor: "var(--card)",
+              borderColor: "var(--border)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <strong style={{ color: "var(--text)" }}>Note:</strong> Automated
+            checks run against live database records. Manual confirmations
+            record that you have verified a condition offline. This dashboard
+            does not constitute legal advice — always refer to TfL&apos;s
+            official guidance at{" "}
             <a
               href="https://tfl.gov.uk/info-for/taxis-and-private-hire"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:text-blue-200"
+              className="underline hover:opacity-80"
+              style={{ color: "var(--text)" }}
             >
               tfl.gov.uk/info-for/taxis-and-private-hire
             </a>
