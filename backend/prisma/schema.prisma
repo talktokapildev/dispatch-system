@@ -807,3 +807,10 @@ model SystemSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model ComplianceConfirmation {
+  key         String   @id   // e.g. "insurance", "licence_fee"
+  confirmedAt DateTime
+  confirmedBy String         // adminUserId
+  notes       String?
+}

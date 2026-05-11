@@ -20,6 +20,7 @@ import {
   Heart,
   X,
   UserCheck,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuthStore, api } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -78,7 +79,21 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     staleTime: 30_000,
   });
 
-  const badges: Record<string, number> = { applications: pendingCount };
+  // Compliance issues count (FAIL + WARN + unconfirmed manual)
+  const { data: complianceIssues = 0 } = useQuery<number>({
+    queryKey: ["compliance-issue-count"],
+    queryFn: () =>
+      api
+        .get("/admin/compliance")
+        .then((r) => r.data.summary?.totalIssues ?? 0),
+    refetchInterval: 300_000,
+    staleTime: 60_000,
+  });
+
+  const badges: Record<string, number> = {
+    applications: pendingCount,
+    compliance: complianceIssues,
+  };
 
   const content = (
     <div className="flex flex-col h-full">
