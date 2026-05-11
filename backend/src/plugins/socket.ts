@@ -28,10 +28,17 @@ const socketPlugin: FastifyPluginAsync = fp(async (fastify) => {
     try {
       const payload = fastify.jwt.verify(token) as {
         userId: string;
-        role: string;
+        roles?: string[];
+        role?: string; // backward compat for old tokens still in circulation
       };
       socket.data.userId = payload.userId;
-      socket.data.role = payload.role;
+      // Derive role: prefer activeRole from the array, fall back to legacy role field
+      const roles = payload.roles ?? [];
+      if (roles.includes("DRIVER")) socket.data.role = "DRIVER";
+      else if (roles.includes("ADMIN")) socket.data.role = "ADMIN";
+      else if (roles.includes("DISPATCHER")) socket.data.role = "DISPATCHER";
+      else if (roles.includes("PASSENGER")) socket.data.role = "PASSENGER";
+      else socket.data.role = payload.role ?? "PASSENGER"; // old token fallback
       next();
     } catch {
       next(new Error("Invalid token"));
