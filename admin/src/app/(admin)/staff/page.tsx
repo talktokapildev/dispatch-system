@@ -6,6 +6,7 @@ import { format, differenceInDays } from "date-fns";
 import {
   Plus,
   Pencil,
+  Trash2,
   X,
   Check,
   ShieldCheck,
@@ -21,7 +22,7 @@ interface StaffMember {
   lastName: string;
   phone: string;
   email: string | null;
-  role: string;
+  roles: string[];
   adminProfile: {
     id: string;
     permissions: string[];
@@ -79,6 +80,7 @@ export default function StaffRegisterPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<StaffMember | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
 
@@ -110,6 +112,17 @@ export default function StaffRegisterPage() {
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.error ?? "Failed to create staff member"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => api.delete(`/admin/staff/${userId}`),
+    onSuccess: () => {
+      toast.success("Staff access removed");
+      qc.invalidateQueries({ queryKey: ["staff"] });
+      setDeleteTarget(null);
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error ?? "Failed to remove staff access"),
   });
 
   const openEdit = (member: StaffMember) => {
@@ -264,15 +277,22 @@ export default function StaffRegisterPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          member.role === "ADMIN"
-                            ? "bg-purple-500/10 text-purple-400"
-                            : "bg-blue-500/10 text-blue-400"
-                        }`}
-                      >
-                        {member.role}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {member.roles
+                          ?.filter((r) => r === "ADMIN" || r === "DISPATCHER")
+                          .map((r) => (
+                            <span
+                              key={r}
+                              className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                r === "ADMIN"
+                                  ? "bg-purple-500/10 text-purple-400"
+                                  : "bg-blue-500/10 text-blue-400"
+                              }`}
+                            >
+                              {r}
+                            </span>
+                          ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400 font-mono">
                       {member.phone}
@@ -311,12 +331,20 @@ export default function StaffRegisterPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={() => openEdit(member)}
-                        className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
-                      >
-                        <Pencil size={12} /> Edit
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => openEdit(member)}
+                          className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
+                        >
+                          <Pencil size={12} /> Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(member)}
+                          className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={12} /> Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -539,12 +567,15 @@ export default function StaffRegisterPage() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">
-                  Password *
+                  Password
+                  <span className="text-slate-600 ml-1">
+                    (not needed if user already exists)
+                  </span>
                 </label>
                 <input
                   className="input w-full"
                   type="password"
-                  placeholder="Min 8 characters"
+                  placeholder="Min 8 characters — leave blank for existing users"
                   value={createForm.password}
                   onChange={set("password", "create")}
                 />
@@ -609,8 +640,7 @@ export default function StaffRegisterPage() {
                 createMutation.isPending ||
                 !createForm.firstName ||
                 !createForm.lastName ||
-                !createForm.phone ||
-                !createForm.password
+                !createForm.phone
               }
               className="flex-1 btn-primary py-2.5 flex items-center justify-center gap-2"
             >
@@ -624,6 +654,58 @@ export default function StaffRegisterPage() {
             </button>
           </div>
         </div>
+      </Modal>
+      {/* ── Delete / Remove staff modal ── */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Remove Staff Access"
+      >
+        {deleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Are you sure you want to remove staff access for{" "}
+              <strong style={{ color: "var(--text)" }}>
+                {deleteTarget.firstName} {deleteTarget.lastName}
+              </strong>
+              ?
+            </p>
+            {deleteTarget.roles.some(
+              (r) => !["ADMIN", "DISPATCHER"].includes(r)
+            ) ? (
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
+                This user also has other roles (e.g. passenger/driver). Their
+                account will be kept — only admin/dispatcher access will be
+                removed.
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-300">
+                This user has no other roles. Their account will be deactivated
+                but not deleted — booking history is preserved.
+              </div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 btn-ghost py-2.5 flex items-center justify-center gap-2"
+              >
+                <X size={14} /> Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 btn-danger py-2.5 flex items-center justify-center gap-2"
+              >
+                {deleteMutation.isPending ? (
+                  <Spinner size={14} />
+                ) : (
+                  <Trash2 size={14} />
+                )}
+                Remove Access
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

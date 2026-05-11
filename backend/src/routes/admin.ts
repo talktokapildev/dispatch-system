@@ -769,11 +769,65 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
       const existing = await fastify.prisma.user.findUnique({
         where: { phone: body.phone },
+        include: { adminProfile: true },
       });
-      if (existing)
-        return reply
-          .status(400)
-          .send({ success: false, error: "Phone number already in use" });
+
+      if (existing) {
+        // User already exists — add admin/dispatcher role rather than creating a duplicate.
+        // This is the multi-role flow: a passenger or driver can become a staff member.
+        const alreadyStaff =
+          existing.roles.includes("ADMIN") ||
+          existing.roles.includes("DISPATCHER");
+        if (alreadyStaff) {
+          return reply.status(400).send({
+            success: false,
+            error: "This user already has admin or dispatcher access.",
+          });
+        }
+
+        await fastify.prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: existing.id },
+            data: { roles: { push: body.role } },
+          });
+          await tx.adminProfile.upsert({
+            where: { userId: existing.id },
+            update: {
+              dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+              dbsCertificateNumber: body.dbsCertificateNumber ?? null,
+              dbsCheckDate: body.dbsCheckDate
+                ? new Date(body.dbsCheckDate)
+                : null,
+            },
+            create: {
+              userId: existing.id,
+              permissions:
+                body.role === "ADMIN"
+                  ? ["ALL"]
+                  : ["BOOKINGS", "DRIVERS", "MAP"],
+              dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : null,
+              dbsCertificateNumber: body.dbsCertificateNumber ?? null,
+              dbsCheckDate: body.dbsCheckDate
+                ? new Date(body.dbsCheckDate)
+                : null,
+            },
+          });
+        });
+
+        const updated = await fastify.prisma.user.findUnique({
+          where: { id: existing.id },
+          include: { adminProfile: true },
+        });
+        return reply.status(200).send({ success: true, data: updated });
+      }
+
+      // Brand new user — create with password
+      if (!body.password || body.password.length < 8) {
+        return reply.status(400).send({
+          success: false,
+          error: "Password is required (min 8 characters) for new users.",
+        });
+      }
 
       const passwordHash = await bcrypt.hash(body.password, 12);
 
@@ -800,12 +854,64 @@ export async function adminRoutes(fastify: FastifyInstance) {
             },
           },
         },
-        include: {
-          adminProfile: true,
-        },
+        include: { adminProfile: true },
       });
 
       return reply.status(201).send({ success: true, data: user });
+    }
+  );
+
+  // ─── DELETE /admin/staff/:userId — remove staff access ───────────────────
+  // Removes ADMIN/DISPATCHER role. Deletes adminProfile.
+  // If the user has no other roles, marks them inactive (preserves booking history).
+  // Never hard-deletes the User record — booking history must be preserved.
+  fastify.delete(
+    "/admin/staff/:userId",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { userId } = request.params as { userId: string };
+      const requestingUser = (request as any).user;
+
+      if (requestingUser.userId === userId) {
+        return reply.status(400).send({
+          success: false,
+          error: "You cannot remove your own admin access.",
+        });
+      }
+
+      const user = await fastify.prisma.user.findUnique({
+        where: { id: userId },
+      });
+      if (!user) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "User not found" });
+      }
+
+      const remainingRoles = user.roles.filter(
+        (r) => r !== "ADMIN" && r !== "DISPATCHER"
+      );
+
+      await fastify.prisma.$transaction(async (tx) => {
+        // Remove adminProfile
+        await tx.adminProfile.deleteMany({ where: { userId } });
+
+        if (remainingRoles.length === 0) {
+          // No remaining roles — deactivate rather than delete
+          await tx.user.update({
+            where: { id: userId },
+            data: { roles: [], isActive: false },
+          });
+        } else {
+          // Has other roles (passenger/driver) — just strip admin roles
+          await tx.user.update({
+            where: { id: userId },
+            data: { roles: remainingRoles as any },
+          });
+        }
+      });
+
+      return reply.send({ success: true, message: "Staff access removed." });
     }
   );
 
