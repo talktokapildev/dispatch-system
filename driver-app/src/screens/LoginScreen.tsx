@@ -190,18 +190,17 @@ export default function LoginScreen({
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Apply to Drive — sits outside the scroll, lifted above keyboard */}
+      {/* Apply to Drive — subtle text link, visible but unobtrusive */}
       {step === "phone" && (
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={0}
         >
-          <View style={s.applySection}>
-            <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
-            <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
-              <Text style={s.applyBtnText}>Apply to Drive →</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={handleApplyToDrive} style={s.applySection}>
+            <Text style={s.applyLabel}>
+              New driver? <Text style={s.applyLink}>Apply to Drive →</Text>
+            </Text>
+          </TouchableOpacity>
         </KeyboardAvoidingView>
       )}
     </SafeAreaView>
@@ -264,27 +263,17 @@ const styles = (
     btnText: { color: "#000", fontWeight: "700", fontSize: FontSize.md },
     backBtn: { alignItems: "center", marginTop: Spacing.md },
     backText: { color: C.muted, fontSize: FontSize.sm },
-    // Apply to drive section
+    // Apply to drive — subtle single-line text link
     applySection: {
       alignItems: "center",
-      marginTop: Spacing.xxl,
+      paddingVertical: Spacing.lg,
     },
     applyLabel: {
       fontSize: FontSize.sm,
       color: C.muted,
-      marginBottom: Spacing.md,
     },
-    applyBtn: {
-      paddingVertical: Spacing.md,
-      paddingHorizontal: Spacing.xxl,
-      borderRadius: Radius.md,
-      backgroundColor: C.brand + "20",
-      borderWidth: 1.5,
-      borderColor: C.brand,
-    },
-    applyBtnText: {
-      fontSize: FontSize.md,
+    applyLink: {
       color: C.brand,
-      fontWeight: "700",
+      fontWeight: "600",
     },
   });
