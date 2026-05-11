@@ -200,6 +200,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           id: user.id,
           phone: user.phone,
           roles: user.roles, // ← full array
+          role: activeRole, // ← backward compat for older app versions
           activeRole, // ← which context this session is for
           firstName: user.firstName,
           lastName: user.lastName,
@@ -313,6 +314,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           firstName: user.firstName,
           lastName: user.lastName,
           roles: user.roles, // ← was: role: user.role
+          role: user.roles?.[0] ?? "PASSENGER", // ← backward compat for older app versions
           isVerified: user.isVerified,
           passenger: user.passenger,
           driver: user.driver,
