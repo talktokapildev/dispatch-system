@@ -181,26 +181,22 @@ function AutomatedRow({
 
           {check.howToFix && (
             <div
-              className="p-3 rounded-lg border text-xs leading-relaxed"
+              className="p-3 rounded-r-lg text-xs leading-relaxed border-l-4"
               style={{
-                backgroundColor:
-                  check.status === "FAIL"
-                    ? "rgba(120, 20, 20, 0.8)"
-                    : "rgba(100, 60, 0, 0.8)",
-                borderColor:
-                  check.status === "FAIL"
-                    ? "rgba(239, 68, 68, 0.4)"
-                    : "rgba(245, 158, 11, 0.4)",
+                borderLeftColor:
+                  check.status === "FAIL" ? "#ef4444" : "#f59e0b",
+                backgroundColor: "var(--card-hover)",
+                color: "var(--text)",
               }}
             >
               <span
                 className={`font-semibold mr-1 ${
-                  check.status === "FAIL" ? "text-red-300" : "text-yellow-300"
+                  check.status === "FAIL" ? "text-red-500" : "text-yellow-500"
                 }`}
               >
                 Action required:
               </span>
-              <span className="text-white">{check.howToFix}</span>
+              {check.howToFix}
             </div>
           )}
         </div>
