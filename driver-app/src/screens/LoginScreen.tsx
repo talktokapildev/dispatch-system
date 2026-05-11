@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
+  ScrollView,
   Platform,
   ActivityIndicator,
   Alert,
@@ -103,92 +104,105 @@ export default function LoginScreen({
 
   return (
     <SafeAreaView style={s.container} edges={["top", "left", "right"]}>
+      {/* Main scrollable content — pushes up with keyboard */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={s.inner}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={0}
       >
-        <View style={s.logoSection}>
-          <View style={s.logoBox}>
-            <Text style={s.logoIcon}>🚖</Text>
+        <ScrollView
+          contentContainerStyle={s.inner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={s.logoSection}>
+            <View style={s.logoBox}>
+              <Text style={s.logoIcon}>🚖</Text>
+            </View>
+            <Text style={s.appName}>OrangeRide Driver</Text>
+            <Text style={s.appSub}>TfL Licensed Private Hire</Text>
           </View>
-          <Text style={s.appName}>OrangeRide Driver</Text>
-          <Text style={s.appSub}>TfL Licensed Private Hire</Text>
-        </View>
 
-        <View style={s.card}>
-          {step === "phone" ? (
-            <>
-              <Text style={s.label}>Mobile Number</Text>
-              <TextInput
-                style={s.input}
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                placeholder="+447123456789"
-                placeholderTextColor={Colors.muted}
-                autoFocus
-                keyboardAppearance={theme === "dark" ? "dark" : "light"}
-              />
-              <Text style={s.hint}>
-                Enter the phone number registered with your operator
-              </Text>
-              <TouchableOpacity
-                style={[s.btn, loading && s.btnDisabled]}
-                onPress={sendOtp}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={s.btnText}>Send Code →</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={s.label}>Enter 6-digit code</Text>
-              <Text style={s.phoneDisplay}>Sent to {phone}</Text>
-              <TextInput
-                ref={otpRef}
-                style={[s.input, s.otpInput]}
-                value={otp}
-                onChangeText={setOtp}
-                keyboardType="number-pad"
-                maxLength={6}
-                placeholder="000000"
-                placeholderTextColor={Colors.muted}
-                keyboardAppearance={theme === "dark" ? "dark" : "light"}
-              />
-              <TouchableOpacity
-                style={[s.btn, loading && s.btnDisabled]}
-                onPress={verifyOtp}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={s.btnText}>Verify & Login</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setStep("phone")}
-                style={s.backBtn}
-              >
-                <Text style={s.backText}>← Change number</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
+          <View style={s.card}>
+            {step === "phone" ? (
+              <>
+                <Text style={s.label}>Mobile Number</Text>
+                <TextInput
+                  style={s.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                  placeholder="+447123456789"
+                  placeholderTextColor={Colors.muted}
+                  autoFocus
+                  keyboardAppearance={theme === "dark" ? "dark" : "light"}
+                />
+                <Text style={s.hint}>
+                  Enter the phone number registered with your operator
+                </Text>
+                <TouchableOpacity
+                  style={[s.btn, loading && s.btnDisabled]}
+                  onPress={sendOtp}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <Text style={s.btnText}>Send Code →</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={s.label}>Enter 6-digit code</Text>
+                <Text style={s.phoneDisplay}>Sent to {phone}</Text>
+                <TextInput
+                  ref={otpRef}
+                  style={[s.input, s.otpInput]}
+                  value={otp}
+                  onChangeText={setOtp}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  placeholder="000000"
+                  placeholderTextColor={Colors.muted}
+                  keyboardAppearance={theme === "dark" ? "dark" : "light"}
+                />
+                <TouchableOpacity
+                  style={[s.btn, loading && s.btnDisabled]}
+                  onPress={verifyOtp}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <Text style={s.btnText}>Verify & Login</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setStep("phone")}
+                  style={s.backBtn}
+                >
+                  <Text style={s.backText}>← Change number</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Apply to drive — outside KeyboardAvoidingView so keyboard never covers it */}
+      {/* Apply to Drive — sits outside the scroll, lifted above keyboard */}
       {step === "phone" && (
-        <View style={s.applySection}>
-          <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
-          <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
-            <Text style={s.applyBtnText}>Apply to Drive →</Text>
-          </TouchableOpacity>
-        </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+        >
+          <View style={s.applySection}>
+            <Text style={s.applyLabel}>Want to drive for OrangeRide?</Text>
+            <TouchableOpacity onPress={handleApplyToDrive} style={s.applyBtn}>
+              <Text style={s.applyBtnText}>Apply to Drive →</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       )}
     </SafeAreaView>
   );
@@ -250,11 +264,10 @@ const styles = (
     btnText: { color: "#000", fontWeight: "700", fontSize: FontSize.md },
     backBtn: { alignItems: "center", marginTop: Spacing.md },
     backText: { color: C.muted, fontSize: FontSize.sm },
-    // Apply to drive section — fixed at bottom, outside keyboard avoid view
+    // Apply to drive section
     applySection: {
       alignItems: "center",
-      paddingBottom: Spacing.xl,
-      paddingTop: Spacing.lg,
+      marginTop: Spacing.xxl,
     },
     applyLabel: {
       fontSize: FontSize.sm,
