@@ -1038,7 +1038,7 @@ export default function DriversPage() {
                   Documents
                 </p>
                 <a
-                  href="/admin/documents"
+                  href="/documents"
                   className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
                 >
                   Manage in Documents page
