@@ -655,9 +655,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
         status,
         expiring,
         days = "60",
+        driverId,
       } = request.query as Record<string, string>;
 
       const where: any = {};
+
+      if (driverId) where.driverId = driverId;
 
       if (expiring === "true") {
         const threshold = new Date();

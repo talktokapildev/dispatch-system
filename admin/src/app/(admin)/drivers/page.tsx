@@ -3,7 +3,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useState } from "react";
 import { format } from "date-fns";
-import { Search, AlertTriangle, UserPlus, Pencil, Trash2 } from "lucide-react";
+import {
+  Search,
+  AlertTriangle,
+  UserPlus,
+  Pencil,
+  Trash2,
+  FileText,
+  ExternalLink,
+} from "lucide-react";
 import {
   DriverBadge,
   SectionHeader,
@@ -23,6 +31,19 @@ const EMISSION_STANDARDS = [
   "Hybrid",
   "Plug-in Hybrid",
 ];
+
+const DOC_LABELS: Record<string, string> = {
+  PCO_LICENSE: "PCO Badge",
+  DRIVING_LICENSE: "Driving Lic (Front)",
+  DRIVING_LICENSE_BACK: "Driving Lic (Back)",
+  PHV_LICENCE: "PHV Licence",
+  VEHICLE_INSURANCE: "Insurance",
+  MOT_CERTIFICATE: "MOT",
+  V5C_LOGBOOK: "V5C Logbook",
+  DBS_CHECK: "DBS Certificate",
+};
+
+const REQUIRED_DOCS = Object.keys(DOC_LABELS);
 
 const EMPTY_FORM = {
   firstName: "",
@@ -44,8 +65,8 @@ const EMPTY_FORM = {
   phvLicenceNumber: "",
   phvLicenceExpiry: "",
   phvDiscNumber: "",
-  emissionStandard: "", // TfL Item 5
-  isUlezCompliant: "false", // TfL Item 5
+  emissionStandard: "",
+  isUlezCompliant: "false",
 };
 
 export default function DriversPage() {
@@ -76,6 +97,16 @@ export default function DriversPage() {
       api
         .get("/admin/drivers/documents/expiring", { params: { days: 60 } })
         .then((r) => r.data.data),
+  });
+
+  // ── Fetch documents for the selected driver ──────────────────────────────
+  const { data: driverDocs = [], isLoading: docsLoading } = useQuery({
+    queryKey: ["driver-docs", selected?.id],
+    queryFn: () =>
+      api
+        .get("/admin/documents", { params: { driverId: selected.id } })
+        .then((r) => r.data.data),
+    enabled: !!selected?.id,
   });
 
   const addDriver = useMutation({
@@ -196,8 +227,8 @@ export default function DriversPage() {
         phvLicenceNumber: form.phvLicenceNumber.trim() || undefined,
         phvLicenceExpiry: form.phvLicenceExpiry || undefined,
         phvDiscNumber: form.phvDiscNumber.trim() || undefined,
-        emissionStandard: form.emissionStandard || undefined, // TfL Item 5
-        isUlezCompliant: form.isUlezCompliant === "true", // TfL Item 5
+        emissionStandard: form.emissionStandard || undefined,
+        isUlezCompliant: form.isUlezCompliant === "true",
       },
     };
 
@@ -427,7 +458,6 @@ export default function DriversPage() {
                       {format(pcoExpiry, "dd MMM yyyy")}
                     </span>
                   </td>
-                  {/* TfL Item 5: ULEZ column */}
                   <td className="px-4 py-3">
                     {d.vehicle?.isUlezCompliant ? (
                       <span className="text-xs text-green-400 font-medium">
@@ -784,7 +814,7 @@ export default function DriversPage() {
         </div>
       </Modal>
 
-      {/* Driver detail modal */}
+      {/* ── Driver detail modal ── */}
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}
@@ -793,7 +823,8 @@ export default function DriversPage() {
         }
       >
         {selected && (
-          <div className="space-y-4">
+          <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
+            {/* Action buttons */}
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => openEdit(selected)}
@@ -808,106 +839,256 @@ export default function DriversPage() {
                 <Trash2 size={12} /> Delete
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                {
-                  label: "Status",
-                  value: <DriverBadge status={selected.status} />,
-                },
-                {
-                  label: "PCO Badge",
-                  value: (
-                    <span className="font-mono">{selected.pcoBadgeNumber}</span>
-                  ),
-                },
-                { label: "Rating", value: `★ ${selected.rating.toFixed(1)}` },
-                { label: "Total Jobs", value: selected.totalJobs },
-                {
-                  label: "Onboarded",
-                  value: selected.onboardingComplete ? "✓ Yes" : "✗ Pending",
-                },
-                {
-                  label: "PCO Expiry",
-                  value: format(
-                    new Date(selected.pcoLicenseExpiry),
-                    "dd MMM yyyy"
-                  ),
-                },
-              ].map(({ label, value }) => (
-                <div
-                  key={label}
-                  className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]"
-                >
-                  <p className="text-[10px] text-slate-500 mb-1">{label}</p>
-                  <div className="text-xs text-[var(--text)] font-medium">
-                    {value}
+
+            {/* Status & stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                <p className="text-[10px] text-slate-500 mb-1">Status</p>
+                <DriverBadge status={selected.status} />
+              </div>
+              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                <p className="text-[10px] text-slate-500 mb-1">Rating</p>
+                <p className="text-xs text-brand-400 font-medium">
+                  ★ {selected.rating.toFixed(1)}
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                <p className="text-[10px] text-slate-500 mb-1">Total Jobs</p>
+                <p className="text-xs text-[var(--text)] font-medium">
+                  {selected.totalJobs}
+                </p>
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                Contact
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                  <p className="text-[10px] text-slate-500 mb-1">Phone</p>
+                  <p className="text-xs text-[var(--text)] font-mono">
+                    {selected.user.phone}
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                  <p className="text-[10px] text-slate-500 mb-1">Email</p>
+                  <p className="text-xs text-[var(--text)]">
+                    {selected.user.email ?? "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Licence */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                Licence
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "PCO Badge",
+                    value: (
+                      <span className="font-mono">
+                        {selected.pcoBadgeNumber}
+                      </span>
+                    ),
+                  },
+                  {
+                    label: "PCO Expiry",
+                    value: format(
+                      new Date(selected.pcoLicenseExpiry),
+                      "dd MMM yyyy"
+                    ),
+                  },
+                  {
+                    label: "Driving Licence No.",
+                    value: (
+                      <span className="font-mono">
+                        {selected.drivingLicenseNumber ?? "—"}
+                      </span>
+                    ),
+                  },
+                  {
+                    label: "Onboarded",
+                    value: selected.onboardingComplete ? "✓ Yes" : "✗ Pending",
+                  },
+                ].map(({ label, value }) => (
+                  <div
+                    key={label}
+                    className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]"
+                  >
+                    <p className="text-[10px] text-slate-500 mb-1">{label}</p>
+                    <div className="text-xs text-[var(--text)] font-medium">
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Vehicle */}
+            {selected.vehicle && (
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                  Vehicle
+                </p>
+                <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] space-y-3">
+                  <div>
+                    <p className="text-sm text-[var(--text)] font-medium">
+                      {selected.vehicle.year} {selected.vehicle.make}{" "}
+                      {selected.vehicle.model} · {selected.vehicle.colour}
+                    </p>
+                    <div className="flex gap-4 mt-1 text-xs text-slate-500 flex-wrap">
+                      <span>
+                        Plate:{" "}
+                        <span className="font-mono text-slate-300">
+                          {selected.vehicle.licensePlate}
+                        </span>
+                      </span>
+                      <span>Class: {selected.vehicle.class}</span>
+                      <span>Seats: {selected.vehicle.seats}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border)]">
+                    {[
+                      {
+                        label: "PHV Licence",
+                        value: selected.vehicle.phvLicenceNumber ? (
+                          <span className="font-mono">
+                            {selected.vehicle.phvLicenceNumber}
+                          </span>
+                        ) : (
+                          "—"
+                        ),
+                      },
+                      {
+                        label: "PHV Expiry",
+                        value: selected.vehicle.phvLicenceExpiry
+                          ? format(
+                              new Date(selected.vehicle.phvLicenceExpiry),
+                              "dd MMM yyyy"
+                            )
+                          : "—",
+                      },
+                      {
+                        label: "MOT Expiry",
+                        value: selected.vehicle.motExpiry
+                          ? format(
+                              new Date(selected.vehicle.motExpiry),
+                              "dd MMM yyyy"
+                            )
+                          : "—",
+                      },
+                      {
+                        label: "Insurance Expiry",
+                        value: selected.vehicle.insuranceExpiry
+                          ? format(
+                              new Date(selected.vehicle.insuranceExpiry),
+                              "dd MMM yyyy"
+                            )
+                          : "—",
+                      },
+                      {
+                        label: "PHV Disc No.",
+                        value: selected.vehicle.phvDiscNumber ? (
+                          <span className="font-mono">
+                            {selected.vehicle.phvDiscNumber}
+                          </span>
+                        ) : (
+                          "—"
+                        ),
+                      },
+                      {
+                        label: "Emission",
+                        value: selected.vehicle.emissionStandard ?? "—",
+                      },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
+                        <p className="text-[10px] text-slate-500">{label}</p>
+                        <p className="text-xs text-[var(--text)] font-medium mt-0.5">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-4 pt-2 border-t border-[var(--border)] text-xs">
+                    <span
+                      className={
+                        selected.vehicle.isUlezCompliant
+                          ? "text-green-400 font-medium"
+                          : "text-red-400"
+                      }
+                    >
+                      {selected.vehicle.isUlezCompliant
+                        ? "✓ ULEZ Compliant"
+                        : "✗ Non-ULEZ"}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
-            {selected.vehicle && (
-              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
-                <p className="text-[10px] text-slate-500 mb-2">Vehicle</p>
-                <p className="text-sm text-[var(--text)] font-medium">
-                  {selected.vehicle.year} {selected.vehicle.make}{" "}
-                  {selected.vehicle.model} · {selected.vehicle.colour}
+              </div>
+            )}
+
+            {/* Documents */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">
+                  Documents
                 </p>
-                <div className="flex gap-4 mt-1 text-xs text-slate-500 flex-wrap">
-                  <span>
-                    Plate:{" "}
-                    <span className="font-mono text-slate-300">
-                      {selected.vehicle.licensePlate}
-                    </span>
-                  </span>
-                  <span>Class: {selected.vehicle.class}</span>
-                  <span>Seats: {selected.vehicle.seats}</span>
-                </div>
-                {/* TfL Item 5: Emissions display */}
-                <div className="flex gap-4 mt-2 text-xs flex-wrap">
-                  {selected.vehicle.emissionStandard && (
-                    <span className="text-slate-400">
-                      Emission:{" "}
-                      <span className="text-slate-200">
-                        {selected.vehicle.emissionStandard}
-                      </span>
-                    </span>
-                  )}
-                  <span
-                    className={
-                      selected.vehicle.isUlezCompliant
-                        ? "text-green-400 font-medium"
-                        : "text-red-400"
-                    }
-                  >
-                    {selected.vehicle.isUlezCompliant
-                      ? "✓ ULEZ Compliant"
-                      : "✗ Non-ULEZ"}
-                  </span>
-                </div>
+                <a
+                  href="/admin/documents"
+                  className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
+                >
+                  Manage in Documents page
+                  <ExternalLink size={10} />
+                </a>
               </div>
-            )}
-            {selected.documents?.length > 0 && (
-              <div>
-                <p className="text-xs text-slate-500 mb-2">Documents</p>
-                <div className="space-y-1.5">
-                  {selected.documents.map((doc: any) => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between text-xs p-2 rounded bg-[var(--card-hover)]"
-                    >
-                      <span className="text-slate-300">
-                        {doc.type.replace(/_/g, " ")}
-                      </span>
-                      {doc.expiryDate && (
-                        <span className="text-slate-500">
-                          {format(new Date(doc.expiryDate), "dd MMM yyyy")}
+
+              {docsLoading ? (
+                <div className="flex justify-center py-4">
+                  <Spinner size={16} />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {REQUIRED_DOCS.map((type) => {
+                    const doc = driverDocs.find((d: any) => d.type === type);
+                    const status = doc?.status ?? "MISSING";
+                    const statusStyle =
+                      status === "APPROVED"
+                        ? "bg-green-500/15 text-green-400"
+                        : status === "PENDING"
+                        ? "bg-yellow-500/15 text-yellow-400"
+                        : status === "REJECTED"
+                        ? "bg-red-500/15 text-red-400"
+                        : "bg-slate-500/15 text-slate-500";
+
+                    return (
+                      <div
+                        key={type}
+                        className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileText
+                            size={11}
+                            className="text-slate-500 shrink-0"
+                          />
+                          <span className="text-[11px] text-slate-300 truncate">
+                            {DOC_LABELS[type]}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ml-2 shrink-0 ${statusStyle}`}
+                        >
+                          {status}
                         </span>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </Modal>
