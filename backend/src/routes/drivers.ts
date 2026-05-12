@@ -643,6 +643,53 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Admin: list all documents (with driver info) ───────────────────────
+  // Used by the Documents management page.
+  // Query params: ?status=PENDING|APPROVED|REJECTED  (omit for all)
+  //               ?expiring=true&days=60             (documents expiring soon)
+  fastify.get(
+    "/admin/documents",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const {
+        status,
+        expiring,
+        days = "60",
+      } = request.query as Record<string, string>;
+
+      const where: any = {};
+
+      if (expiring === "true") {
+        const threshold = new Date();
+        threshold.setDate(threshold.getDate() + parseInt(days));
+        where.expiryDate = { lte: threshold, gte: new Date() };
+      } else if (status) {
+        where.status = status;
+      }
+
+      const documents = await fastify.prisma.driverDocument.findMany({
+        where,
+        include: {
+          driver: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return reply.send({ success: true, data: documents });
+    }
+  );
+
   // ─── Admin: create driver ───
   fastify.post(
     "/admin/drivers",
