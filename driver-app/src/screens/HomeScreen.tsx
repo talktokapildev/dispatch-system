@@ -15,6 +15,8 @@ import { useSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
+import { useDocumentStatus } from "../hooks/useDocumentStatus";
+import { DocumentStatusBanner } from "../components/DocumentStatusBanner";
 
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -28,6 +30,7 @@ export default function HomeScreen({ navigation }: any) {
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
   const [loading, setLoading] = useState(false);
+  const { eligibility } = useDocumentStatus();
 
   const isOnline = status !== "OFFLINE";
   const { getInitialLocation, locationRef } = useLocationTracking(
@@ -253,6 +256,11 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           </TouchableOpacity>
         </View>
+
+        <DocumentStatusBanner
+          eligibility={eligibility}
+          onPress={() => navigation.navigate("Documents")}
+        />
 
         {/* Status card */}
         <View

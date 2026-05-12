@@ -1,9 +1,15 @@
-import { PrismaClient, BookingStatus, DriverStatus } from "@prisma/client";
+import {
+  PrismaClient,
+  BookingStatus,
+  DriverStatus,
+  DocumentType,
+  DocumentStatus,
+} from "@prisma/client";
 import Redis from "ioredis";
 import { Server as SocketServer } from "socket.io";
 import { RedisKeys, RedisTTL } from "../plugins/redis";
 import { MapsService } from "./maps.service";
-import { NotificationService } from "./notification.service"; // ← NEW
+import { NotificationService } from "./notification.service";
 import { SocketEvent, JobOfferPayload } from "../types";
 import {
   DRIVER_ACCEPT_TIMEOUT_MS,
@@ -11,8 +17,21 @@ import {
   MAX_DRIVER_SEARCH_RADIUS_KM,
 } from "../config";
 
+// All 8 document types a driver must have APPROVED (and not expired)
+// before they can receive any dispatch offer — auto or manual.
+const REQUIRED_DISPATCH_DOCS: DocumentType[] = [
+  DocumentType.PCO_LICENSE,
+  DocumentType.DRIVING_LICENSE,
+  DocumentType.DRIVING_LICENSE_BACK,
+  DocumentType.PHV_LICENCE,
+  DocumentType.VEHICLE_INSURANCE,
+  DocumentType.MOT_CERTIFICATE,
+  DocumentType.V5C_LOGBOOK,
+  DocumentType.DBS_CHECK,
+];
+
 export class DispatchService {
-  private notifications: NotificationService; // ← NEW
+  private notifications: NotificationService;
 
   constructor(
     private prisma: PrismaClient,
@@ -20,9 +39,37 @@ export class DispatchService {
     private io: SocketServer,
     private maps: MapsService
   ) {
-    this.notifications = new NotificationService(prisma); // ← NEW
+    this.notifications = new NotificationService(prisma);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Document compliance check
+  // Returns true only if the driver has every required document with status
+  // APPROVED and either no expiry date or an expiry date in the future.
+  // ─────────────────────────────────────────────────────────────────────────
+  private isDocumentCompliant(
+    documents: {
+      type: DocumentType;
+      status: DocumentStatus;
+      expiryDate: Date | null;
+    }[]
+  ): boolean {
+    const now = new Date();
+    const validTypes = new Set(
+      documents
+        .filter(
+          (doc) =>
+            doc.status === DocumentStatus.APPROVED &&
+            (doc.expiryDate === null || doc.expiryDate > now)
+        )
+        .map((doc) => doc.type)
+    );
+    return REQUIRED_DISPATCH_DOCS.every((type) => validTypes.has(type));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // dispatchBooking
+  // ─────────────────────────────────────────────────────────────────────────
   async dispatchBooking(bookingId: string): Promise<void> {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -45,6 +92,9 @@ export class DispatchService {
     await this.offerToDriver(bookingId, drivers, 0);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // offerToDriver
+  // ─────────────────────────────────────────────────────────────────────────
   private async offerToDriver(
     bookingId: string,
     drivers: AvailableDriver[],
@@ -152,6 +202,9 @@ export class DispatchService {
     }, DRIVER_ACCEPT_TIMEOUT_MS);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // acceptJob
+  // ─────────────────────────────────────────────────────────────────────────
   async acceptJob(bookingId: string, driverId: string): Promise<void> {
     const lock = await this.redis.get(RedisKeys.bookingLock(bookingId));
     if (lock !== driverId) {
@@ -261,6 +314,9 @@ export class DispatchService {
     } catch {}
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // rejectJob
+  // ─────────────────────────────────────────────────────────────────────────
   async rejectJob(bookingId: string, driverId: string): Promise<void> {
     const lock = await this.redis.get(RedisKeys.bookingLock(bookingId));
     if (lock !== driverId) return;
@@ -291,6 +347,9 @@ export class DispatchService {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // updateBookingStatus
+  // ─────────────────────────────────────────────────────────────────────────
   async updateBookingStatus(
     bookingId: string,
     driverId: string,
@@ -417,16 +476,32 @@ export class DispatchService {
     } catch {}
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // manualAssign — also enforces document compliance
+  // ─────────────────────────────────────────────────────────────────────────
   async manualAssign(bookingId: string, driverId: string): Promise<void> {
     const driver = await this.prisma.driver.findUnique({
       where: { id: driverId },
+      include: { documents: true },
     });
+
     if (!driver || driver.status !== DriverStatus.AVAILABLE) {
       throw new Error("Driver not available");
     }
+
+    if (!this.isDocumentCompliant(driver.documents)) {
+      throw new Error(
+        "Driver does not have all required documents approved. " +
+          "Check the Documents page before manually assigning this driver."
+      );
+    }
+
     await this.acceptJob(bookingId, driverId);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // escalateToManual
+  // ─────────────────────────────────────────────────────────────────────────
   private async escalateToManual(
     bookingId: string,
     reason: string
@@ -445,6 +520,11 @@ export class DispatchService {
     });
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // findNearestDrivers
+  // Only returns drivers who are online, AVAILABLE, have a location,
+  // AND have all 8 required documents APPROVED and not expired.
+  // ─────────────────────────────────────────────────────────────────────────
   async findNearestDrivers(
     lat: number,
     lng: number,
@@ -462,10 +542,27 @@ export class DispatchService {
         currentLatitude: { not: null },
         currentLongitude: { not: null },
       },
-      include: { vehicle: true },
+      include: {
+        vehicle: true,
+        documents: {
+          select: { type: true, status: true, expiryDate: true },
+        },
+      },
     });
 
+    const now = new Date();
     const withDistance: AvailableDriver[] = drivers
+      // ── Document compliance filter ──────────────────────────────────────
+      .filter((d) => {
+        const compliant = this.isDocumentCompliant(d.documents);
+        if (!compliant) {
+          console.log(
+            `[Dispatch] Driver ${d.id} excluded — missing or unapproved documents`
+          );
+        }
+        return compliant;
+      })
+      // ── Distance filter ─────────────────────────────────────────────────
       .map((d) => ({
         id: d.id,
         distanceKm: this.maps.haversineDistance(

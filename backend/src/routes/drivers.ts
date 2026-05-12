@@ -1076,6 +1076,76 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // GET /driver/dispatch-eligibility
+  // Returns the document compliance status for the logged-in driver.
+  // The driver app uses this to show a banner explaining why jobs aren't coming.
+  fastify.get(
+    "/driver/dispatch-eligibility",
+    { onRequest: [fastify.authenticate] },
+    async (req, reply) => {
+      const userId = (req.user as any).userId;
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+        include: {
+          documents: {
+            select: { type: true, status: true, expiryDate: true },
+          },
+        },
+      });
+
+      if (!driver) {
+        return reply.status(404).send({ error: "Driver not found" });
+      }
+
+      const REQUIRED = [
+        "PCO_LICENSE",
+        "DRIVING_LICENSE",
+        "DRIVING_LICENSE_BACK",
+        "PHV_LICENCE",
+        "VEHICLE_INSURANCE",
+        "MOT_CERTIFICATE",
+        "V5C_LOGBOOK",
+        "DBS_CHECK",
+      ] as const;
+
+      const now = new Date();
+      const missingDocs: string[] = [];
+      const pendingDocs: string[] = [];
+      const expiredDocs: string[] = [];
+      const rejectedDocs: string[] = [];
+
+      for (const type of REQUIRED) {
+        const doc = driver.documents.find((d) => d.type === type);
+        if (!doc) {
+          missingDocs.push(type);
+        } else if (doc.status === "REJECTED") {
+          rejectedDocs.push(type);
+        } else if (doc.status === "PENDING") {
+          pendingDocs.push(type);
+        } else if (doc.status === "APPROVED") {
+          if (doc.expiryDate && doc.expiryDate <= now) {
+            expiredDocs.push(type);
+          }
+        }
+      }
+
+      const eligible =
+        missingDocs.length === 0 &&
+        pendingDocs.length === 0 &&
+        expiredDocs.length === 0 &&
+        rejectedDocs.length === 0;
+
+      return reply.send({
+        eligible,
+        missingDocs,
+        pendingDocs,
+        expiredDocs,
+        rejectedDocs,
+      });
+    }
+  );
+
   // ─── Driver: upload document ───
   fastify.post(
     "/drivers/documents",
