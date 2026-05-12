@@ -32,7 +32,9 @@ export type CloudinaryFolder =
   | "driver-applications/driving-licence-back"
   | "driver-applications/phv-licence"
   | "driver-applications/insurance"
-  | "driver-applications/mot";
+  | "driver-applications/mot"
+  | "driver-applications/dbs-check"
+  | "driver-applications/v5c-logbook";
 
 export interface CloudinaryUploadResult {
   url: string;

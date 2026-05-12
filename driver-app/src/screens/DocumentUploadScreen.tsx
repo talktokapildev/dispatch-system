@@ -31,6 +31,8 @@ const DOCUMENT_SLOTS = [
   { key: "docPhvLicence", label: "PHV Licence", emoji: "📄" },
   { key: "docInsurance", label: "Insurance Certificate", emoji: "📋" },
   { key: "docMot", label: "MOT Certificate", emoji: "🔧" },
+  { key: "docDbs", label: "DBS Certificate", emoji: "✅" },
+  { key: "docV5c", label: "V5C Logbook", emoji: "📋" },
 ] as const;
 
 type DocKey = (typeof DOCUMENT_SLOTS)[number]["key"];
@@ -49,6 +51,8 @@ export default function DocumentUploadScreen() {
     docPhvLicence: null,
     docInsurance: null,
     docMot: null,
+    docDbs: null,
+    docV5c: null,
   });
 
   // Track which slots are currently uploading
@@ -59,6 +63,8 @@ export default function DocumentUploadScreen() {
     docPhvLicence: false,
     docInsurance: false,
     docMot: false,
+    docDbs: false,
+    docV5c: false,
   });
 
   const uploadedCount = Object.values(uploaded).filter(Boolean).length;
@@ -131,10 +137,10 @@ export default function DocumentUploadScreen() {
   };
 
   const handleSubmit = () => {
-    if (uploadedCount < 6) {
+    if (uploadedCount < 8) {
       Alert.alert(
         "Missing documents",
-        `You have uploaded ${uploadedCount} of 6 documents. You can submit now and upload the remaining documents later, but your application may be delayed.`,
+        `You have uploaded ${uploadedCount} of 8 documents. You can submit now and upload the remaining documents later, but your application may be delayed.`,
         [
           { text: "Continue Uploading", style: "cancel" },
           {
@@ -231,9 +237,9 @@ export default function DocumentUploadScreen() {
           disabled={uploadedCount === 0}
         >
           <Text style={s.submitBtnText}>
-            {uploadedCount === 6
+            {uploadedCount === 8
               ? "Submit Application →"
-              : `Submit Application (${uploadedCount}/6 uploaded)`}
+              : `Submit Application (${uploadedCount}/8 uploaded)`}
           </Text>
         </TouchableOpacity>
 

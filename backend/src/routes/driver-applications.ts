@@ -17,6 +17,8 @@ const DOC_FOLDER_MAP: Record<string, CloudinaryFolder> = {
   docPhvLicence: "driver-applications/phv-licence",
   docInsurance: "driver-applications/insurance",
   docMot: "driver-applications/mot",
+  docDbs: "driver-applications/dbs-check",
+  docV5c: "driver-applications/v5c-logbook",
 };
 
 export async function driverApplicationRoutes(fastify: FastifyInstance) {
@@ -198,6 +200,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docPhvLicence: true,
         docInsurance: true,
         docMot: true,
+        docDbs: true,
+        docV5c: true,
       },
     });
 
@@ -230,6 +234,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docPhvLicence: true,
         docInsurance: true,
         docMot: true,
+        docDbs: true,
+        docV5c: true,
       },
     });
 
@@ -250,6 +256,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docPhvLicence: !!application.docPhvLicence,
         docInsurance: !!application.docInsurance,
         docMot: !!application.docMot,
+        docDbs: !!application.docDbs,
+        docV5c: !!application.docV5c,
       },
       submittedAt: application.createdAt,
       updatedAt: application.updatedAt,

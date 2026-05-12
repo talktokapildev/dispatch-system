@@ -18,11 +18,13 @@ import { useTheme } from "../lib/ThemeContext";
 
 const DOC_TYPES = [
   { type: "PCO_LICENSE", label: "PCO Licence", icon: "🪪" },
-  { type: "DRIVING_LICENSE", label: "Driving Licence", icon: "🚗" },
+  { type: "DRIVING_LICENSE", label: "Driving Licence (Front)", icon: "🚗" },
+  { type: "DRIVING_LICENSE_BACK", label: "Driving Licence (Back)", icon: "🚗" },
+  { type: "PHV_LICENCE", label: "PHV Licence", icon: "📄" },
   { type: "VEHICLE_INSURANCE", label: "Insurance", icon: "🛡️" },
   { type: "MOT_CERTIFICATE", label: "MOT Certificate", icon: "🔧" },
   { type: "V5C_LOGBOOK", label: "V5C Logbook", icon: "📋" },
-  { type: "DBS_CHECK", label: "DBS Check", icon: "✅" },
+  { type: "DBS_CHECK", label: "DBS Certificate", icon: "✅" },
 ];
 
 type DocStatus =

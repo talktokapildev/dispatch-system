@@ -95,6 +95,8 @@ enum VehicleClass {
 enum DocumentType {
   PCO_LICENSE
   DRIVING_LICENSE
+  DRIVING_LICENSE_BACK   // ← ADD THIS
+  PHV_LICENCE            // ← ADD THIS
   VEHICLE_INSURANCE
   MOT_CERTIFICATE
   V5C_LOGBOOK
@@ -790,6 +792,8 @@ model DriverApplication {
   docPhvLicence      String?
   docInsurance       String?
   docMot             String?
+  docDbs             String?   // DBS Certificate
+  docV5c             String?   // V5C Logbook
 
   // Review meta
   reviewedBy String?

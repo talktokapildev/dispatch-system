@@ -43,6 +43,8 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           docPhvLicence: true,
           docInsurance: true,
           docMot: true,
+          docDbs: true,
+          docV5c: true,
         },
       });
 
@@ -55,8 +57,10 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           app.docPhvLicence,
           app.docInsurance,
           app.docMot,
+          app.docDbs,
+          app.docV5c,
         ].filter(Boolean).length,
-        documentsTotal: 6,
+        documentsTotal: 8,
       }));
 
       // Counts per status — used for sidebar badge
@@ -196,6 +200,55 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
             insuranceExpiry: new Date("2099-01-01"),
           },
         });
+
+        // ── Migrate application documents → DriverDocument records ──────────
+        const docMappings = [
+          {
+            url: application.docPcoBadge,
+            type: "PCO_LICENSE",
+            expiryDate: application.pcoBadgeExpiry ?? null,
+          },
+          {
+            url: application.docDrivingLicFront,
+            type: "DRIVING_LICENSE",
+            expiryDate: null,
+          },
+          {
+            url: application.docDrivingLicBack,
+            type: "DRIVING_LICENSE_BACK",
+            expiryDate: null,
+          },
+          {
+            url: application.docPhvLicence,
+            type: "PHV_LICENCE",
+            expiryDate: null,
+          },
+          {
+            url: application.docInsurance,
+            type: "VEHICLE_INSURANCE",
+            expiryDate: null,
+          },
+          {
+            url: application.docMot,
+            type: "MOT_CERTIFICATE",
+            expiryDate: null,
+          },
+          { url: application.docDbs, type: "DBS_CHECK", expiryDate: null },
+          { url: application.docV5c, type: "V5C_LOGBOOK", expiryDate: null },
+        ];
+        for (const { url, type, expiryDate } of docMappings) {
+          if (url) {
+            await tx.driverDocument.create({
+              data: {
+                driverId: driver.id,
+                type: type as any, // cast: type comes from our mapping, not from Prisma enum directly
+                fileUrl: url,
+                status: "PENDING",
+                expiryDate: expiryDate ? new Date(expiryDate) : null,
+              },
+            });
+          }
+        }
 
         // Mark application approved
         await tx.driverApplication.update({
