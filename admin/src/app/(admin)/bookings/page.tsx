@@ -71,7 +71,9 @@ export default function BookingsPage() {
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) =>
-      api.patch(`/bookings/${id}/cancel`, { reason: "Cancelled by admin" }),
+      api.post(`/admin/bookings/${id}/cancel`, {
+        reason: "Cancelled by admin",
+      }),
     onSuccess: () => {
       toast.success("Booking cancelled");
       qc.invalidateQueries({ queryKey: ["bookings"] });
