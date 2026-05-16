@@ -1055,4 +1055,67 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, data: report });
     }
   );
+  // ─── Admin: cancel a booking (properly frees driver + clears Redis) ──────────
+  fastify.post(
+    "/admin/bookings/:id/cancel",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { reason } = (request.body as any) ?? {};
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id },
+        include: { driver: { include: { user: true } } },
+      });
+
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+
+      if (booking.status === "CANCELLED" || booking.status === "COMPLETED")
+        return reply
+          .status(400)
+          .send({ success: false, error: "Booking already closed" });
+
+      const { RedisKeys } = await import("../plugins/redis");
+
+      // Cancel the booking
+      await fastify.prisma.booking.update({
+        where: { id },
+        data: {
+          status: "CANCELLED" as any,
+          cancellationReason: reason ?? "Cancelled by admin",
+        },
+      });
+
+      // Free the driver if one was assigned
+      if (booking.driverId && booking.driver) {
+        await fastify.prisma.driver.update({
+          where: { id: booking.driverId },
+          data: { status: "AVAILABLE" as any },
+        });
+        await fastify.redis.del(RedisKeys.activeBooking(booking.driverId));
+        await fastify.redis.sadd(RedisKeys.onlineDrivers(), booking.driverId);
+
+        // Notify driver via socket
+        fastify.io
+          .to(`driver:${booking.driver.user.id}`)
+          .emit("booking:cancelled", {
+            bookingId: id,
+            message: "Booking cancelled by admin",
+          });
+      }
+
+      // Notify passenger via socket
+      fastify.io
+        .to(`passenger:${booking.passengerId}`)
+        .emit("booking:cancelled", {
+          bookingId: id,
+          message: reason ?? "Booking cancelled by admin",
+        });
+
+      return reply.send({ success: true, message: "Booking cancelled" });
+    }
+  );
 }
