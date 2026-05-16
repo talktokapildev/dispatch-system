@@ -43,7 +43,6 @@ const TripMap = forwardRef<MapView, TripMapProps>(
   ) => {
     const { theme } = useTheme();
     const localRef = useRef<MapView>(null);
-    // Use forwarded ref so HomeScreen can call animateToRegion imperatively
     const mapRef = (ref as React.RefObject<MapView>) ?? localRef;
     const hasRoute = !!routeCoords && routeCoords.length > 1;
 
@@ -51,19 +50,27 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       const coords: LatLng[] = [];
 
       if (hasRoute && routeCoords) {
+        // Full route — sample evenly for fitToCoordinates performance
         const step = Math.max(1, Math.floor(routeCoords.length / 20));
         for (let i = 0; i < routeCoords.length; i += step)
           coords.push(routeCoords[i]);
         coords.push(routeCoords[routeCoords.length - 1]);
       } else {
-        if (passengerLocation) coords.push(passengerLocation);
+        // ── IMPORTANT: do NOT push passengerLocation here ──────────────
+        // When "Use my current location" is tapped, passengerLocation and
+        // pickup are the same coordinates. Pushing both gives fitToCoordinates
+        // two identical points → it zooms to maximum level → blank tiles.
+        //
+        // passengerLocation's only job is to seed initialRegion and to be
+        // animated to by HomeScreen explicitly via mapRef. It must not
+        // participate in fitToCoordinates.
         if (driverLocation) coords.push(driverLocation);
         if (pickup) coords.push(pickup);
         if (dropoff) coords.push(dropoff);
       }
 
-      // Single coord or none: HomeScreen handles camera explicitly via ref.
-      // We don't animate here to avoid competing animations causing blank tiles.
+      // Fewer than 2 distinct points — HomeScreen handles camera explicitly.
+      // (e.g. only pickup set, or nothing set yet)
       if (coords.length < 2) return;
 
       setTimeout(() => {
@@ -118,7 +125,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
     ];
 
     // Prioritise passengerLocation so map opens centred on the user.
-    // Falls back to pickup, then Crawley/Gatwick (not London).
+    // Falls back to pickup, then Crawley/Gatwick default (not London).
     const center = passengerLocation ?? pickup ?? DEFAULT_CENTER;
 
     return (

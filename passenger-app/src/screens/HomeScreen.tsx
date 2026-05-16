@@ -37,11 +37,10 @@ interface FareEstimate {
   polyline?: string;
 }
 
-// ── Crosshair icon — matches Uber's "my location" button style ─────────────
-// Built from Views so no @expo/vector-icons dependency needed.
+// ── Crosshair icon — no @expo/vector-icons dependency ─────────────────────
 function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
-  const arm = size * 0.35;
-  const dot = size * 0.2;
+  const arm = size * 0.3;
+  const dot = size * 0.18;
   return (
     <View
       style={{
@@ -51,7 +50,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
         justifyContent: "center",
       }}
     >
-      {/* Outer ring */}
       <View
         style={{
           position: "absolute",
@@ -62,7 +60,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
           borderColor: color,
         }}
       />
-      {/* Horizontal arm left */}
       <View
         style={{
           position: "absolute",
@@ -72,7 +69,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
           backgroundColor: color,
         }}
       />
-      {/* Horizontal arm right */}
       <View
         style={{
           position: "absolute",
@@ -82,7 +78,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
           backgroundColor: color,
         }}
       />
-      {/* Vertical arm top */}
       <View
         style={{
           position: "absolute",
@@ -92,7 +87,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
           backgroundColor: color,
         }}
       />
-      {/* Vertical arm bottom */}
       <View
         style={{
           position: "absolute",
@@ -102,7 +96,6 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
           backgroundColor: color,
         }}
       />
-      {/* Centre dot */}
       <View
         style={{
           width: dot,
@@ -113,6 +106,24 @@ function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
       />
     </View>
   );
+}
+
+// ── Latitude offset ────────────────────────────────────────────────────────
+// animateToRegion centres the coordinate in the full MapView (including the
+// portion hidden behind the bottom sheet). To make the pin appear in the
+// centre of the *visible* area, we shift the map centre southward by half
+// the sheet height expressed as a latitude fraction.
+//
+//   offset = (sheetHeight / 2 / SCREEN_HEIGHT) × latitudeDelta
+//
+// Subtracting this from the target latitude moves the map centre down so
+// the pin sits visually centred above the sheet.
+function visibleCentreLat(
+  lat: number,
+  latDelta: number,
+  sheetHeight: number
+): number {
+  return lat - (sheetHeight / 2 / SCREEN_HEIGHT) * latDelta;
 }
 
 export default function HomeScreen({ navigation }: any) {
@@ -132,9 +143,7 @@ export default function HomeScreen({ navigation }: any) {
     { latitude: number; longitude: number }[]
   >([]);
 
-  // Forwarded into TripMap so HomeScreen can control the camera imperatively
   const mapRef = useRef<MapView>(null);
-
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
   const SHEET_NORMAL = estimate ? 370 + insets.bottom : 300 + insets.bottom;
@@ -147,7 +156,6 @@ export default function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     getMyLocation();
-
     const showSub = Keyboard.addListener("keyboardWillShow", expand);
     const hideSub = Keyboard.addListener("keyboardWillHide", collapse);
     const showAndroid = Keyboard.addListener("keyboardDidShow", expand);
@@ -195,11 +203,17 @@ export default function HomeScreen({ navigation }: any) {
       };
       setMyLocation(coords);
 
-      // Centre map on user's real location once it loads.
-      // Delay allows MapView to mount before we animate.
+      // Centre visible area on user — offset latitude so pin sits in middle
+      // of the map above the sheet, not in the middle of the full MapView.
+      const delta = 0.05;
       setTimeout(() => {
         mapRef.current?.animateToRegion(
-          { ...coords, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+          {
+            latitude: visibleCentreLat(coords.latitude, delta, SHEET_NORMAL),
+            longitude: coords.longitude,
+            latitudeDelta: delta,
+            longitudeDelta: delta,
+          },
           800
         );
       }, 600);
@@ -218,7 +232,6 @@ export default function HomeScreen({ navigation }: any) {
 
       const res = await fetch(directionsUrl);
       const json = await res.json();
-
       const leg = json.routes?.[0]?.legs?.[0];
       const polyline = json.routes?.[0]?.overview_polyline?.points;
 
@@ -265,14 +278,16 @@ export default function HomeScreen({ navigation }: any) {
       return;
     }
 
-    // Animate immediately on tap — feels responsive before geocode returns.
-    // delta 0.02 (~2 km) — street-level zoom without blank tile risk.
+    // Animate immediately on tap for instant feedback.
+    // delta 0.02 (~2 km) — street-level zoom.
+    // Apply offset so pin appears in visible centre above the sheet.
+    const delta = 0.02;
     mapRef.current?.animateToRegion(
       {
-        latitude: myLocation.latitude,
+        latitude: visibleCentreLat(myLocation.latitude, delta, SHEET_NORMAL),
         longitude: myLocation.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
+        latitudeDelta: delta,
+        longitudeDelta: delta,
       },
       400
     );
@@ -291,8 +306,16 @@ export default function HomeScreen({ navigation }: any) {
 
   const centreOnMe = () => {
     if (!myLocation) return;
+    // delta 0.04 — neighbourhood-level overview.
+    // Offset latitude so pin is visually centred in the area above the sheet.
+    const delta = 0.04;
     mapRef.current?.animateToRegion(
-      { ...myLocation, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+      {
+        latitude: visibleCentreLat(myLocation.latitude, delta, SHEET_NORMAL),
+        longitude: myLocation.longitude,
+        latitudeDelta: delta,
+        longitudeDelta: delta,
+      },
       400
     );
   };
@@ -310,7 +333,6 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <View style={s.container}>
-      {/* Full-screen map */}
       <View style={StyleSheet.absoluteFill}>
         <TripMap
           ref={mapRef}
@@ -323,7 +345,6 @@ export default function HomeScreen({ navigation }: any) {
         />
       </View>
 
-      {/* Re-centre button — shown once location is known */}
       {myLocation && (
         <TouchableOpacity
           style={[s.locateBtn, { bottom: SHEET_NORMAL + 16 }]}
@@ -334,7 +355,6 @@ export default function HomeScreen({ navigation }: any) {
         </TouchableOpacity>
       )}
 
-      {/* ── Bottom sheet ───────────────────────────────────────────────── */}
       <Animated.View style={[s.sheet, { height: sheetHeight }]}>
         <View style={s.handleWrap}>
           <View style={s.handle} />
@@ -378,7 +398,6 @@ export default function HomeScreen({ navigation }: any) {
           />
         </ScrollView>
 
-        {/* ── Fixed bottom section ───────────────────────────────────── */}
         <View style={s.bottomFixed}>
           {estimating && (
             <View style={s.estimateRow}>
