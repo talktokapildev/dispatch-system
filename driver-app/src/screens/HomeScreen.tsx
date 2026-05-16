@@ -21,7 +21,6 @@ import { DocumentStatusBanner } from "../components/DocumentStatusBanner";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { AppState, AppStateStatus } from "react-native";
-import { StatusBar } from "expo-status-bar";
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -238,7 +237,6 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={s.container}>
-      <StatusBar style="auto" />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={s.header}>

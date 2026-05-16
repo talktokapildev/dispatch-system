@@ -134,8 +134,12 @@ function AppNavigator() {
   } as const;
 
   return (
-    <>
-      <StatusBar style="light" backgroundColor={Colors.bg} />
+    // Root View sets background behind the iOS status bar.
+    // On iOS, StatusBar backgroundColor prop is ignored — the status bar
+    // shows whatever native view is rendered behind it. This View ensures
+    // that area is always Colors.bg instead of black.
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <StatusBar style="light" />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator
           screenOptions={{
@@ -218,7 +222,7 @@ function AppNavigator() {
           )}
         </Stack.Navigator>
       </NavigationContainer>
-    </>
+    </View>
   );
 }
 

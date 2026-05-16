@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -128,64 +128,63 @@ function RootNavigator() {
   } as const;
 
   return (
-    <NavigationContainer theme={navTheme}>
-      <StatusBar
-        style={theme === "dark" ? "light" : "dark"}
-        backgroundColor={Colors.bg}
-      />
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          headerBackVisible: false,
-          headerBackTitle: "",
-          animation: "slide_from_right",
-          contentStyle: { backgroundColor: Colors.bg },
-        }}
-      >
-        {!token ? (
-          <Stack.Screen name="Login" component={LoginScreen} />
-        ) : needsProfileSetup ? (
-          <Stack.Screen
-            name="ProfileSetup"
-            component={ProfileSetupScreen}
-            options={{ animation: "fade" }}
-          />
-        ) : (
-          <>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <NavigationContainer theme={navTheme}>
+        <StatusBar style={theme === "dark" ? "light" : "dark"} />
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            headerBackVisible: false,
+            headerBackTitle: "",
+            animation: "slide_from_right",
+            contentStyle: { backgroundColor: Colors.bg },
+          }}
+        >
+          {!token ? (
+            <Stack.Screen name="Login" component={LoginScreen} />
+          ) : needsProfileSetup ? (
             <Stack.Screen
-              name="Main"
-              component={MainTabs}
-              options={{ animation: "none" }}
+              name="ProfileSetup"
+              component={ProfileSetupScreen}
+              options={{ animation: "fade" }}
             />
-            <Stack.Screen
-              name="BookingConfirm"
-              component={BookingConfirmScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Tracking"
-              component={TrackingScreen}
-              options={{
-                headerShown: false,
-                presentation: "fullScreenModal",
-                gestureEnabled: false,
-                animation: "slide_from_bottom",
-              }}
-            />
-            <Stack.Screen
-              name="RideComplete"
-              component={RideCompleteScreen}
-              options={{
-                headerShown: false,
-                presentation: "fullScreenModal",
-                gestureEnabled: false,
-                animation: "fade",
-              }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+          ) : (
+            <>
+              <Stack.Screen
+                name="Main"
+                component={MainTabs}
+                options={{ animation: "none" }}
+              />
+              <Stack.Screen
+                name="BookingConfirm"
+                component={BookingConfirmScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Tracking"
+                component={TrackingScreen}
+                options={{
+                  headerShown: false,
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                  animation: "slide_from_bottom",
+                }}
+              />
+              <Stack.Screen
+                name="RideComplete"
+                component={RideCompleteScreen}
+                options={{
+                  headerShown: false,
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                  animation: "fade",
+                }}
+              />
+            </>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </View>
   );
 }
 
