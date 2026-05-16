@@ -93,8 +93,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
           [
             {
               text: "OK",
-              onPress: () =>
-                navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+              onPress: () => navigation.popToTop(),
             },
           ]
         );
@@ -131,8 +130,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
             [
               {
                 text: "OK",
-                onPress: () =>
-                  navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+                onPress: () => navigation.popToTop(),
               },
             ]
           );
@@ -181,10 +179,8 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     try {
       await api.patch(`/drivers/jobs/${bookingId}/status`, { status });
       if (status === "COMPLETED") {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "JobComplete", params: { booking } }],
-        });
+        // replace() keeps [Main] below so JobComplete can popToTop() cleanly
+        navigation.replace("JobComplete", { booking });
       } else {
         const { data } = await api.get(`/bookings/${bookingId}`);
         const bookingData = data.data;
@@ -245,8 +241,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         [
           {
             text: "OK",
-            onPress: () =>
-              navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+            onPress: () => navigation.popToTop(),
           },
         ]
       );

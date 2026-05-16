@@ -74,8 +74,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
             [
               {
                 text: "OK",
-                onPress: () =>
-                  navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+                onPress: () => navigation.popToTop(),
               },
             ]
           );
@@ -172,19 +171,13 @@ export default function JobOfferScreen({ route, navigation }: any) {
     setLoading("accept");
     try {
       await api.post(`/drivers/jobs/${offer.bookingId}/accept`);
-      navigation.reset({
-        index: 0,
-        routes: [
-          {
-            name: "ActiveJob",
-            params: {
-              bookingId: offer.bookingId,
-              preloadedBooking,
-              preloadedRouteCoords: preloadedRoute,
-              preloadedLocation,
-            },
-          },
-        ],
+      // Use replace() not reset() — keeps [Main] in stack so popToTop()
+      // works correctly, and avoids corrupting UINavigationController state.
+      navigation.replace("ActiveJob", {
+        bookingId: offer.bookingId,
+        preloadedBooking,
+        preloadedRouteCoords: preloadedRoute,
+        preloadedLocation,
       });
     } catch (err: any) {
       Alert.alert(

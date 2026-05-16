@@ -157,10 +157,8 @@ export default function JobCompleteScreen({ route, navigation }: any) {
         <TouchableOpacity
           style={s.doneBtn}
           onPress={() =>
-            navigation.reset({
-              index: 0,
-              routes: [{ name: "Main" }],
-            })
+            // popToTop() cleanly unwinds [Main, JobComplete] → [Main]
+            navigation.popToTop()
           }
         >
           <Text style={s.doneBtnText}>Back to Dashboard</Text>
