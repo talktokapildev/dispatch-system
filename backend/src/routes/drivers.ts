@@ -530,6 +530,47 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── Driver: get active booking (for app recovery on ON_JOB status) ───
+  fastify.get(
+    "/drivers/active-booking",
+    { preHandler: [fastify.authenticateDriver] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver)
+        return reply.status(404).send({ success: false, error: "Not found" });
+
+      // Read active booking ID from Redis
+      const activeBookingId = await fastify.redis.get(
+        RedisKeys.activeBooking(driver.id)
+      );
+
+      if (!activeBookingId) {
+        return reply.send({ success: true, data: null });
+      }
+
+      // Fetch the booking to confirm it's still active
+      const booking = await fastify.prisma.booking.findFirst({
+        where: {
+          id: activeBookingId,
+          driverId: driver.id,
+          status: {
+            in: [
+              "DRIVER_ASSIGNED",
+              "DRIVER_EN_ROUTE",
+              "DRIVER_ARRIVED",
+              "IN_PROGRESS",
+            ],
+          },
+        },
+      });
+
+      return reply.send({ success: true, data: booking ?? null });
+    }
+  );
+
   // ─── Driver: get completed jobs ───
   fastify.get(
     "/drivers/jobs",

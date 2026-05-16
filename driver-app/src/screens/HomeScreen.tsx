@@ -97,6 +97,27 @@ export default function HomeScreen({ navigation }: any) {
     if (status === "AVAILABLE" || status === "ON_JOB") startLocationTracking();
   }, [status]);
 
+  // Recovery: if driver is ON_JOB (e.g. app crashed mid-trip or was force-quit),
+  // fetch the active booking and navigate back to ActiveJobScreen automatically.
+  useEffect(() => {
+    if (status !== "ON_JOB") return;
+    const recover = async () => {
+      try {
+        const { data } = await api.get("/drivers/active-booking");
+        const booking = data?.data;
+        if (booking) {
+          navigation.navigate("ActiveJob", {
+            bookingId: booking.id,
+            preloadedBooking: booking,
+          });
+        }
+      } catch {}
+    };
+    // Small delay to let the screen fully mount first
+    const t = setTimeout(recover, 800);
+    return () => clearTimeout(t);
+  }, [status]);
+
   // Re-run fetch when store finishes hydrating from AsyncStorage
   useEffect(() => {
     if (_hasHydrated) {
