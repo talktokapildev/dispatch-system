@@ -29,6 +29,7 @@ import JobStepProgress from "../components/JobStepProgress";
 import AddressCard from "../components/AddressCard";
 import PassengerCard from "../components/PassengerCard";
 import { getSocket } from "../lib/socket";
+import { blockBookingDispatch } from "../lib/dispatchFlags";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_COLLAPSED = 185; // tall enough to show cancel button without expanding
@@ -237,6 +238,9 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     setCancelling(true);
     try {
       cancelledByDriver.current = true; // prevents spurious alerts after self-cancel
+      // Block re-dispatch of this booking for 30 s — backend may immediately
+      // re-dispatch the same job to us after we're freed as available.
+      blockBookingDispatch(bookingId);
       await api.post(`/drivers/jobs/${bookingId}/cancel`, { reason });
       navigation.popToTop(); // navigate home immediately — no secondary alert
     } catch (err: any) {

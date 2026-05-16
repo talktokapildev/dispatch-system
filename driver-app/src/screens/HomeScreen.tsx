@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { api, useAuthStore } from "../lib/api";
 import { useSocket } from "../lib/socket";
+import { isBookingBlocked } from "../lib/dispatchFlags";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
@@ -63,7 +64,9 @@ export default function HomeScreen({ navigation }: any) {
           });
         }
       } catch {}
-      // Guard: prevent pushing a new JobOffer if already on one
+      // Guard 1: skip if this booking was just cancelled by this driver
+      if (isBookingBlocked(data.bookingId)) return;
+      // Guard 2: prevent pushing a new JobOffer if already on one
       const currentRoute = navigation.getState()?.routes?.slice(-1)[0]?.name;
       if (currentRoute === "JobOffer" || currentRoute === "ActiveJob") return;
       navigation.navigate("JobOffer", { offer: data });
