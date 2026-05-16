@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, forwardRef } from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { useTheme } from "../lib/ThemeContext";
@@ -27,151 +27,180 @@ const HIDDEN_COORDS = [
   { latitude: 51.5074, longitude: -0.1278 },
 ];
 
-export default function TripMap({
-  style,
-  passengerLocation,
-  driverLocation,
-  pickup,
-  dropoff,
-  routeCoords,
-  stage = "booking",
-  bottomPadding = 0,
-}: TripMapProps) {
-  const { theme } = useTheme();
-  const mapRef = useRef<MapView>(null);
-  const hasRoute = !!routeCoords && routeCoords.length > 1;
+// Default centre — Crawley/Gatwick area (not London)
+const DEFAULT_CENTER = { latitude: 51.1097, longitude: -0.1872 };
 
-  useEffect(() => {
-    const coords: LatLng[] = [];
-
-    if (hasRoute && routeCoords) {
-      const step = Math.max(1, Math.floor(routeCoords.length / 20));
-      for (let i = 0; i < routeCoords.length; i += step)
-        coords.push(routeCoords[i]);
-      coords.push(routeCoords[routeCoords.length - 1]);
-    } else {
-      if (passengerLocation) coords.push(passengerLocation);
-      if (driverLocation) coords.push(driverLocation);
-      if (pickup) coords.push(pickup);
-      if (dropoff) coords.push(dropoff);
-    }
-
-    if (coords.length < 2) return;
-
-    setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coords, {
-        edgePadding: {
-          top: 100,
-          right: 80,
-          bottom: bottomPadding + 80,
-          left: 80,
-        },
-        animated: true,
-      });
-    }, 500);
-  }, [
-    hasRoute,
-    routeCoords?.length,
-    pickup?.latitude,
-    pickup?.longitude,
-    dropoff?.latitude,
-    dropoff?.longitude,
-    driverLocation?.latitude,
-    driverLocation?.longitude,
-    bottomPadding,
-  ]);
-
-  const darkMapStyle = [
-    { elementType: "geometry", stylers: [{ color: "#0f1623" }] },
-    { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
-    { elementType: "labels.text.stroke", stylers: [{ color: "#0f1623" }] },
+const TripMap = forwardRef<MapView, TripMapProps>(
+  (
     {
-      featureType: "road",
-      elementType: "geometry",
-      stylers: [{ color: "#1e2d42" }],
+      style,
+      passengerLocation,
+      driverLocation,
+      pickup,
+      dropoff,
+      routeCoords,
+      stage = "booking",
+      bottomPadding = 0,
     },
-    {
-      featureType: "road",
-      elementType: "geometry.stroke",
-      stylers: [{ color: "#090d14" }],
-    },
-    {
-      featureType: "road.highway",
-      elementType: "geometry",
-      stylers: [{ color: "#2d4464" }],
-    },
-    {
-      featureType: "water",
-      elementType: "geometry",
-      stylers: [{ color: "#090d14" }],
-    },
-    { featureType: "poi", stylers: [{ visibility: "off" }] },
-    { featureType: "transit", stylers: [{ visibility: "off" }] },
-  ];
+    ref
+  ) => {
+    const { theme } = useTheme();
+    const localRef = useRef<MapView>(null);
+    // Use forwarded ref if provided, otherwise fall back to local ref
+    const mapRef = (ref as React.RefObject<MapView>) ?? localRef;
+    const hasRoute = !!routeCoords && routeCoords.length > 1;
 
-  const center = pickup ??
-    passengerLocation ?? { latitude: 51.505, longitude: -0.09 };
+    useEffect(() => {
+      const coords: LatLng[] = [];
 
-  return (
-    <MapView
-      ref={mapRef}
-      style={[styles.map, style]}
-      provider={PROVIDER_GOOGLE}
-      customMapStyle={theme === "dark" ? darkMapStyle : []}
-      initialRegion={{ ...center, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
-      showsUserLocation={false}
-      showsMyLocationButton={false}
-      showsCompass={false}
-      showsTraffic={false}
-      showsBuildings={false}
-      moveOnMarkerPress={false}
-    >
-      {/*
-        Always mounted — no key prop, no conditional rendering.
-        Hidden via strokeWidth=0 until route arrives.
-        This ensures first route render is a prop UPDATE not a MOUNT,
-        which is what makes it work on iOS + Google Maps provider.
-      */}
-      <Polyline
-        coordinates={hasRoute ? routeCoords! : HIDDEN_COORDS}
-        strokeColor="#f59e0b"
-        strokeColors={["#f59e0b"]}
-        strokeWidth={hasRoute ? 5 : 0}
-      />
+      if (hasRoute && routeCoords) {
+        const step = Math.max(1, Math.floor(routeCoords.length / 20));
+        for (let i = 0; i < routeCoords.length; i += step)
+          coords.push(routeCoords[i]);
+        coords.push(routeCoords[routeCoords.length - 1]);
+      } else {
+        if (passengerLocation) coords.push(passengerLocation);
+        if (driverLocation) coords.push(driverLocation);
+        if (pickup) coords.push(pickup);
+        if (dropoff) coords.push(dropoff);
+      }
 
-      {/* Pickup dot (green) */}
-      {pickup && (
-        <Marker coordinate={pickup} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
-          <View style={styles.pickupPin}>
-            <View style={styles.pinInner} />
-          </View>
-        </Marker>
-      )}
+      // ── Single coordinate (e.g. only current location set as pickup) ──
+      // Animate to a sensible zoom rather than doing nothing.
+      if (coords.length === 1) {
+        setTimeout(() => {
+          mapRef.current?.animateToRegion(
+            {
+              latitude: coords[0].latitude,
+              longitude: coords[0].longitude,
+              latitudeDelta: 0.01, // ~1 km — city-block zoom
+              longitudeDelta: 0.01,
+            },
+            500
+          );
+        }, 300);
+        return;
+      }
 
-      {/* Dropoff dot (red) */}
-      {dropoff && (
-        <Marker coordinate={dropoff} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
-          <View style={styles.dropoffPin}>
-            <View style={styles.pinInner} />
-          </View>
-        </Marker>
-      )}
+      if (coords.length < 2) return;
 
-      {/* Driver dot (amber) */}
-      {driverLocation && (
-        <Marker
-          coordinate={driverLocation}
-          anchor={{ x: 0.5, y: 0.5 }}
-          zIndex={3}
-        >
-          <View style={styles.driverPin}>
-            <View style={styles.pinInner} />
-          </View>
-        </Marker>
-      )}
-    </MapView>
-  );
-}
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coords, {
+          edgePadding: {
+            top: 100,
+            right: 80,
+            bottom: bottomPadding + 80,
+            left: 80,
+          },
+          animated: true,
+        });
+      }, 500);
+    }, [
+      hasRoute,
+      routeCoords?.length,
+      pickup?.latitude,
+      pickup?.longitude,
+      dropoff?.latitude,
+      dropoff?.longitude,
+      driverLocation?.latitude,
+      driverLocation?.longitude,
+      bottomPadding,
+    ]);
+
+    const darkMapStyle = [
+      { elementType: "geometry", stylers: [{ color: "#0f1623" }] },
+      { elementType: "labels.text.fill", stylers: [{ color: "#64748b" }] },
+      { elementType: "labels.text.stroke", stylers: [{ color: "#0f1623" }] },
+      {
+        featureType: "road",
+        elementType: "geometry",
+        stylers: [{ color: "#1e2d42" }],
+      },
+      {
+        featureType: "road",
+        elementType: "geometry.stroke",
+        stylers: [{ color: "#090d14" }],
+      },
+      {
+        featureType: "road.highway",
+        elementType: "geometry",
+        stylers: [{ color: "#2d4464" }],
+      },
+      {
+        featureType: "water",
+        elementType: "geometry",
+        stylers: [{ color: "#090d14" }],
+      },
+      { featureType: "poi", stylers: [{ visibility: "off" }] },
+      { featureType: "transit", stylers: [{ visibility: "off" }] },
+    ];
+
+    // FIX: prioritise passengerLocation first so the map opens on the user,
+    // not on London. Falls back to pickup, then Crawley/Gatwick default.
+    const center = passengerLocation ?? pickup ?? DEFAULT_CENTER;
+
+    return (
+      <MapView
+        ref={mapRef}
+        style={[styles.map, style]}
+        provider={PROVIDER_GOOGLE}
+        customMapStyle={theme === "dark" ? darkMapStyle : []}
+        initialRegion={{ ...center, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
+        showsUserLocation={false}
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsTraffic={false}
+        showsBuildings={false}
+        moveOnMarkerPress={false}
+      >
+        {/*
+          Always mounted — no key prop, no conditional rendering.
+          Hidden via strokeWidth=0 until route arrives.
+        */}
+        <Polyline
+          coordinates={hasRoute ? routeCoords! : HIDDEN_COORDS}
+          strokeColor="#f59e0b"
+          strokeColors={["#f59e0b"]}
+          strokeWidth={hasRoute ? 5 : 0}
+        />
+
+        {/* Pickup dot (green) */}
+        {pickup && (
+          <Marker coordinate={pickup} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
+            <View style={styles.pickupPin}>
+              <View style={styles.pinInner} />
+            </View>
+          </Marker>
+        )}
+
+        {/* Dropoff dot (red) */}
+        {dropoff && (
+          <Marker coordinate={dropoff} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
+            <View style={styles.dropoffPin}>
+              <View style={styles.pinInner} />
+            </View>
+          </Marker>
+        )}
+
+        {/* Driver dot (amber) */}
+        {driverLocation && (
+          <Marker
+            coordinate={driverLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={3}
+          >
+            <View style={styles.driverPin}>
+              <View style={styles.pinInner} />
+            </View>
+          </Marker>
+        )}
+      </MapView>
+    );
+  }
+);
+
+TripMap.displayName = "TripMap";
+export default TripMap;
 
 const styles = StyleSheet.create({
   map: { flex: 1 },

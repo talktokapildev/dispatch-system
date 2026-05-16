@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
+import MapView from "react-native-maps";
 import { api, useAuthStore } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
@@ -52,6 +53,9 @@ export default function HomeScreen({ navigation }: any) {
   const [routeCoords, setRouteCoords] = useState<
     { latitude: number; longitude: number }[]
   >([]);
+
+  // Ref forwarded into TripMap so we can imperatively animate the camera
+  const mapRef = useRef<MapView>(null);
 
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
@@ -107,10 +111,27 @@ export default function HomeScreen({ navigation }: any) {
       const loc = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setMyLocation({
+      const coords = {
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
-      });
+      };
+      setMyLocation(coords);
+
+      // FIX: centre the map on the user's actual location when it first loads,
+      // but only if they haven't already set a pickup/dropoff.
+      // Use a short delay to ensure MapView has mounted before animating.
+      setTimeout(() => {
+        if (!pickup && !dropoff) {
+          mapRef.current?.animateToRegion(
+            {
+              ...coords,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            },
+            800
+          );
+        }
+      }, 600);
     } catch {}
   };
 
@@ -143,7 +164,6 @@ export default function HomeScreen({ navigation }: any) {
       if (polyline) setRouteCoords(decodePolyline(polyline));
 
       // ── Step 2: Get fare from our pricing engine ─────────────────────
-      // Passing coordinates so surcharge zones are auto-detected server-side
       const { data: priceData } = await api.post("/pricing/calculate", {
         distanceMiles,
         durationMinutes: durationMins,
@@ -160,7 +180,6 @@ export default function HomeScreen({ navigation }: any) {
         polyline,
       });
     } catch (err) {
-      // Silently fail — don't block booking, just hide the estimate
       setEstimate(null);
       setRouteCoords([]);
     } finally {
@@ -186,6 +205,31 @@ export default function HomeScreen({ navigation }: any) {
     } catch {
       setPickup({ address: "Current Location", ...myLocation! });
     }
+
+    // FIX: animate to a sensible zoom around the user's location.
+    // delta 0.01 = ~1 km radius — right zoom level for a local pickup.
+    mapRef.current?.animateToRegion(
+      {
+        latitude: myLocation.latitude,
+        longitude: myLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      },
+      500
+    );
+  };
+
+  // FIX: re-centre map button handler
+  const centreOnMe = () => {
+    if (!myLocation) return;
+    mapRef.current?.animateToRegion(
+      {
+        ...myLocation,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      },
+      500
+    );
   };
 
   const proceedToConfirm = () => {
@@ -204,6 +248,7 @@ export default function HomeScreen({ navigation }: any) {
       {/* Full-screen map */}
       <View style={StyleSheet.absoluteFill}>
         <TripMap
+          ref={mapRef}
           passengerLocation={myLocation ?? undefined}
           pickup={pickup ?? undefined}
           dropoff={dropoff ?? undefined}
@@ -212,6 +257,17 @@ export default function HomeScreen({ navigation }: any) {
           bottomPadding={SHEET_NORMAL + 20}
         />
       </View>
+
+      {/* FIX: Re-centre button — bottom-right of map, above the bottom sheet */}
+      {myLocation && (
+        <TouchableOpacity
+          style={[s.locateBtn, { bottom: SHEET_NORMAL + 16 }]}
+          onPress={centreOnMe}
+          activeOpacity={0.85}
+        >
+          <Text style={s.locateBtnIcon}>⊙</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── Bottom sheet ───────────────────────────────────────────────── */}
       <Animated.View style={[s.sheet, { height: sheetHeight }]}>
@@ -408,5 +464,28 @@ const styles = (
       fontWeight: "800",
       fontSize: FontSize.md,
       letterSpacing: 0.3,
+    },
+    // FIX: locate/re-centre button floating above the bottom sheet
+    locateBtn: {
+      position: "absolute",
+      right: 16,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.border,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 6,
+    },
+    locateBtnIcon: {
+      fontSize: 22,
+      color: C.brand,
+      lineHeight: 26,
     },
   });

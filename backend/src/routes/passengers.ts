@@ -28,6 +28,9 @@ const createBookingSchema = z.object({
   scheduledAt: z.string().datetime().optional(),
   paymentMethod: z.enum(["CASH", "CARD"]).default("CASH"),
   stripePaymentIntentId: z.string().optional(),
+  // Client-calculated fare already includes surcharge zones (airport polygons).
+  // If provided, use it directly so TrackingScreen matches what the passenger saw.
+  estimatedFare: z.number().positive().optional(),
 });
 
 const rateSchema = z.object({
@@ -128,7 +131,9 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           paymentMethod: body.paymentMethod as PaymentMethod,
           stripePaymentIntentId: body.stripePaymentIntentId ?? null,
           pricingType: PricingType.FIXED,
-          estimatedFare: estimate.total,
+          // FIX: prefer client fare (includes airport surcharges via polygon
+          // detection) over the backend's coordinate-free recalculation.
+          estimatedFare: body.estimatedFare ?? estimate.total,
           passengerCount: body.passengerCount,
           notes: body.notes,
           stops: [],
@@ -917,12 +922,10 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           .status(400)
           .send({ success: false, error: "Booking not completed" });
       if (booking.paymentMethod !== "CASH")
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: "Only cash bookings can switch to card",
-          });
+        return reply.status(400).send({
+          success: false,
+          error: "Only cash bookings can switch to card",
+        });
 
       const fare = booking.actualFare ?? booking.estimatedFare;
 

@@ -84,8 +84,6 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
     const { clientSecret, paymentIntentId } = piData.data;
 
     // 2. Initialise Stripe payment sheet
-    // StripeProvider in App.tsx is already initialised with the correct key
-    // (test key for demo phones, live key for real users)
     const { error: initError } = await initPaymentSheet({
       paymentIntentClientSecret: clientSecret,
       merchantDisplayName: "OrangeRide",
@@ -112,16 +110,17 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
 
     if (presentError) {
       if (presentError.code === "Canceled") {
-        // Passenger dismissed — cancel the payment intent silently
         api
           .delete(`/passengers/payment-intent/${paymentIntentId}`)
           .catch(() => {});
-        return; // Stay on confirm screen
+        return;
       }
       throw new Error(presentError.message);
     }
 
-    // 4. Payment confirmed — NOW create the booking
+    // 4. Payment confirmed — NOW create the booking.
+    // FIX: pass estimatedFare so the backend stores the same price the
+    // passenger saw on HomeScreen (includes airport surcharges etc.).
     setLoading(true);
     const { data: bookingData } = await api.post("/passengers/bookings", {
       pickupAddress: pickup.address,
@@ -133,9 +132,10 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       passengerCount: 1,
       paymentMethod: "CARD",
       stripePaymentIntentId: paymentIntentId,
+      estimatedFare: baseFare, // FIX: price the passenger agreed to
     });
 
-    // 5. Navigate to tracking — dispatch fires automatically on booking creation
+    // 5. Navigate to tracking
     navigation.reset({
       index: 0,
       routes: [
@@ -149,6 +149,8 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
 
   // ── Cash / bank transfer flow: create booking directly ─────────────────
   const handleFreePayment = async () => {
+    // FIX: pass estimatedFare so TrackingScreen shows the same price
+    // the passenger saw on HomeScreen (includes airport surcharges etc.).
     const { data } = await api.post("/passengers/bookings", {
       pickupAddress: pickup.address,
       pickupLatitude: pickup.latitude,
@@ -158,6 +160,7 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       dropoffLongitude: dropoff.longitude,
       passengerCount: 1,
       paymentMethod: selectedPayment,
+      estimatedFare: baseFare, // FIX: price the passenger agreed to
     });
 
     navigation.reset({
@@ -479,12 +482,6 @@ const styles = (
       justifyContent: "center",
     },
     radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#000" },
-    bankText: {
-      fontSize: FontSize.sm,
-      color: C.muted,
-      lineHeight: 20,
-      marginBottom: Spacing.sm,
-    },
     footer: {
       padding: Spacing.lg,
       paddingBottom: Spacing.xl,
