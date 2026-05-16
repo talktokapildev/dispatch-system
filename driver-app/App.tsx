@@ -204,12 +204,18 @@ function AppNavigator() {
               <Stack.Screen
                 name="ActiveJob"
                 component={ActiveJobScreen}
-                options={{ gestureEnabled: false }}
+                options={{
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                }}
               />
               <Stack.Screen
                 name="JobComplete"
                 component={JobCompleteScreen}
-                options={{}}
+                options={{
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                }}
               />
               <Stack.Screen
                 name="Documents"
