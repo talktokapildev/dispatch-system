@@ -192,8 +192,11 @@ function AppNavigator() {
                 name="JobOffer"
                 component={JobOfferScreen}
                 options={{
-                  headerShown: false,
-                  presentation: "card",
+                  // fullScreenModal uses UIModalPresentationStyle.fullScreen —
+                  // separate UIViewController with no UINavigationBar context,
+                  // so no back-button artifact. Different from "modal" (sheet style)
+                  // which broke Google Maps camera init (v1.0.10 fix still holds).
+                  presentation: "fullScreenModal",
                   gestureEnabled: false,
                   animation: "slide_from_bottom",
                 }}
@@ -201,22 +204,22 @@ function AppNavigator() {
               <Stack.Screen
                 name="ActiveJob"
                 component={ActiveJobScreen}
-                options={{ headerShown: false, gestureEnabled: false }}
+                options={{ gestureEnabled: false }}
               />
               <Stack.Screen
                 name="JobComplete"
                 component={JobCompleteScreen}
-                options={{ headerShown: false }}
+                options={{}}
               />
               <Stack.Screen
                 name="Documents"
                 component={DocumentsScreen}
-                options={{ headerShown: false }}
+                options={{}}
               />
               <Stack.Screen
                 name="JobHistory"
                 component={JobHistoryScreen}
-                options={{ headerShown: false }}
+                options={{}}
               />
             </>
           )}
