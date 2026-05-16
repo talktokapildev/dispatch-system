@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  AppState,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "../lib/api";
@@ -59,6 +60,24 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const { location, locationRef, getInitialLocation } = useLocationTracking();
   // Prevents spurious "Booking Cancelled" alerts after driver self-cancels
   const cancelledByDriver = useRef(false);
+
+  // Shows an alert immediately if app is active, or waits until foregrounded.
+  // Prevents the iOS native nav bar artifact that appears when an Alert fires
+  // during the background→foreground transition.
+  const showWhenActive = (title: string, message: string, onOk: () => void) => {
+    const fire = () =>
+      Alert.alert(title, message, [{ text: "OK", onPress: onOk }]);
+    if (AppState.currentState === "active") {
+      fire();
+    } else {
+      const sub = AppState.addEventListener("change", (state: string) => {
+        if (state === "active") {
+          sub.remove();
+          fire();
+        }
+      });
+    }
+  };
   const { routeCoords, fetchRoute } = useJobRoute(preloadedRouteCoords ?? []);
   const {
     sheetHeight,
@@ -90,15 +109,10 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     // navigation), retry once after 1 s so the listener is always attached.
     const handleCancelled = (data: any) => {
       if (data.bookingId === bookingId && !cancelledByDriver.current) {
-        Alert.alert(
+        showWhenActive(
           "Booking Cancelled",
           "The passenger has cancelled this booking.",
-          [
-            {
-              text: "OK",
-              onPress: () => navigation.popToTop(),
-            },
-          ]
+          () => navigation.popToTop()
         );
       }
     };
@@ -127,15 +141,10 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         const { data } = await api.get(`/bookings/${bookingId}`);
         if (data?.data?.status === "CANCELLED" && !cancelledByDriver.current) {
           clearInterval(pollTimer);
-          Alert.alert(
+          showWhenActive(
             "Booking Cancelled",
             "The passenger has cancelled this booking.",
-            [
-              {
-                text: "OK",
-                onPress: () => navigation.popToTop(),
-              },
-            ]
+            () => navigation.popToTop()
           );
         }
       } catch {}
