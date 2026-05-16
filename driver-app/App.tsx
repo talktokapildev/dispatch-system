@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Text, View, ActivityIndicator } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useAuthStore, api } from "./src/lib/api";
@@ -114,83 +115,110 @@ function AppNavigator() {
     );
   }
 
+  const navTheme = {
+    dark: true,
+    colors: {
+      primary: Colors.brand,
+      background: Colors.bg,
+      card: Colors.card,
+      text: Colors.text,
+      border: Colors.border,
+      notification: Colors.brand,
+    },
+    fonts: {
+      regular: { fontFamily: "System", fontWeight: "400" },
+      medium: { fontFamily: "System", fontWeight: "500" },
+      bold: { fontFamily: "System", fontWeight: "700" },
+      heavy: { fontFamily: "System", fontWeight: "900" },
+    },
+  } as const;
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          headerBackVisible: false,
-          headerBackTitle: "",
-          contentStyle: { backgroundColor: Colors.bg },
-        }}
-      >
-        {!token ? (
-          // ── Pre-auth screens ──
-          // Login is the initial screen. DriverApplication, DocumentUpload, and
-          // ApplicationPending are navigable from LoginScreen without a token.
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
+    <>
+      <StatusBar style="light" backgroundColor={Colors.bg} />
+      <NavigationContainer theme={navTheme}>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            headerBackVisible: false,
+            headerBackTitle: "",
+            contentStyle: { backgroundColor: Colors.bg },
+          }}
+        >
+          {!token ? (
+            // ── Pre-auth screens ──
+            // Login is the initial screen. DriverApplication, DocumentUpload, and
+            // ApplicationPending are navigable from LoginScreen without a token.
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen
+                name="DriverApplication"
+                component={DriverApplicationScreen}
+                options={{ animation: "slide_from_right" }}
+              />
+              <Stack.Screen
+                name="DocumentUpload"
+                component={DocumentUploadScreen}
+                options={{
+                  animation: "slide_from_right",
+                  gestureEnabled: false,
+                }}
+              />
+              <Stack.Screen
+                name="ApplicationPending"
+                component={ApplicationPendingScreen}
+                options={{
+                  animation: "slide_from_right",
+                  gestureEnabled: false,
+                }}
+              />
+            </>
+          ) : !disclosureAccepted ? (
+            // ── Background location disclosure ──
             <Stack.Screen
-              name="DriverApplication"
-              component={DriverApplicationScreen}
-              options={{ animation: "slide_from_right" }}
+              name="LocationDisclosure"
+              component={LocationDisclosureScreen}
+              initialParams={{ onAccepted: () => setDisclosureAccepted(true) }}
             />
-            <Stack.Screen
-              name="DocumentUpload"
-              component={DocumentUploadScreen}
-              options={{ animation: "slide_from_right", gestureEnabled: false }}
-            />
-            <Stack.Screen
-              name="ApplicationPending"
-              component={ApplicationPendingScreen}
-              options={{ animation: "slide_from_right", gestureEnabled: false }}
-            />
-          </>
-        ) : !disclosureAccepted ? (
-          // ── Background location disclosure ──
-          <Stack.Screen
-            name="LocationDisclosure"
-            component={LocationDisclosureScreen}
-            initialParams={{ onAccepted: () => setDisclosureAccepted(true) }}
-          />
-        ) : (
-          // ── Main authenticated app ──
-          <>
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen
-              name="JobOffer"
-              component={JobOfferScreen}
-              options={{
-                headerShown: false,
-                presentation: "card",
-                gestureEnabled: false,
-                animation: "slide_from_bottom",
-              }}
-            />
-            <Stack.Screen
-              name="ActiveJob"
-              component={ActiveJobScreen}
-              options={{ headerShown: false, gestureEnabled: false }}
-            />
-            <Stack.Screen
-              name="JobComplete"
-              component={JobCompleteScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="Documents"
-              component={DocumentsScreen}
-              options={{ headerShown: false }}
-            />
-            <Stack.Screen
-              name="JobHistory"
-              component={JobHistoryScreen}
-              options={{ headerShown: false }}
-            />
-          </>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+          ) : (
+            // ── Main authenticated app ──
+            <>
+              <Stack.Screen name="Main" component={MainTabs} />
+              <Stack.Screen
+                name="JobOffer"
+                component={JobOfferScreen}
+                options={{
+                  headerShown: false,
+                  presentation: "card",
+                  gestureEnabled: false,
+                  animation: "slide_from_bottom",
+                }}
+              />
+              <Stack.Screen
+                name="ActiveJob"
+                component={ActiveJobScreen}
+                options={{ headerShown: false, gestureEnabled: false }}
+              />
+              <Stack.Screen
+                name="JobComplete"
+                component={JobCompleteScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="Documents"
+                component={DocumentsScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="JobHistory"
+                component={JobHistoryScreen}
+                options={{ headerShown: false }}
+              />
+            </>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </>
   );
 }
 

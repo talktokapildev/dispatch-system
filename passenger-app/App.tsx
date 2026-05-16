@@ -109,9 +109,30 @@ function RootNavigator() {
   const needsProfileSetup =
     token && (!user?.firstName || user.firstName.trim() === "");
 
+  const navTheme = {
+    dark: theme === "dark",
+    colors: {
+      primary: Colors.brand,
+      background: Colors.bg,
+      card: Colors.card,
+      text: Colors.text,
+      border: Colors.border,
+      notification: Colors.brand,
+    },
+    fonts: {
+      regular: { fontFamily: "System", fontWeight: "400" },
+      medium: { fontFamily: "System", fontWeight: "500" },
+      bold: { fontFamily: "System", fontWeight: "700" },
+      heavy: { fontFamily: "System", fontWeight: "900" },
+    },
+  } as const;
+
   return (
-    <NavigationContainer>
-      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+    <NavigationContainer theme={navTheme}>
+      <StatusBar
+        style={theme === "dark" ? "light" : "dark"}
+        backgroundColor={Colors.bg}
+      />
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
