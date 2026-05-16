@@ -377,6 +377,22 @@ export default function HomeScreen({ navigation }: any) {
             onSelect={(r) => {
               setPickup(r);
               Keyboard.dismiss();
+              // Animate map to the selected pickup address.
+              // If dropoff is also set, fitToCoordinates in TripMap will
+              // take over and show the full route — this handles the
+              // single-pickup case where the address may be off-screen.
+              if (!dropoff) {
+                const delta = 0.02;
+                mapRef.current?.animateToRegion(
+                  {
+                    latitude: visibleCentreLat(r.latitude, delta, SHEET_NORMAL),
+                    longitude: r.longitude,
+                    latitudeDelta: delta,
+                    longitudeDelta: delta,
+                  },
+                  500
+                );
+              }
             }}
             onClear={() => setPickup(null)}
           />
