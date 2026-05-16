@@ -31,7 +31,7 @@ import PassengerCard from "../components/PassengerCard";
 import { getSocket } from "../lib/socket";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const SHEET_COLLAPSED = 140;
+const SHEET_COLLAPSED = 185; // tall enough to show cancel button without expanding
 const SHEET_EXPANDED = SCREEN_HEIGHT * 0.55;
 
 // Statuses where driver can still cancel
@@ -82,9 +82,9 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   }, [booking?.status]);
 
   useEffect(() => {
-    const s = getSocket();
-    if (!s) return;
-
+    // ── Socket listener with retry (mirrors JobOfferScreen pattern) ──────────
+    // If socket isn't ready on first mount (e.g. still reconnecting after
+    // navigation), retry once after 1 s so the listener is always attached.
     const handleCancelled = (data: any) => {
       if (data.bookingId === bookingId) {
         Alert.alert(
@@ -101,30 +101,67 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       }
     };
 
-    s.on("booking:cancelled", handleCancelled);
-    return () => {
-      s.off("booking:cancelled", handleCancelled);
+    const attach = () => {
+      const s = getSocket();
+      if (!s) return null;
+      s.on("booking:cancelled", handleCancelled);
+      return () => s.off("booking:cancelled", handleCancelled);
     };
+
+    const cleanup = attach();
+    if (cleanup) return cleanup;
+
+    // Socket not ready yet — retry after 1 s
+    const retryTimer = setTimeout(() => attach(), 1000);
+    return () => clearTimeout(retryTimer);
+  }, [bookingId]);
+
+  useEffect(() => {
+    // ── Polling fallback ─────────────────────────────────────────────────────
+    // Guards against missed socket events (phone backgrounded, brief disconnect).
+    // Every 20 s, fetch booking status; if CANCELLED, show alert and go home.
+    const pollTimer = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/bookings/${bookingId}`);
+        if (data?.data?.status === "CANCELLED") {
+          clearInterval(pollTimer);
+          Alert.alert(
+            "Booking Cancelled",
+            "The passenger has cancelled this booking.",
+            [
+              {
+                text: "OK",
+                onPress: () =>
+                  navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+              },
+            ]
+          );
+        }
+      } catch {}
+    }, 20_000);
+
+    return () => clearInterval(pollTimer);
   }, [bookingId]);
 
   const initScreen = async () => {
     let coords = locationRef.current ?? preloadedLocation ?? null;
     if (!coords) coords = await getInitialLocation();
 
-    if (!booking) {
-      try {
-        const { data } = await api.get(`/bookings/${bookingId}`);
-        const bookingData = data.data;
-        setBooking(bookingData);
-        if (coords) fetchRoute(coords, bookingData);
-      } catch {
-        Alert.alert("Error", "Could not load booking");
-      } finally {
-        setLoading(false);
-      }
-    } else {
+    // Always fetch fresh booking status — preloadedBooking is fetched in
+    // JobOfferScreen BEFORE the driver accepts, so its status is stale
+    // (PENDING/CONFIRMED). Without a fresh fetch, canCancel is always false
+    // and the cancel button never appears.
+    try {
+      const { data } = await api.get(`/bookings/${bookingId}`);
+      const bookingData = data.data;
+      setBooking(bookingData);
+      if (coords) fetchRoute(coords, bookingData);
+    } catch {
+      // If fetch fails, fall back to preloaded data for route only
+      if (!booking) Alert.alert("Error", "Could not load booking");
+      else if (coords && routeCoords.length === 0) fetchRoute(coords, booking);
+    } finally {
       setLoading(false);
-      if (routeCoords.length === 0 && coords) fetchRoute(coords, booking);
     }
   };
 
