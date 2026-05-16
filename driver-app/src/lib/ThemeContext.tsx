@@ -13,8 +13,8 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: "dark",
-  Colors: DarkColors,
+  theme: "light",
+  Colors: LightColors,
   toggle: () => {},
 });
 
