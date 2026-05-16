@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -56,6 +56,8 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const [cancelling, setCancelling] = useState(false);
 
   const { location, locationRef, getInitialLocation } = useLocationTracking();
+  // Prevents spurious "Booking Cancelled" alerts after driver self-cancels
+  const cancelledByDriver = useRef(false);
   const { routeCoords, fetchRoute } = useJobRoute(preloadedRouteCoords ?? []);
   const {
     sheetHeight,
@@ -86,7 +88,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     // If socket isn't ready on first mount (e.g. still reconnecting after
     // navigation), retry once after 1 s so the listener is always attached.
     const handleCancelled = (data: any) => {
-      if (data.bookingId === bookingId) {
+      if (data.bookingId === bookingId && !cancelledByDriver.current) {
         Alert.alert(
           "Booking Cancelled",
           "The passenger has cancelled this booking.",
@@ -122,7 +124,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     const pollTimer = setInterval(async () => {
       try {
         const { data } = await api.get(`/bookings/${bookingId}`);
-        if (data?.data?.status === "CANCELLED") {
+        if (data?.data?.status === "CANCELLED" && !cancelledByDriver.current) {
           clearInterval(pollTimer);
           Alert.alert(
             "Booking Cancelled",
@@ -234,17 +236,9 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const doCancel = async (reason: string) => {
     setCancelling(true);
     try {
+      cancelledByDriver.current = true; // prevents spurious alerts after self-cancel
       await api.post(`/drivers/jobs/${bookingId}/cancel`, { reason });
-      Alert.alert(
-        "Job Cancelled",
-        "The passenger has been notified. You're now back online.",
-        [
-          {
-            text: "OK",
-            onPress: () => navigation.popToTop(),
-          },
-        ]
-      );
+      navigation.popToTop(); // navigate home immediately — no secondary alert
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.error ?? "Failed to cancel job");
     } finally {

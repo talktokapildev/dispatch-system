@@ -63,6 +63,9 @@ export default function HomeScreen({ navigation }: any) {
           });
         }
       } catch {}
+      // Guard: prevent pushing a new JobOffer if already on one
+      const currentRoute = navigation.getState()?.routes?.slice(-1)[0]?.name;
+      if (currentRoute === "JobOffer" || currentRoute === "ActiveJob") return;
       navigation.navigate("JobOffer", { offer: data });
     },
     "driver:job_assigned": (data) => {

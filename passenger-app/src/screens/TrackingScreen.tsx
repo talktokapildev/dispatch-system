@@ -59,6 +59,8 @@ export default function TrackingScreen({ route, navigation }: any) {
   >([]);
   const [loading, setLoading] = useState(!initialBooking);
   const [cancelling, setCancelling] = useState(false);
+  // Guards against double-navigation when socket + polling both fire simultaneously
+  const isNavigatingAway = useRef(false);
   const [searchSeconds, setSearchSeconds] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -115,10 +117,12 @@ export default function TrackingScreen({ route, navigation }: any) {
       );
 
       if (data.status === "COMPLETED") {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "RideComplete", params: { booking } }],
-        });
+        if (!isNavigatingAway.current) {
+          isNavigatingAway.current = true;
+          navigation.replace("RideComplete", {
+            booking: booking,
+          });
+        }
       }
       if (data.status === "DRIVER_CANCELLED") {
         // Driver cancelled — show message, keep screen open (re-dispatch in progress)
@@ -155,7 +159,11 @@ export default function TrackingScreen({ route, navigation }: any) {
               {
                 text: noDriver ? "Try Again" : "OK",
                 onPress: () =>
-                  navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+                  (() => {
+                    if (isNavigatingAway.current) return;
+                    isNavigatingAway.current = true;
+                    navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+                  })(),
               },
             ]
           );
@@ -164,7 +172,11 @@ export default function TrackingScreen({ route, navigation }: any) {
             {
               text: "OK",
               onPress: () =>
-                navigation.reset({ index: 0, routes: [{ name: "Main" }] }),
+                (() => {
+                  if (isNavigatingAway.current) return;
+                  isNavigatingAway.current = true;
+                  navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+                })(),
             },
           ]);
         }
@@ -226,10 +238,12 @@ export default function TrackingScreen({ route, navigation }: any) {
       }
 
       if (b.status === "COMPLETED") {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "RideComplete", params: { booking: b } }],
-        });
+        if (!isNavigatingAway.current) {
+          isNavigatingAway.current = true;
+          navigation.replace("RideComplete", {
+            booking: booking,
+          });
+        }
       }
     } catch {
     } finally {
@@ -302,7 +316,11 @@ export default function TrackingScreen({ route, navigation }: any) {
     setCancelling(true);
     try {
       await api.patch(`/passengers/bookings/${bookingId}/cancel`);
-      navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+      (() => {
+        if (isNavigatingAway.current) return;
+        isNavigatingAway.current = true;
+        navigation.reset({ index: 0, routes: [{ name: "Main" }] });
+      })();
     } catch (err: any) {
       Alert.alert(
         "Error",

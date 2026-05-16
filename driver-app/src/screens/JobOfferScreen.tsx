@@ -117,7 +117,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
       setSecondsLeft((s) => {
         if (s <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
-          setTimeout(() => navigation.goBack(), 0);
+          setTimeout(() => navigation.popToTop(), 0);
           return 0;
         }
         return s - 1;
@@ -184,7 +184,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
         "Error",
         err.response?.data?.error ?? "Job no longer available"
       );
-      navigation.goBack();
+      navigation.popToTop();
     } finally {
       setLoading(null);
     }
