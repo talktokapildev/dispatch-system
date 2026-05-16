@@ -32,7 +32,7 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
-  const { Colors } = useTheme();
+  const { Colors, theme } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={{
@@ -67,7 +67,7 @@ function MainTabs() {
 function AppNavigator() {
   const { token, _hasHydrated, setAuth, logout } = useAuthStore();
   usePushNotifications();
-  const { Colors } = useTheme();
+  const { Colors, theme } = useTheme();
   const [booting, setBooting] = useState(true);
   const [disclosureAccepted, setDisclosureAccepted] = useState<boolean | null>(
     null
@@ -116,7 +116,7 @@ function AppNavigator() {
   }
 
   const navTheme = {
-    dark: true,
+    dark: theme === "dark",
     colors: {
       primary: Colors.brand,
       background: Colors.bg,
@@ -139,7 +139,7 @@ function AppNavigator() {
     // shows whatever native view is rendered behind it. This View ensures
     // that area is always Colors.bg instead of black.
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <StatusBar style="light" />
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator
           screenOptions={{
