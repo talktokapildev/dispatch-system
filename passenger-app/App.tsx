@@ -91,7 +91,7 @@ function MainTabs() {
 }
 
 function RootNavigator() {
-  const { theme } = useTheme();
+  const { theme, Colors } = useTheme();
   const { token, user } = useAuthStore();
 
   usePushNotifications();
@@ -113,7 +113,13 @@ function RootNavigator() {
     <NavigationContainer>
       <StatusBar style={theme === "dark" ? "light" : "dark"} />
       <Stack.Navigator
-        screenOptions={{ headerShown: false, animation: "slide_from_right" }}
+        screenOptions={{
+          headerShown: false,
+          headerBackVisible: false,
+          headerBackTitle: "",
+          animation: "slide_from_right",
+          contentStyle: { backgroundColor: Colors.bg },
+        }}
       >
         {!token ? (
           <Stack.Screen name="Login" component={LoginScreen} />
@@ -133,11 +139,13 @@ function RootNavigator() {
             <Stack.Screen
               name="BookingConfirm"
               component={BookingConfirmScreen}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="Tracking"
               component={TrackingScreen}
               options={{
+                headerShown: false,
                 presentation: "fullScreenModal",
                 gestureEnabled: false,
                 animation: "slide_from_bottom",
@@ -147,6 +155,7 @@ function RootNavigator() {
               name="RideComplete"
               component={RideCompleteScreen}
               options={{
+                headerShown: false,
                 presentation: "fullScreenModal",
                 gestureEnabled: false,
                 animation: "fade",

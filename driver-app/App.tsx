@@ -116,7 +116,14 @@ function AppNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          headerBackVisible: false,
+          headerBackTitle: "",
+          contentStyle: { backgroundColor: Colors.bg },
+        }}
+      >
         {!token ? (
           // ── Pre-auth screens ──
           // Login is the initial screen. DriverApplication, DocumentUpload, and
@@ -154,6 +161,7 @@ function AppNavigator() {
               name="JobOffer"
               component={JobOfferScreen}
               options={{
+                headerShown: false,
                 presentation: "card",
                 gestureEnabled: false,
                 animation: "slide_from_bottom",
@@ -162,11 +170,23 @@ function AppNavigator() {
             <Stack.Screen
               name="ActiveJob"
               component={ActiveJobScreen}
-              options={{ gestureEnabled: false }}
+              options={{ headerShown: false, gestureEnabled: false }}
             />
-            <Stack.Screen name="JobComplete" component={JobCompleteScreen} />
-            <Stack.Screen name="Documents" component={DocumentsScreen} />
-            <Stack.Screen name="JobHistory" component={JobHistoryScreen} />
+            <Stack.Screen
+              name="JobComplete"
+              component={JobCompleteScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Documents"
+              component={DocumentsScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="JobHistory"
+              component={JobHistoryScreen}
+              options={{ headerShown: false }}
+            />
           </>
         )}
       </Stack.Navigator>
