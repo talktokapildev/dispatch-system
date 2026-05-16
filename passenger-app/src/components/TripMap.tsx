@@ -19,15 +19,12 @@ interface TripMapProps {
   bottomPadding?: number;
 }
 
-// Two overlapping points in London — invisible when strokeWidth=0.
-// Keeping Polyline always mounted means first route arrival is a coordinate
-// UPDATE (not a mount), which renders correctly on iOS + Google Maps provider.
 const HIDDEN_COORDS = [
   { latitude: 51.5074, longitude: -0.1278 },
   { latitude: 51.5074, longitude: -0.1278 },
 ];
 
-// Default centre — Crawley/Gatwick area (not London)
+// Default centre — Crawley/Gatwick, not central London
 const DEFAULT_CENTER = { latitude: 51.1097, longitude: -0.1872 };
 
 const TripMap = forwardRef<MapView, TripMapProps>(
@@ -46,7 +43,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
   ) => {
     const { theme } = useTheme();
     const localRef = useRef<MapView>(null);
-    // Use forwarded ref if provided, otherwise fall back to local ref
+    // Use forwarded ref so HomeScreen can call animateToRegion imperatively
     const mapRef = (ref as React.RefObject<MapView>) ?? localRef;
     const hasRoute = !!routeCoords && routeCoords.length > 1;
 
@@ -65,23 +62,8 @@ const TripMap = forwardRef<MapView, TripMapProps>(
         if (dropoff) coords.push(dropoff);
       }
 
-      // ── Single coordinate (e.g. only current location set as pickup) ──
-      // Animate to a sensible zoom rather than doing nothing.
-      if (coords.length === 1) {
-        setTimeout(() => {
-          mapRef.current?.animateToRegion(
-            {
-              latitude: coords[0].latitude,
-              longitude: coords[0].longitude,
-              latitudeDelta: 0.01, // ~1 km — city-block zoom
-              longitudeDelta: 0.01,
-            },
-            500
-          );
-        }, 300);
-        return;
-      }
-
+      // Single coord or none: HomeScreen handles camera explicitly via ref.
+      // We don't animate here to avoid competing animations causing blank tiles.
       if (coords.length < 2) return;
 
       setTimeout(() => {
@@ -135,8 +117,8 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       { featureType: "transit", stylers: [{ visibility: "off" }] },
     ];
 
-    // FIX: prioritise passengerLocation first so the map opens on the user,
-    // not on London. Falls back to pickup, then Crawley/Gatwick default.
+    // Prioritise passengerLocation so map opens centred on the user.
+    // Falls back to pickup, then Crawley/Gatwick (not London).
     const center = passengerLocation ?? pickup ?? DEFAULT_CENTER;
 
     return (
@@ -153,10 +135,6 @@ const TripMap = forwardRef<MapView, TripMapProps>(
         showsBuildings={false}
         moveOnMarkerPress={false}
       >
-        {/*
-          Always mounted — no key prop, no conditional rendering.
-          Hidden via strokeWidth=0 until route arrives.
-        */}
         <Polyline
           coordinates={hasRoute ? routeCoords! : HIDDEN_COORDS}
           strokeColor="#f59e0b"
@@ -164,7 +142,6 @@ const TripMap = forwardRef<MapView, TripMapProps>(
           strokeWidth={hasRoute ? 5 : 0}
         />
 
-        {/* Pickup dot (green) */}
         {pickup && (
           <Marker coordinate={pickup} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
             <View style={styles.pickupPin}>
@@ -173,7 +150,6 @@ const TripMap = forwardRef<MapView, TripMapProps>(
           </Marker>
         )}
 
-        {/* Dropoff dot (red) */}
         {dropoff && (
           <Marker coordinate={dropoff} anchor={{ x: 0.5, y: 0.5 }} zIndex={2}>
             <View style={styles.dropoffPin}>
@@ -182,7 +158,6 @@ const TripMap = forwardRef<MapView, TripMapProps>(
           </Marker>
         )}
 
-        {/* Driver dot (amber) */}
         {driverLocation && (
           <Marker
             coordinate={driverLocation}

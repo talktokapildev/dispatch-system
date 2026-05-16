@@ -378,8 +378,53 @@ export class DispatchService {
       if (completedBooking) {
         const fare =
           completedBooking.actualFare ?? completedBooking.estimatedFare;
-        const platformFee = Math.round(fare * 0.15 * 100) / 100;
-        const net = Math.round((fare - platformFee) * 100) / 100;
+
+        // ── Surcharge-aware commission ──────────────────────────────────
+        // Airport/zone supplements pass through 100% to the driver (auto-debited).
+        // Platform 15% commission applies to base fare only, not surcharge.
+        //
+        // Example — Crawley → Gatwick (£21.53, £8 surcharge):
+        //   platformFee = (21.53 - 8) × 0.15 = £2.03
+        //   driverNet   = 21.53 - 2.03        = £19.50  ✓
+        let surchargeAmount = 0;
+        try {
+          const zones = await (this.prisma as any).surchargeZone.findMany({
+            where: { active: true },
+          });
+          const dLat = completedBooking.dropoffLatitude;
+          const dLng = completedBooking.dropoffLongitude;
+          const pLat = completedBooking.pickupLatitude;
+          const pLng = completedBooking.pickupLongitude;
+          for (const zone of zones) {
+            const poly =
+              Array.isArray(zone.polygon) && zone.polygon.length >= 3
+                ? (zone.polygon as { lat: number; lng: number }[])
+                : null;
+            if (poly) {
+              if (dispatchPointInPolygon(dLat, dLng, poly))
+                surchargeAmount += zone.dropoffFee ?? 0;
+              if (dispatchPointInPolygon(pLat, pLng, poly))
+                surchargeAmount += zone.pickupFee ?? 0;
+            } else if (zone.latitude && zone.longitude && zone.radiusMeters) {
+              if (
+                dispatchHaversine(dLat, dLng, zone.latitude, zone.longitude) <=
+                zone.radiusMeters
+              )
+                surchargeAmount += zone.dropoffFee ?? 0;
+              if (
+                dispatchHaversine(pLat, pLng, zone.latitude, zone.longitude) <=
+                zone.radiusMeters
+              )
+                surchargeAmount += zone.pickupFee ?? 0;
+            }
+          }
+        } catch {
+          // Zone detection failed — fall back to 0 surcharge (full fare commissionable)
+        }
+
+        const baseFare = Math.max(0, r2(fare - surchargeAmount));
+        const platformFee = r2(baseFare * 0.15);
+        const net = r2(fare - platformFee);
         await this.prisma.driverEarning.upsert({
           where: { bookingId },
           update: {},
@@ -584,4 +629,48 @@ interface AvailableDriver {
   id: string;
   distanceKm: number;
   vehicleClass?: string | null;
+}
+
+// ─── Local geo helpers (mirrors pricing.service.ts) ────────────────────────
+// Used for surcharge zone detection at earnings time — avoids importing the
+// full PricingService just for polygon/radius lookups.
+
+function dispatchPointInPolygon(
+  lat: number,
+  lng: number,
+  polygon: { lat: number; lng: number }[]
+): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat,
+      yi = polygon[i].lng;
+    const xj = polygon[j].lat,
+      yj = polygon[j].lng;
+    const intersect =
+      yi > lng !== yj > lng && lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function dispatchHaversine(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Round to 2 decimal places */
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

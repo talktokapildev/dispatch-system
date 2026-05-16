@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -51,6 +51,13 @@ export default function AddressPicker({
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // FIX: sync internal query when value is set externally (e.g. "Use my
+  // current location" sets pickup from outside — without this the textbox
+  // stays blank even though the parent state has the address).
+  useEffect(() => {
+    if (!focused) setQuery(value);
+  }, [value]);
 
   const search = (text: string) => {
     setQuery(text);

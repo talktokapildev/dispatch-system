@@ -37,6 +37,84 @@ interface FareEstimate {
   polyline?: string;
 }
 
+// ── Crosshair icon — matches Uber's "my location" button style ─────────────
+// Built from Views so no @expo/vector-icons dependency needed.
+function CrosshairIcon({ color, size = 20 }: { color: string; size?: number }) {
+  const arm = size * 0.35;
+  const dot = size * 0.2;
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {/* Outer ring */}
+      <View
+        style={{
+          position: "absolute",
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          borderWidth: 1.5,
+          borderColor: color,
+        }}
+      />
+      {/* Horizontal arm left */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          width: arm,
+          height: 1.5,
+          backgroundColor: color,
+        }}
+      />
+      {/* Horizontal arm right */}
+      <View
+        style={{
+          position: "absolute",
+          right: 0,
+          width: arm,
+          height: 1.5,
+          backgroundColor: color,
+        }}
+      />
+      {/* Vertical arm top */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          height: arm,
+          width: 1.5,
+          backgroundColor: color,
+        }}
+      />
+      {/* Vertical arm bottom */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          height: arm,
+          width: 1.5,
+          backgroundColor: color,
+        }}
+      />
+      {/* Centre dot */}
+      <View
+        style={{
+          width: dot,
+          height: dot,
+          borderRadius: dot / 2,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
   const { user } = useAuthStore();
@@ -54,7 +132,7 @@ export default function HomeScreen({ navigation }: any) {
     { latitude: number; longitude: number }[]
   >([]);
 
-  // Ref forwarded into TripMap so we can imperatively animate the camera
+  // Forwarded into TripMap so HomeScreen can control the camera imperatively
   const mapRef = useRef<MapView>(null);
 
   const sheetAnim = useRef(new Animated.Value(0)).current;
@@ -117,20 +195,13 @@ export default function HomeScreen({ navigation }: any) {
       };
       setMyLocation(coords);
 
-      // FIX: centre the map on the user's actual location when it first loads,
-      // but only if they haven't already set a pickup/dropoff.
-      // Use a short delay to ensure MapView has mounted before animating.
+      // Centre map on user's real location once it loads.
+      // Delay allows MapView to mount before we animate.
       setTimeout(() => {
-        if (!pickup && !dropoff) {
-          mapRef.current?.animateToRegion(
-            {
-              ...coords,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            },
-            800
-          );
-        }
+        mapRef.current?.animateToRegion(
+          { ...coords, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+          800
+        );
       }, 600);
     } catch {}
   };
@@ -139,7 +210,6 @@ export default function HomeScreen({ navigation }: any) {
     if (!pickup || !dropoff) return;
     setEstimating(true);
     try {
-      // ── Step 1: Get route from Google Directions ──────────────────────
       const directionsUrl =
         `https://maps.googleapis.com/maps/api/directions/json` +
         `?origin=${pickup.latitude},${pickup.longitude}` +
@@ -163,7 +233,6 @@ export default function HomeScreen({ navigation }: any) {
 
       if (polyline) setRouteCoords(decodePolyline(polyline));
 
-      // ── Step 2: Get fare from our pricing engine ─────────────────────
       const { data: priceData } = await api.post("/pricing/calculate", {
         distanceMiles,
         durationMinutes: durationMins,
@@ -179,7 +248,7 @@ export default function HomeScreen({ navigation }: any) {
         durationMins,
         polyline,
       });
-    } catch (err) {
+    } catch {
       setEstimate(null);
       setRouteCoords([]);
     } finally {
@@ -195,6 +264,19 @@ export default function HomeScreen({ navigation }: any) {
       );
       return;
     }
+
+    // Animate immediately on tap — feels responsive before geocode returns.
+    // delta 0.02 (~2 km) — street-level zoom without blank tile risk.
+    mapRef.current?.animateToRegion(
+      {
+        latitude: myLocation.latitude,
+        longitude: myLocation.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      },
+      400
+    );
+
     try {
       const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${myLocation.latitude},${myLocation.longitude}&key=${GOOGLE_API_KEY}`;
       const res = await fetch(url);
@@ -203,32 +285,15 @@ export default function HomeScreen({ navigation }: any) {
         json.results?.[0]?.formatted_address ?? "Current Location";
       setPickup({ address, ...myLocation });
     } catch {
-      setPickup({ address: "Current Location", ...myLocation! });
+      setPickup({ address: "Current Location", ...myLocation });
     }
-
-    // FIX: animate to a sensible zoom around the user's location.
-    // delta 0.01 = ~1 km radius — right zoom level for a local pickup.
-    mapRef.current?.animateToRegion(
-      {
-        latitude: myLocation.latitude,
-        longitude: myLocation.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      },
-      500
-    );
   };
 
-  // FIX: re-centre map button handler
   const centreOnMe = () => {
     if (!myLocation) return;
     mapRef.current?.animateToRegion(
-      {
-        ...myLocation,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      },
-      500
+      { ...myLocation, latitudeDelta: 0.05, longitudeDelta: 0.05 },
+      400
     );
   };
 
@@ -258,25 +323,23 @@ export default function HomeScreen({ navigation }: any) {
         />
       </View>
 
-      {/* FIX: Re-centre button — bottom-right of map, above the bottom sheet */}
+      {/* Re-centre button — shown once location is known */}
       {myLocation && (
         <TouchableOpacity
           style={[s.locateBtn, { bottom: SHEET_NORMAL + 16 }]}
           onPress={centreOnMe}
           activeOpacity={0.85}
         >
-          <Text style={s.locateBtnIcon}>⊙</Text>
+          <CrosshairIcon color={Colors.brand} size={22} />
         </TouchableOpacity>
       )}
 
       {/* ── Bottom sheet ───────────────────────────────────────────────── */}
       <Animated.View style={[s.sheet, { height: sheetHeight }]}>
-        {/* Drag handle */}
         <View style={s.handleWrap}>
           <View style={s.handle} />
         </View>
 
-        {/* Scrollable address pickers */}
         <ScrollView
           keyboardShouldPersistTaps="always"
           showsVerticalScrollIndicator={false}
@@ -317,7 +380,6 @@ export default function HomeScreen({ navigation }: any) {
 
         {/* ── Fixed bottom section ───────────────────────────────────── */}
         <View style={s.bottomFixed}>
-          {/* Estimating spinner */}
           {estimating && (
             <View style={s.estimateRow}>
               <ActivityIndicator size="small" color={Colors.brand} />
@@ -325,7 +387,6 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* Fare estimate card */}
           {estimate && !estimating && (
             <View style={s.estimateCard}>
               <View style={s.estimateStat}>
@@ -351,7 +412,6 @@ export default function HomeScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* Book button */}
           <TouchableOpacity
             style={[s.bookBtn, (!pickup || !dropoff) && s.bookBtnDisabled]}
             onPress={proceedToConfirm}
@@ -465,7 +525,6 @@ const styles = (
       fontSize: FontSize.md,
       letterSpacing: 0.3,
     },
-    // FIX: locate/re-centre button floating above the bottom sheet
     locateBtn: {
       position: "absolute",
       right: 16,
@@ -482,10 +541,5 @@ const styles = (
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 6,
-    },
-    locateBtnIcon: {
-      fontSize: 22,
-      color: C.brand,
-      lineHeight: 26,
     },
   });
