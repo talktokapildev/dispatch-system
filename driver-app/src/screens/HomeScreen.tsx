@@ -66,13 +66,22 @@ export default function HomeScreen({ navigation }: any) {
       } catch {}
       // Guard 1: skip if this booking was just cancelled by this driver
       if (isBookingBlocked(data.bookingId)) return;
-      // Guard 2: prevent pushing a new JobOffer if already on one
+      // Guard 2: prevent re-dispatch if already on a job screen
       const currentRoute = navigation.getState()?.routes?.slice(-1)[0]?.name;
       if (currentRoute === "JobOffer" || currentRoute === "ActiveJob") return;
-      navigation.navigate("JobOffer", { offer: data });
+      // Reset to [JobOffer] — removes Main from native stack so when we
+      // reset back to Main after the job, it's a fresh UIViewController
+      // with no stale nav items. Mirrors the passenger app's flow exactly.
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "JobOffer", params: { offer: data } }],
+      });
     },
     "driver:job_assigned": (data) => {
-      navigation.navigate("ActiveJob", { bookingId: data.bookingId });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "ActiveJob", params: { bookingId: data.bookingId } }],
+      });
     },
     "booking:cancelled": async (data) => {
       try {
@@ -106,9 +115,14 @@ export default function HomeScreen({ navigation }: any) {
         const { data } = await api.get("/drivers/active-booking");
         const booking = data?.data;
         if (booking) {
-          navigation.navigate("ActiveJob", {
-            bookingId: booking.id,
-            preloadedBooking: booking,
+          navigation.reset({
+            index: 0,
+            routes: [
+              {
+                name: "ActiveJob",
+                params: { bookingId: booking.id, preloadedBooking: booking },
+              },
+            ],
           });
         }
       } catch {}

@@ -200,7 +200,7 @@ export default function JobOfferScreen({ route, navigation }: any) {
     try {
       await api.post(`/drivers/jobs/${offer.bookingId}/reject`);
     } catch {}
-    navigation.goBack();
+    navigation.reset({ index: 0, routes: [{ name: "Main" }] });
   };
 
   const urgentColor = secondsLeft <= 15 ? Colors.danger : Colors.brand;
