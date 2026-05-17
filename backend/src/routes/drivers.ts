@@ -472,6 +472,33 @@ export async function driverRoutes(fastify: FastifyInstance) {
                 bookingId,
                 status,
               });
+
+            // Push notification to passenger for each status change
+            // so they're notified even when the passenger app is backgrounded
+            const passengerUserId = booking.passenger.userId;
+            const driverUser = await fastify.prisma.driver.findUnique({
+              where: { id: booking.driverId! },
+              include: { user: true },
+            });
+            const driverFirstName =
+              driverUser?.user?.firstName ?? "Your driver";
+
+            if (status === "DRIVER_EN_ROUTE") {
+              notifications
+                .notifyDriverEnRoute(passengerUserId, driverFirstName)
+                .catch(() => {});
+            } else if (status === "DRIVER_ARRIVED") {
+              notifications
+                .notifyDriverArrived(passengerUserId, driverFirstName)
+                .catch(() => {});
+            } else if (status === "IN_PROGRESS") {
+              notifications.notifyTripStarted(passengerUserId).catch(() => {});
+            } else if (status === "COMPLETED") {
+              const fare = booking.actualFare ?? booking.estimatedFare ?? 0;
+              notifications
+                .notifyTripComplete(passengerUserId, Number(fare))
+                .catch(() => {});
+            }
           }
         }
       }
