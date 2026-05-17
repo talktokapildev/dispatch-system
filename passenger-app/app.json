@@ -31,7 +31,8 @@
       },
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
-      }
+      },
+      "backgroundModes": ["remote-notification"]
     },
     "android": {
       "adaptiveIcon": {
