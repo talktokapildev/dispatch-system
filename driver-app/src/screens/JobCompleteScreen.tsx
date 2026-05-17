@@ -158,7 +158,7 @@ export default function JobCompleteScreen({ route, navigation }: any) {
           style={s.doneBtn}
           onPress={() =>
             // popToTop() cleanly unwinds [Main, JobComplete] → [Main]
-            navigation.popToTop()
+            navigation.reset({ index: 0, routes: [{ name: "Main" }] })
           }
         >
           <Text style={s.doneBtnText}>Back to Dashboard</Text>

@@ -119,7 +119,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         showWhenActive(
           "Booking Cancelled",
           "The passenger has cancelled this booking.",
-          () => navigation.popToTop()
+          () => navigation.reset({ index: 0, routes: [{ name: "Main" }] })
         );
       }
     };
@@ -156,7 +156,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
           showWhenActive(
             "Booking Cancelled",
             "The passenger has cancelled this booking.",
-            () => navigation.popToTop()
+            () => navigation.reset({ index: 0, routes: [{ name: "Main" }] })
           );
         }
       } catch {}
@@ -263,7 +263,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       // re-dispatch the same job to us after we're freed as available.
       blockBookingDispatch(bookingId);
       await api.post(`/drivers/jobs/${bookingId}/cancel`, { reason });
-      navigation.popToTop(); // navigate home immediately — no secondary alert
+      navigation.reset({ index: 0, routes: [{ name: "Main" }] }); // navigate home immediately — no secondary alert
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.error ?? "Failed to cancel job");
     } finally {
