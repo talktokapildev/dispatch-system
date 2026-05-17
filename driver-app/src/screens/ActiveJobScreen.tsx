@@ -60,6 +60,8 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const { location, locationRef, getInitialLocation } = useLocationTracking();
   // Prevents spurious "Booking Cancelled" alerts after driver self-cancels
   const cancelledByDriver = useRef(false);
+  // Prevents both socket AND polling from each showing the cancellation alert
+  const cancellationHandled = useRef(false);
 
   // Shows an alert immediately if app is active, or waits until foregrounded.
   // Prevents the iOS native nav bar artifact that appears when an Alert fires
@@ -108,7 +110,12 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     // If socket isn't ready on first mount (e.g. still reconnecting after
     // navigation), retry once after 1 s so the listener is always attached.
     const handleCancelled = (data: any) => {
-      if (data.bookingId === bookingId && !cancelledByDriver.current) {
+      if (
+        data.bookingId === bookingId &&
+        !cancelledByDriver.current &&
+        !cancellationHandled.current
+      ) {
+        cancellationHandled.current = true;
         showWhenActive(
           "Booking Cancelled",
           "The passenger has cancelled this booking.",
@@ -139,7 +146,12 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     const pollTimer = setInterval(async () => {
       try {
         const { data } = await api.get(`/bookings/${bookingId}`);
-        if (data?.data?.status === "CANCELLED" && !cancelledByDriver.current) {
+        if (
+          data?.data?.status === "CANCELLED" &&
+          !cancelledByDriver.current &&
+          !cancellationHandled.current
+        ) {
+          cancellationHandled.current = true;
           clearInterval(pollTimer);
           showWhenActive(
             "Booking Cancelled",
