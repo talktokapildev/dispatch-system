@@ -73,7 +73,13 @@ export function usePushNotifications() {
       });
       const token = tokenData.data;
       tokenRef.current = token;
-      await api.post("/notifications/token", { token, platform: Platform.OS });
+      // Pass authToken explicitly — the API interceptor may not have updated
+      // by the time this fires, causing silent 401s and no token stored on backend.
+      await api.post(
+        "/notifications/token",
+        { token, platform: Platform.OS },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
       console.log("[Push] Token registered:", token.slice(0, 30) + "…");
     } catch (err: any) {
       console.log("[Push] Could not get push token:", err);
