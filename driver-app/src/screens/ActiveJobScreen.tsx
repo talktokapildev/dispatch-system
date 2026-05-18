@@ -277,15 +277,22 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       isHeadingToPickup(booking.status) && booking.status !== "DRIVER_ARRIVED";
     const lat = toPickup ? booking.pickupLatitude : booking.dropoffLatitude;
     const lng = toPickup ? booking.pickupLongitude : booking.dropoffLongitude;
+    if (!lat || !lng) {
+      Alert.alert("Navigation Error", "Location coordinates not available.");
+      return;
+    }
     const googleUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
     const appleUrl = `maps://?daddr=${lat},${lng}`;
-    Linking.canOpenURL(googleUrl).then((s) =>
-      Linking.openURL(s ? googleUrl : appleUrl).catch(() =>
-        Linking.openURL(
-          `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-        )
-      )
-    );
+    const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+    Linking.canOpenURL(googleUrl)
+      .then((supported) => {
+        if (supported) return Linking.openURL(googleUrl);
+        return Linking.canOpenURL(appleUrl).then((appleSupported) =>
+          Linking.openURL(appleSupported ? appleUrl : webUrl)
+        );
+      })
+      .catch(() => Linking.openURL(webUrl));
   };
 
   if (loading) {

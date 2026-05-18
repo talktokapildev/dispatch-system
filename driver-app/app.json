@@ -22,7 +22,8 @@
         "NSLocationAlwaysUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs.",
         "NSCameraUsageDescription": "OrangeRide Driver needs camera access to upload your TfL compliance documents.",
         "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": ["comgooglemaps", "maps", "waze"]
       },
       "backgroundModes": ["location", "remote-notification"],
       "config": {
