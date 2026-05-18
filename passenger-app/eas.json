@@ -8,11 +8,17 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": { "simulator": false },
-      "env": { "APP_ENV": "development" }
+      "env": { "APP_ENV": "development" },
+      "android": {
+        "googleServicesFile": "./google-services.json"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "env": { "APP_ENV": "production" }
+      "env": { "APP_ENV": "production" },
+      "android": {
+        "googleServicesFile": "./google-services.json"
+      }
     },
     "production": {
       "autoIncrement": true,
@@ -21,7 +27,8 @@
         "image": "latest"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "googleServicesFile": "./google-services.json"
       }
     }
   },
