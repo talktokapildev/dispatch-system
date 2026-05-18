@@ -56,7 +56,7 @@ export default function AddressPicker({
   // current location" sets pickup from outside — without this the textbox
   // stays blank even though the parent state has the address).
   useEffect(() => {
-    if (!focused) setQuery(value);
+    if (value !== query) setQuery(value);
   }, [value]);
 
   const search = (text: string) => {
