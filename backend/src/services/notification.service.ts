@@ -55,6 +55,7 @@ export class NotificationService {
         data: notification.data ?? {},
         badge: 1,
         channelId: "default",
+        priority: "high" as const,
       }));
 
     if (!messages.length) return;
