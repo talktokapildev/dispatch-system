@@ -281,18 +281,36 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       Alert.alert("Navigation Error", "Location coordinates not available.");
       return;
     }
+
+    const options: { label: string; url: string }[] = [];
+
     const googleUrl = `comgooglemaps://?daddr=${lat},${lng}&directionsmode=driving`;
+    const wazeUrl = `waze://?ll=${lat},${lng}&navigate=yes`;
     const appleUrl = `maps://?daddr=${lat},${lng}`;
     const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
-    Linking.canOpenURL(googleUrl)
-      .then((supported) => {
-        if (supported) return Linking.openURL(googleUrl);
-        return Linking.canOpenURL(appleUrl).then((appleSupported) =>
-          Linking.openURL(appleSupported ? appleUrl : webUrl)
-        );
-      })
-      .catch(() => Linking.openURL(webUrl));
+    const buildOptions = async () => {
+      const [hasGoogle, hasWaze, hasApple] = await Promise.all([
+        Linking.canOpenURL(googleUrl),
+        Linking.canOpenURL(wazeUrl),
+        Linking.canOpenURL(appleUrl),
+      ]);
+      if (hasGoogle) options.push({ label: "Google Maps", url: googleUrl });
+      if (hasWaze) options.push({ label: "Waze", url: wazeUrl });
+      if (hasApple) options.push({ label: "Apple Maps", url: appleUrl });
+      options.push({ label: "Google Maps (browser)", url: webUrl });
+
+      Alert.alert("Open with", undefined, [
+        ...options.map((o) => ({
+          text: o.label,
+          onPress: () =>
+            Linking.openURL(o.url).catch(() => Linking.openURL(webUrl)),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]);
+    };
+
+    buildOptions().catch(() => Linking.openURL(webUrl));
   };
 
   if (loading) {
