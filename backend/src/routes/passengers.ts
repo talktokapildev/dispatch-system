@@ -998,4 +998,59 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true });
     }
   );
+
+  // ─── GET /passengers/active-booking ────────────────────────────────────────
+  // Returns the passenger's current active booking for app recovery.
+  // Called by HomeScreen on mount to detect if app was closed mid-trip.
+  fastify.get(
+    "/passengers/active-booking",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+
+      const passenger = await getPassenger(userId);
+      if (!passenger)
+        return reply.status(403).send({ success: false, error: "Not found" });
+
+      const booking = await fastify.prisma.booking.findFirst({
+        where: {
+          passengerId: passenger.id,
+          status: {
+            in: [
+              BookingStatus.PENDING,
+              BookingStatus.CONFIRMED,
+              BookingStatus.DRIVER_ASSIGNED,
+              BookingStatus.DRIVER_EN_ROUTE,
+              BookingStatus.DRIVER_ARRIVED,
+              BookingStatus.IN_PROGRESS,
+            ],
+          },
+        },
+        include: {
+          driver: {
+            include: {
+              user: {
+                select: { firstName: true, lastName: true, phone: true },
+              },
+              vehicle: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!booking) return reply.send({ success: true, data: null });
+
+      const enriched: any = { ...booking };
+      if (booking.driver) {
+        enriched.driver = {
+          ...booking.driver,
+          lastLatitude: booking.driver.currentLatitude,
+          lastLongitude: booking.driver.currentLongitude,
+        };
+      }
+
+      return reply.send({ success: true, data: enriched });
+    }
+  );
 }

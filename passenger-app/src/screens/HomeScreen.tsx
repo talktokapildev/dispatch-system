@@ -168,6 +168,25 @@ export default function HomeScreen({ navigation }: any) {
     };
   }, []);
 
+  // Recovery: if passenger has an active booking (app was closed mid-trip),
+  // navigate directly to TrackingScreen
+  useEffect(() => {
+    const recover = async () => {
+      try {
+        const { data } = await api.get("/passengers/active-booking");
+        const booking = data?.data;
+        if (booking) {
+          navigation.navigate("Tracking", {
+            bookingId: booking.id,
+            booking,
+          });
+        }
+      } catch {}
+    };
+    const t = setTimeout(recover, 600);
+    return () => clearTimeout(t);
+  }, []);
+
   const expand = () =>
     Animated.spring(sheetAnim, {
       toValue: 1,

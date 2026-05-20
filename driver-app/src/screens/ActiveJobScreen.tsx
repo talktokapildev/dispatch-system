@@ -57,7 +57,10 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  const { location, locationRef, getInitialLocation } = useLocationTracking();
+  const { location, locationRef, getInitialLocation } = useLocationTracking(
+    8_000,
+    true
+  );
   // Prevents spurious "Booking Cancelled" alerts after driver self-cancels
   const cancelledByDriver = useRef(false);
   // Prevents both socket AND polling from each showing the cancellation alert
@@ -167,7 +170,13 @@ export default function ActiveJobScreen({ route, navigation }: any) {
 
   const initScreen = async () => {
     let coords = locationRef.current ?? preloadedLocation ?? null;
-    if (!coords) coords = await getInitialLocation();
+    if (!coords) {
+      coords = await getInitialLocation();
+    } else {
+      // HomeScreen unmounts on navigation.reset, stopping the background task.
+      // Restart it here — getInitialLocation is idempotent (checks isRegistered).
+      getInitialLocation().catch(() => {});
+    }
 
     // Always fetch fresh booking status — preloadedBooking is fetched in
     // JobOfferScreen BEFORE the driver accepts, so its status is stale

@@ -137,6 +137,15 @@ export default function HomeScreen({ navigation }: any) {
     if (_hasHydrated) {
       fetchEarnings();
       refreshDriverProfile();
+      // Stop background location task if driver is offline on app launch
+      if (!isOnline) {
+        TaskManager.isTaskRegisteredAsync("background-location-task").then(
+          (registered) => {
+            if (registered)
+              Location.stopLocationUpdatesAsync("background-location-task");
+          }
+        );
+      }
     }
   }, [_hasHydrated]);
 
@@ -158,11 +167,11 @@ export default function HomeScreen({ navigation }: any) {
     try {
       const { data } = await api.get("/auth/me");
       const freshDriver = data.data.driver;
-      // Read current store state directly — avoids stale closure values
       const { token: currentToken, user: currentUser } =
         useAuthStore.getState();
       if (freshDriver && currentToken && currentUser) {
         setAuth(currentToken, currentUser, freshDriver);
+        setStatus(freshDriver.status); // ← sync local state with DB
       }
     } catch {}
   };

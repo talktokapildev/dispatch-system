@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.passenger",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.orangeride.passenger"
@@ -32,7 +32,9 @@
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       },
-      "backgroundModes": ["remote-notification"]
+      "backgroundModes": [
+        "remote-notification"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -40,7 +42,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.passenger",
-      "versionCode": 11,
+      "versionCode": 12,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
