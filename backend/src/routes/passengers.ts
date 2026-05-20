@@ -1049,7 +1049,6 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           lastLongitude: booking.driver.currentLongitude,
         };
       }
-
       return reply.send({ success: true, data: enriched });
     }
   );
