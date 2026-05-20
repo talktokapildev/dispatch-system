@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
   ScrollView,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import MapView from "react-native-maps";
@@ -128,7 +129,7 @@ function visibleCentreLat(
 
 export default function HomeScreen({ navigation }: any) {
   const { Colors } = useTheme();
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const insets = useSafeAreaInsets();
 
   const [pickup, setPickup] = useState<PlaceResult | null>(null);
@@ -168,24 +169,25 @@ export default function HomeScreen({ navigation }: any) {
     };
   }, []);
 
-  // Recovery: if passenger has an active booking (app was closed mid-trip),
-  // navigate directly to TrackingScreen
-  useEffect(() => {
-    const recover = async () => {
-      try {
-        const { data } = await api.get("/passengers/active-booking");
-        const booking = data?.data;
-        if (booking) {
-          navigation.navigate("Tracking", {
-            bookingId: booking.id,
-            booking,
-          });
-        }
-      } catch {}
-    };
-    const t = setTimeout(recover, 600);
-    return () => clearTimeout(t);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) return;
+      const recover = async () => {
+        try {
+          const { data } = await api.get("/passengers/active-booking");
+          const booking = data?.data;
+          if (booking) {
+            const rootNav = navigation.getParent() ?? navigation;
+            rootNav.navigate("Tracking", {
+              bookingId: booking.id,
+              booking,
+            });
+          }
+        } catch {}
+      };
+      recover();
+    }, [token])
+  );
 
   const expand = () =>
     Animated.spring(sheetAnim, {
