@@ -101,6 +101,7 @@ export default function HomeScreen({ navigation }: any) {
   });
 
   useEffect(() => {
+    if (status === "GOING_ONLINE") return; // skip during transition
     fetchEarnings();
     refreshDriverProfile();
     if (status === "AVAILABLE" || status === "ON_JOB") startLocationTracking();

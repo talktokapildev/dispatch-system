@@ -108,6 +108,28 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       fetchRoute(locationRef.current, booking);
   }, [booking?.status]);
 
+  // Track last coords used for route fetch — avoid refetching on tiny movements
+  const lastRouteFetchRef = useRef<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!location || !booking) return;
+    // Only refetch if driver has moved more than ~50m since last route fetch
+    if (lastRouteFetchRef.current) {
+      const dlat = Math.abs(
+        location.latitude - lastRouteFetchRef.current.latitude
+      );
+      const dlng = Math.abs(
+        location.longitude - lastRouteFetchRef.current.longitude
+      );
+      if (dlat < 0.00045 && dlng < 0.00045) return; // ~50m threshold
+    }
+    lastRouteFetchRef.current = location;
+    fetchRoute(location, booking);
+  }, [location]);
+
   useEffect(() => {
     // ── Socket listener with retry (mirrors JobOfferScreen pattern) ──────────
     // If socket isn't ready on first mount (e.g. still reconnecting after
