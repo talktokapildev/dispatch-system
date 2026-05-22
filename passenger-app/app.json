@@ -3,7 +3,7 @@
     "name": "OrangeRide",
     "newArchEnabled": false,
     "slug": "orangeride-passenger",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -32,9 +32,7 @@
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       },
-      "backgroundModes": [
-        "remote-notification"
-      ]
+      "backgroundModes": ["remote-notification"]
     },
     "android": {
       "adaptiveIcon": {
