@@ -64,6 +64,14 @@ export default function TrackingScreen({ route, navigation }: any) {
   const [searchSeconds, setSearchSeconds] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  const [eta, setEta] = useState<number | null>(null);
+  const [distanceMiles, setDistanceMiles] = useState<number | null>(null);
+  const prevDriverLocationRef = useRef<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const animIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const sheetHeight = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
 
   const toggleSheet = () => {
@@ -186,11 +194,9 @@ export default function TrackingScreen({ route, navigation }: any) {
     // booking:driver_location — emitted by drivers.ts on location update
     const onDriverLocation = (data: any) => {
       if (data.bookingId !== bookingId) return;
-      setDriverLocation({ latitude: data.latitude, longitude: data.longitude });
-      fetchRouteFromDriver({
-        latitude: data.latitude,
-        longitude: data.longitude,
-      });
+      const newLoc = { latitude: data.latitude, longitude: data.longitude };
+      animateDriverTo(newLoc);
+      fetchRouteFromDriver(newLoc);
     };
 
     // passenger:driver_assigned — emitted when a driver accepts the job
@@ -222,6 +228,12 @@ export default function TrackingScreen({ route, navigation }: any) {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (animIntervalRef.current) clearInterval(animIntervalRef.current);
+    };
+  }, []);
+
   const fetchBooking = async () => {
     try {
       const { data } = await api.get(`/passengers/bookings/${bookingId}`);
@@ -233,7 +245,7 @@ export default function TrackingScreen({ route, navigation }: any) {
           latitude: b.driver.lastLatitude,
           longitude: b.driver.lastLongitude,
         };
-        setDriverLocation(driverLoc);
+        animateDriverTo(driverLoc);
         fetchRouteFromDriver(driverLoc, b);
       }
 
@@ -249,6 +261,32 @@ export default function TrackingScreen({ route, navigation }: any) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const animateDriverTo = (newLoc: { latitude: number; longitude: number }) => {
+    const from = prevDriverLocationRef.current;
+    if (!from) {
+      prevDriverLocationRef.current = newLoc;
+      setDriverLocation(newLoc);
+      return;
+    }
+    if (animIntervalRef.current) clearInterval(animIntervalRef.current);
+    const STEPS = 15;
+    const latStep = (newLoc.latitude - from.latitude) / STEPS;
+    const lngStep = (newLoc.longitude - from.longitude) / STEPS;
+    let step = 0;
+    animIntervalRef.current = setInterval(() => {
+      step++;
+      setDriverLocation({
+        latitude: from.latitude + latStep * step,
+        longitude: from.longitude + lngStep * step,
+      });
+      if (step >= STEPS) {
+        clearInterval(animIntervalRef.current!);
+        animIntervalRef.current = null;
+        prevDriverLocationRef.current = newLoc;
+      }
+    }, 67);
   };
 
   const fetchRouteFromDriver = async (
@@ -271,8 +309,13 @@ export default function TrackingScreen({ route, navigation }: any) {
           destLng: dest.longitude,
         },
       });
-      const poly = data.data?.polyline;
-      if (poly) setRouteCoords(decodePolyline(poly));
+
+      const result = data.data;
+      if (result?.polyline) setRouteCoords(decodePolyline(result.polyline));
+      if (result?.durationMinutes != null)
+        setEta(Math.ceil(result.durationMinutes));
+      if (result?.distanceKm != null)
+        setDistanceMiles(result.distanceKm * 0.621371);
     } catch {}
   };
 
@@ -367,6 +410,24 @@ export default function TrackingScreen({ route, navigation }: any) {
   ].includes(status);
   const s = styles(Colors);
 
+  const getStatusLabel = () => {
+    const driverName = driver?.user?.firstName ?? "Driver";
+    switch (status) {
+      case "DRIVER_EN_ROUTE":
+        return eta !== null
+          ? `${driverName} is ${eta} min away`
+          : "Driver on the way";
+      case "DRIVER_ARRIVED":
+        return `${driverName} is outside!`;
+      case "IN_PROGRESS":
+        return eta !== null
+          ? `${distanceMiles?.toFixed(1)} mi to destination`
+          : "You're on your way!";
+      default:
+        return statusInfo.label;
+    }
+  };
+
   return (
     <View style={s.container}>
       {/* Full-screen map */}
@@ -388,6 +449,7 @@ export default function TrackingScreen({ route, navigation }: any) {
         routeCoords={routeCoords.length > 1 ? routeCoords : undefined}
         stage="tracking"
         bottomPadding={SHEET_COLLAPSED + 20}
+        driverName={driver?.user?.firstName}
       />
 
       {/* Waiting overlay when no driver yet */}
@@ -417,10 +479,30 @@ export default function TrackingScreen({ route, navigation }: any) {
           <View style={s.statusRow}>
             <Text style={s.statusIcon}>{statusInfo.icon}</Text>
             <Text style={[s.statusLabel, { color: statusInfo.color }]}>
-              {statusInfo.label}
+              {getStatusLabel()}
             </Text>
             <Text style={s.swipeHint}>{isExpanded ? "▼" : "▲"}</Text>
           </View>
+          {eta !== null &&
+            ["DRIVER_EN_ROUTE", "DRIVER_ARRIVED", "IN_PROGRESS"].includes(
+              status
+            ) && (
+              <View style={s.etaRow}>
+                <View
+                  style={[s.etaPill, { borderColor: statusInfo.color + "50" }]}
+                >
+                  <Text style={[s.etaText, { color: statusInfo.color }]}>
+                    {status === "DRIVER_ARRIVED"
+                      ? "📍 Driver is here"
+                      : `⏱ ${eta} min${
+                          distanceMiles != null
+                            ? ` · ${distanceMiles.toFixed(1)} mi`
+                            : ""
+                        }`}
+                  </Text>
+                </View>
+              </View>
+            )}
         </TouchableOpacity>
 
         {/* Reference + cancel */}
@@ -664,4 +746,20 @@ const styles = (
     addrText: { fontSize: FontSize.sm, color: C.white, lineHeight: 20 },
     fareLabel: { fontSize: FontSize.sm, color: C.muted },
     fareValue: { fontSize: FontSize.md, fontWeight: "700" },
+    etaRow: {
+      paddingHorizontal: Spacing.lg,
+      paddingBottom: Spacing.sm,
+    },
+    etaPill: {
+      alignSelf: "flex-start",
+      borderWidth: 1,
+      borderRadius: Radius.lg,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: 4,
+      backgroundColor: "transparent",
+    },
+    etaText: {
+      fontSize: FontSize.sm,
+      fontWeight: "700",
+    },
   });

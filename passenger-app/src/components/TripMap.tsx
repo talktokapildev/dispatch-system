@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, forwardRef } from "react";
-import { StyleSheet, View, ViewStyle } from "react-native";
+import { StyleSheet, View, ViewStyle, Text } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { useTheme } from "../lib/ThemeContext";
 
@@ -17,6 +17,7 @@ interface TripMapProps {
   routeCoords?: LatLng[];
   stage?: "booking" | "tracking";
   bottomPadding?: number;
+  driverName?: string;
 }
 
 const HIDDEN_COORDS = [
@@ -38,6 +39,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       routeCoords,
       stage = "booking",
       bottomPadding = 0,
+      driverName,
     },
     ref
   ) => {
@@ -165,7 +167,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
           </Marker>
         )}
 
-        {driverLocation && (
+        {/* {driverLocation && (
           <Marker
             coordinate={driverLocation}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -173,6 +175,23 @@ const TripMap = forwardRef<MapView, TripMapProps>(
           >
             <View style={styles.driverPin}>
               <View style={styles.pinInner} />
+            </View>
+          </Marker>
+        )} */}
+        {driverLocation && (
+          <Marker
+            coordinate={driverLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={3}
+          >
+            <View style={styles.driverPin}>
+              {driverName ? (
+                <Text style={styles.driverInitial}>
+                  {driverName.charAt(0).toUpperCase()}
+                </Text>
+              ) : (
+                <View style={styles.pinInner} />
+              )}
             </View>
           </Marker>
         )}
@@ -236,5 +255,10 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: "#fff",
+  },
+  driverInitial: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#fff",
   },
 });

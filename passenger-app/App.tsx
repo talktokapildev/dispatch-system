@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -190,6 +191,17 @@ function RootNavigator() {
 
 export default function App() {
   const { user } = useAuthStore();
+
+  useEffect(
+    (() => {
+      const keepAwake = async () => {
+        await activateKeepAwakeAsync();
+      };
+      keepAwake();
+      return () => deactivateKeepAwake();
+    }) as () => void,
+    []
+  );
 
   // Use test Stripe key for demo/test phone numbers, live key for everyone else
   const stripeKey =
