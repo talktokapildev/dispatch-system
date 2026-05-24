@@ -18,11 +18,13 @@ import { decodePolyline, toMiles } from "../lib/mapUtils";
 import TripMap from "../components/TripMap";
 import AddressCard from "../components/AddressCard";
 import { getSocket } from "../lib/socket";
+import { useTeslaNavigation } from "../hooks/useTeslaNavigation";
 
 const TIMEOUT_SECONDS = 60;
 
 export default function JobOfferScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
+  const { sendToTesla } = useTeslaNavigation();
   const { offer } = route.params;
 
   const [secondsLeft, setSecondsLeft] = useState(TIMEOUT_SECONDS);
@@ -175,6 +177,15 @@ export default function JobOfferScreen({ route, navigation }: any) {
     setLoading("accept");
     try {
       await api.post(`/drivers/jobs/${offer.bookingId}/accept`);
+
+      // Send pickup to Tesla (fire and forget — never blocks job flow)
+      if (offer.pickupLatitude && offer.pickupLongitude) {
+        sendToTesla(
+          offer.pickupLatitude,
+          offer.pickupLongitude,
+          offer.pickupAddress
+        );
+      }
       // Use replace() not reset() — keeps [Main] in stack so popToTop()
       // works correctly, and avoids corrupting UINavigationController state.
       navigation.replace("ActiveJob", {

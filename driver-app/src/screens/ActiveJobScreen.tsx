@@ -31,6 +31,7 @@ import AddressCard from "../components/AddressCard";
 import PassengerCard from "../components/PassengerCard";
 import { getSocket } from "../lib/socket";
 import { blockBookingDispatch } from "../lib/dispatchFlags";
+import { useTeslaNavigation } from "../hooks/useTeslaNavigation";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_COLLAPSED = 185; // tall enough to show cancel button without expanding
@@ -45,6 +46,7 @@ const CANCELLABLE_STATUSES = [
 
 export default function ActiveJobScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
+  const { sendToTesla } = useTeslaNavigation();
   const {
     bookingId,
     preloadedBooking,
@@ -240,6 +242,20 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         const { data } = await api.get(`/bookings/${bookingId}`);
         const bookingData = data.data;
         setBooking(bookingData);
+
+        // Send dropoff to Tesla when passenger is picked up (fire and forget)
+        if (
+          status === "IN_PROGRESS" &&
+          bookingData.dropoffLatitude &&
+          bookingData.dropoffLongitude
+        ) {
+          sendToTesla(
+            bookingData.dropoffLatitude,
+            bookingData.dropoffLongitude,
+            bookingData.dropoffAddress
+          );
+        }
+
         if (locationRef.current) fetchRoute(locationRef.current, bookingData);
         collapseSheet();
       }

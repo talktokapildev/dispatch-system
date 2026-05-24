@@ -27,6 +27,7 @@ import LocationDisclosureScreen, {
 import DriverApplicationScreen from "./src/screens/DriverApplicationScreen";
 import DocumentUploadScreen from "./src/screens/DocumentUploadScreen";
 import ApplicationPendingScreen from "./src/screens/ApplicationPendingScreen";
+import TeslaSettingsScreen from "./src/screens/TeslaSettingsScreen";
 import { usePushNotifications } from "./src/hooks/usePushNotification";
 
 const Stack = createNativeStackNavigator();
@@ -227,6 +228,15 @@ function AppNavigator() {
                 name="JobHistory"
                 component={JobHistoryScreen}
                 options={{}}
+              />
+              <Stack.Screen
+                name="TeslaSettings"
+                component={TeslaSettingsScreen}
+                options={{
+                  headerShown: true,
+                  headerTitle: "Tesla Integration",
+                  headerBackTitle: "Back",
+                }}
               />
             </>
           )}
