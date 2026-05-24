@@ -62,7 +62,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
       });
       if (!driver) return reply.status(404).send({ error: "Driver not found" });
 
-      const scopes = "openid offline_access vehicle_information vehicle_cmds";
+      const scopes = "openid offline_access vehicle_device_data vehicle_cmds";
       const url =
         `https://auth.tesla.com/oauth2/v3/authorize` +
         `?client_id=${CLIENT_ID}` +
