@@ -257,6 +257,7 @@ model Driver {
   bookings  Booking[]
   earnings  DriverEarning[]
   breaks    DriverBreak[]
+  teslaIntegration TeslaIntegration?
 
   @@index([userId])
   @@index([status])
@@ -817,4 +818,18 @@ model ComplianceConfirmation {
   confirmedAt DateTime
   confirmedBy String         // adminUserId
   notes       String?
+}
+
+model TeslaIntegration {
+  id           String   @id @default(cuid())
+  driverId     String   @unique
+  driver       Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String
+  vehicleId    String
+  vehicleName  String?
+  enabled      Boolean  @default(true)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
