@@ -265,6 +265,31 @@ export async function teslaRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true });
     }
   );
+
+  fastify.post(
+    "/driver/tesla/force-refresh",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const userId = (request.user as any).userId;
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver) return reply.status(404).send({ error: "Driver not found" });
+
+      const integration = await fastify.prisma.teslaIntegration.findUnique({
+        where: { driverId: driver.id },
+      });
+      if (!integration)
+        return reply.status(404).send({ error: "No integration" });
+
+      try {
+        const updated = await refreshTeslaToken(fastify, integration);
+        return reply.send({ success: true, expiresAt: updated.expiresAt });
+      } catch (err: any) {
+        return reply.send({ error: err.message, data: err.response?.data });
+      }
+    }
+  );
 }
 
 export async function sendTeslaNavigation(
