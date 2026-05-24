@@ -104,10 +104,19 @@ export async function teslaRoutes(fastify: FastifyInstance) {
 
       const { access_token, refresh_token, expires_in } = tokenRes.data;
 
-      const vehiclesRes = await axios.get(`${TESLA_API}/api/1/vehicles`, {
-        headers: { Authorization: `Bearer ${access_token}` },
-      });
-      const vehicles = vehiclesRes.data.response ?? [];
+      // Fetch vehicles — non-fatal if it fails
+      let vehicles: any[] = [];
+      try {
+        const vehiclesRes = await axios.get(`${TESLA_API}/api/1/vehicles`, {
+          headers: { Authorization: `Bearer ${access_token}` },
+        });
+        vehicles = vehiclesRes.data.response ?? [];
+      } catch (vehicleErr) {
+        fastify.log.warn(
+          { err: vehicleErr },
+          "Tesla vehicles fetch failed — proceeding without vehicle data"
+        );
+      }
 
       await fastify.prisma.teslaIntegration.upsert({
         where: { driverId },
