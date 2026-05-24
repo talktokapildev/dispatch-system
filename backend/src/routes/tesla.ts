@@ -41,6 +41,16 @@ async function getValidToken(fastify: FastifyInstance, driverId: string) {
 }
 
 export async function teslaRoutes(fastify: FastifyInstance) {
+  // Required by Tesla Fleet API partner authentication
+  fastify.get(
+    "/.well-known/appspecific/com.tesla.3p.public-key.pem",
+    async (request, reply) => {
+      const publicKey = process.env.TESLA_PUBLIC_KEY!;
+      return reply
+        .header("Content-Type", "application/x-pem-file")
+        .send(publicKey);
+    }
+  );
   // Step 1: App requests the auth URL
   fastify.get(
     "/driver/tesla/auth-url",

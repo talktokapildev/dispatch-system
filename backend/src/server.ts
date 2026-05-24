@@ -90,6 +90,16 @@ async function buildServer() {
     version: "1.0.0",
   }));
 
+  // Tesla public key — must be at root path, no /api/v1 prefix
+  fastify.get(
+    "/.well-known/appspecific/com.tesla.3p.public-key.pem",
+    async (request, reply) => {
+      return reply
+        .header("Content-Type", "application/x-pem-file")
+        .send(process.env.TESLA_PUBLIC_KEY!);
+    }
+  );
+
   fastify.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       success: false,
