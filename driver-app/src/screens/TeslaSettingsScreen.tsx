@@ -70,13 +70,13 @@ export default function TeslaSettingsScreen({ navigation }: any) {
   useEffect(() => {
     const handleUrl = ({ url }: { url: string }) => {
       if (!url.includes("tesla-callback")) return;
-      const params = new URL(url).searchParams;
-      const success = params.get("success") === "true";
-      const error = params.get("error") ?? undefined;
+      const successMatch = url.includes("success=true");
+      const errorMatch = url.match(/error=([^&]+)/);
+      const error = errorMatch ? errorMatch[1] : undefined;
 
       setConnecting(false);
 
-      if (success) {
+      if (successMatch) {
         fetchStatus();
         Alert.alert("Connected! 🎉", "Your Tesla is now linked to OrangeRide.");
       } else {
