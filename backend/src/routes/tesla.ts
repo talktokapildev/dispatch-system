@@ -46,7 +46,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/auth-url",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
       });
@@ -134,7 +134,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/status",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
       });
@@ -154,7 +154,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/settings",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const { enabled, vehicleId, vehicleName } = request.body as {
         enabled?: boolean;
         vehicleId?: string;
@@ -182,7 +182,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/vehicles",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
       });
@@ -206,7 +206,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/navigate",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const { lat, lon } = request.body as { lat: number; lon: number };
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
@@ -234,7 +234,7 @@ export async function teslaRoutes(fastify: FastifyInstance) {
     "/driver/tesla/disconnect",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
-      const userId = (request.user as any).id;
+      const userId = (request.user as any).userId;
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
       });
