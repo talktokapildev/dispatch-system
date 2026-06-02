@@ -787,14 +787,18 @@ model DriverApplication {
   vehicleColour String
 
   // Document URLs (Cloudinary) — uploaded per-image before submit
-  docPcoBadge        String?
-  docDrivingLicFront String?
-  docDrivingLicBack  String?
-  docPhvLicence      String?
-  docInsurance       String?
-  docMot             String?
-  docDbs             String?   // DBS Certificate
-  docV5c             String?   // V5C Logbook
+  docPcoBadge         String?
+  docDrivingLicFront  String?
+  docDrivingLicBack   String?
+  docPhvLicence       String?
+  docInsurance        String[]
+  docMot              String?
+  docDbs              String?   // DBS Certificate
+  docV5c              String[]   // V5C Logbook
+  docPhvExpiry        DateTime?
+  docInsuranceExpiry  DateTime?
+  docMotExpiry        DateTime?
+  docDbsExpiry        DateTime?
 
   // Review meta
   reviewedBy String?
