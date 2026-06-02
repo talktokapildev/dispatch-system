@@ -3,7 +3,7 @@
 // Collects personal, licence, and vehicle details then POSTs to /driver-applications.
 // On success → stores applicationId in AsyncStorage → navigates to DocumentUploadScreen.
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
@@ -81,6 +81,18 @@ export default function DriverApplicationScreen() {
 
   // ULEZ compliant toggle (boolean, not string)
   const [isUlezCompliant, setIsUlezCompliant] = useState(false);
+
+  const route = useRoute<any>();
+
+  useEffect(() => {
+    const prefill = route.params?.prefill;
+    if (!prefill) return;
+    setForm((f) => ({ ...EMPTY_FORM, ...prefill }));
+    if (prefill.vehicleIsUlezCompliant !== undefined) {
+      setIsUlezCompliant(!!prefill.vehicleIsUlezCompliant);
+    }
+    setStep(1);
+  }, [route.params?.prefill]);
 
   const set = (key: keyof typeof EMPTY_FORM) => (value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
