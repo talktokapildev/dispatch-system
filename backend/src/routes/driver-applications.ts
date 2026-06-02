@@ -50,6 +50,13 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
       vehicleReg,
       vehicleYear,
       vehicleColour,
+      vehicleClass,
+      vehicleSeats,
+      vehiclePhvLicenceNumber,
+      vehiclePhvLicenceExpiry,
+      vehiclePhvDiscNumber,
+      vehicleEmissionStandard,
+      vehicleIsUlezCompliant,
     } = request.body as any;
 
     const required = {
@@ -117,6 +124,15 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
           vehicleReg: vehicleReg.toUpperCase().replace(/\s/g, ""),
           vehicleYear: parseInt(vehicleYear),
           vehicleColour,
+          vehicleClass: vehicleClass ?? "STANDARD",
+          vehicleSeats: vehicleSeats ? parseInt(vehicleSeats) : 4,
+          vehiclePhvLicenceNumber: vehiclePhvLicenceNumber ?? null,
+          vehiclePhvLicenceExpiry: vehiclePhvLicenceExpiry
+            ? new Date(vehiclePhvLicenceExpiry)
+            : null,
+          vehiclePhvDiscNumber: vehiclePhvDiscNumber ?? null,
+          vehicleEmissionStandard: vehicleEmissionStandard ?? null,
+          vehicleIsUlezCompliant: vehicleIsUlezCompliant ?? false,
         },
       });
 
@@ -142,6 +158,15 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         vehicleReg: vehicleReg.toUpperCase().replace(/\s/g, ""),
         vehicleYear: parseInt(vehicleYear),
         vehicleColour,
+        vehicleClass: vehicleClass ?? "STANDARD",
+        vehicleSeats: vehicleSeats ? parseInt(vehicleSeats) : 4,
+        vehiclePhvLicenceNumber: vehiclePhvLicenceNumber ?? null,
+        vehiclePhvLicenceExpiry: vehiclePhvLicenceExpiry
+          ? new Date(vehiclePhvLicenceExpiry)
+          : null,
+        vehiclePhvDiscNumber: vehiclePhvDiscNumber ?? null,
+        vehicleEmissionStandard: vehicleEmissionStandard ?? null,
+        vehicleIsUlezCompliant: vehicleIsUlezCompliant ?? false,
       },
     });
 

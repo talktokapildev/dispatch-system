@@ -217,9 +217,16 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
             licensePlate: application.vehicleReg,
             year: application.vehicleYear,
             colour: application.vehicleColour,
+            class: (application.vehicleClass as any) ?? "STANDARD",
+            seats: application.vehicleSeats ?? 4,
             motExpiry: application.docMotExpiry ?? new Date("2099-01-01"),
             insuranceExpiry:
               application.docInsuranceExpiry ?? new Date("2099-01-01"),
+            phvLicenceNumber: application.vehiclePhvLicenceNumber ?? null,
+            phvLicenceExpiry: application.vehiclePhvLicenceExpiry ?? null,
+            phvDiscNumber: application.vehiclePhvDiscNumber ?? null,
+            emissionStandard: application.vehicleEmissionStandard ?? null,
+            isUlezCompliant: application.vehicleIsUlezCompliant ?? false,
           },
         });
 

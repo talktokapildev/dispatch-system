@@ -789,6 +789,13 @@ model DriverApplication {
   vehicleReg    String
   vehicleYear   Int
   vehicleColour String
+  vehicleClass            String?
+  vehicleSeats            Int?
+  vehiclePhvLicenceNumber String?
+  vehiclePhvLicenceExpiry DateTime?
+  vehiclePhvDiscNumber    String?
+  vehicleEmissionStandard String?
+  vehicleIsUlezCompliant  Boolean?  @default(false)
 
   // Document URLs (Cloudinary) — uploaded per-image before submit
   docPcoBadge         String?
