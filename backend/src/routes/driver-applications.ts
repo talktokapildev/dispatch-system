@@ -1,8 +1,9 @@
 // backend/src/routes/driver-applications.ts
 // Public routes — no auth required.
-// POST /api/v1/driver-applications             — submit / re-submit application
-// POST /api/v1/driver-applications/:id/documents — upload a single document (per-image)
-// GET  /api/v1/driver-applications/:id         — check own application status
+// POST   /api/v1/driver-applications                          — submit / re-submit application
+// POST   /api/v1/driver-applications/:id/documents            — upload a document image (single or multi-page)
+// PATCH  /api/v1/driver-applications/:id/documents/:docType/expiry — set expiry date for a document
+// GET    /api/v1/driver-applications/:id                      — check own application status
 
 import { FastifyInstance } from "fastify";
 import {
@@ -19,6 +20,17 @@ const DOC_FOLDER_MAP: Record<string, CloudinaryFolder> = {
   docMot: "driver-applications/mot",
   docDbs: "driver-applications/dbs-check",
   docV5c: "driver-applications/v5c-logbook",
+};
+
+// Docs that store multiple pages (String[] in Prisma)
+const MULTI_PAGE_DOCS = new Set(["docInsurance", "docV5c"]);
+
+// Docs that have an expiry date field on DriverApplication
+const EXPIRY_FIELD_MAP: Record<string, string> = {
+  docPhvLicence: "docPhvExpiry",
+  docInsurance: "docInsuranceExpiry",
+  docMot: "docMotExpiry",
+  docDbs: "docDbsExpiry",
 };
 
 export async function driverApplicationRoutes(fastify: FastifyInstance) {
@@ -62,7 +74,7 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         .send({ error: `Missing required fields: ${missing.join(", ")}` });
     }
 
-    // Check for an existing application for this phone
+    // Check for existing application for this phone
     const existing = await fastify.prisma.driverApplication.findFirst({
       where: { phone },
       orderBy: { createdAt: "desc" },
@@ -84,7 +96,7 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // REJECTED — update in place (re-application keeps same ID so AsyncStorage still works)
+      // REJECTED — update in place (same ID so AsyncStorage still works)
       const updated = await fastify.prisma.driverApplication.update({
         where: { id: existing.id },
         data: {
@@ -105,7 +117,6 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
           vehicleReg: vehicleReg.toUpperCase().replace(/\s/g, ""),
           vehicleYear: parseInt(vehicleYear),
           vehicleColour,
-          // Documents preserved — driver only re-uploads changed ones
         },
       });
 
@@ -142,8 +153,10 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
   });
 
   // ─── POST /api/v1/driver-applications/:id/documents ────────────────────────
-  // Upload a single document image immediately on pick/capture (per-image flow).
-  // Body: { docType: string, image: string (base64 or data URI) }
+  // Upload a single document image.
+  // - Single-file docs: stores URL string on the application field.
+  // - Multi-page docs (docInsurance, docV5c): appends URL to the array.
+  // Body: { docType: string, image: string (base64 data URI) }
   fastify.post("/driver-applications/:id/documents", async (request, reply) => {
     const { id } = request.params as { id: string };
     const { docType, image } = request.body as {
@@ -172,7 +185,6 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
     if (!application) {
       return reply.status(404).send({ error: "Application not found" });
     }
-
     if (application.status === "APPROVED") {
       return reply
         .status(409)
@@ -183,15 +195,20 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
     try {
       uploadResult = await uploadToCloudinary(image, folder, id);
     } catch (err: any) {
-      fastify.log.error(err, "Cloudinary upload failed");
+      fastify.log.error({ err }, "Cloudinary upload failed");
       return reply
         .status(500)
         .send({ error: "Document upload failed. Please try again." });
     }
 
+    // Multi-page: push to array. Single: set string.
+    const updateData = MULTI_PAGE_DOCS.has(docType)
+      ? { [docType]: { push: uploadResult.url } }
+      : { [docType]: uploadResult.url };
+
     const updated = await fastify.prisma.driverApplication.update({
       where: { id },
-      data: { [docType]: uploadResult.url },
+      data: updateData,
       select: {
         id: true,
         docPcoBadge: true,
@@ -212,6 +229,64 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
       documents: updated,
     });
   });
+
+  // ─── PATCH /api/v1/driver-applications/:id/documents/:docType/expiry ───────
+  // Set or update the expiry date for a document type.
+  // Body: { expiryDate: string (ISO) }
+  fastify.patch(
+    "/driver-applications/:id/documents/:docType/expiry",
+    async (request, reply) => {
+      const { id, docType } = request.params as { id: string; docType: string };
+      const { expiryDate } = request.body as { expiryDate?: string };
+
+      if (!expiryDate) {
+        return reply.status(400).send({ error: "expiryDate is required" });
+      }
+
+      const expiryField = EXPIRY_FIELD_MAP[docType];
+      if (!expiryField) {
+        return reply.status(400).send({
+          error: `Expiry not applicable for docType: ${docType}. Valid types: ${Object.keys(
+            EXPIRY_FIELD_MAP
+          ).join(", ")}`,
+        });
+      }
+
+      const application = await fastify.prisma.driverApplication.findUnique({
+        where: { id },
+      });
+      if (!application) {
+        return reply.status(404).send({ error: "Application not found" });
+      }
+      if (application.status === "APPROVED") {
+        return reply
+          .status(409)
+          .send({ error: "Cannot update an approved application" });
+      }
+
+      let parsedDate: Date;
+      try {
+        parsedDate = new Date(expiryDate);
+        if (isNaN(parsedDate.getTime())) throw new Error("Invalid date");
+      } catch {
+        return reply
+          .status(400)
+          .send({ error: "Invalid expiryDate format. Use ISO 8601." });
+      }
+
+      await fastify.prisma.driverApplication.update({
+        where: { id },
+        data: { [expiryField]: parsedDate },
+      });
+
+      return reply.status(200).send({
+        message: "Expiry date saved",
+        docType,
+        expiryField,
+        expiryDate: parsedDate.toISOString(),
+      });
+    }
+  );
 
   // ─── GET /api/v1/driver-applications/:id ───────────────────────────────────
   // Check own application status. Used by ApplicationPendingScreen polling.
@@ -254,10 +329,10 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docDrivingLicFront: !!application.docDrivingLicFront,
         docDrivingLicBack: !!application.docDrivingLicBack,
         docPhvLicence: !!application.docPhvLicence,
-        docInsurance: !!application.docInsurance,
+        docInsurance: (application.docInsurance as string[]).length > 0,
         docMot: !!application.docMot,
         docDbs: !!application.docDbs,
-        docV5c: !!application.docV5c,
+        docV5c: (application.docV5c as string[]).length > 0,
       },
       submittedAt: application.createdAt,
       updatedAt: application.updatedAt,

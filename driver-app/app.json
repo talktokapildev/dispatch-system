@@ -24,9 +24,16 @@
         "NSCameraUsageDescription": "OrangeRide Driver needs camera access to upload your TfL compliance documents.",
         "NSPhotoLibraryUsageDescription": "OrangeRide Driver needs photo library access to upload your TfL compliance documents.",
         "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["comgooglemaps", "maps", "waze"]
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps",
+          "maps",
+          "waze"
+        ]
       },
-      "backgroundModes": ["location", "remote-notification"],
+      "backgroundModes": [
+        "location",
+        "remote-notification"
+      ],
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
       }
@@ -65,7 +72,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

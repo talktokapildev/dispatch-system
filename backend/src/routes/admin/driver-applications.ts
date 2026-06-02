@@ -2,20 +2,36 @@
 // Admin-only routes — protected by fastify.authenticateAdmin.
 // GET   /api/v1/admin/driver-applications           — list all (filter by status)
 // GET   /api/v1/admin/driver-applications/:id       — single application detail
-// PATCH /api/v1/admin/driver-applications/:id/approve — approve + create User/Driver/Vehicle
-// PATCH /api/v1/admin/driver-applications/:id/reject  — reject with reason
+// PATCH /api/v1/admin/driver-applications/:id/approve — approve + create User/Driver/Vehicle/Documents
+// PATCH /api/v1/admin/driver-applications/:id/reject  — reject with reason + SMS
 
 import { FastifyInstance } from "fastify";
 
+// Helper: send SMS via Twilio (non-blocking — failure is logged but never throws)
+async function sendSms(fastify: FastifyInstance, to: string, body: string) {
+  try {
+    const twilio = require("twilio");
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+    await client.messages.create({
+      body,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to,
+    });
+  } catch (err) {
+    fastify.log.error({ err }, "Failed to send SMS notification");
+  }
+}
+
 export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
   // ─── GET /api/v1/admin/driver-applications ─────────────────────────────────
-  // List all applications. Optional query: ?status=PENDING|APPROVED|REJECTED
   fastify.get(
     "/admin/driver-applications",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { status } = request.query as { status?: string };
-
       const where = status
         ? { status: status as "PENDING" | "APPROVED" | "REJECTED" }
         : {};
@@ -55,15 +71,14 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           app.docDrivingLicFront,
           app.docDrivingLicBack,
           app.docPhvLicence,
-          app.docInsurance,
+          (app.docInsurance as string[]).length > 0 ? "ok" : null,
           app.docMot,
           app.docDbs,
-          app.docV5c,
+          (app.docV5c as string[]).length > 0 ? "ok" : null,
         ].filter(Boolean).length,
         documentsTotal: 8,
       }));
 
-      // Counts per status — used for sidebar badge
       const counts = await fastify.prisma.driverApplication.groupBy({
         by: ["status"],
         _count: { id: true },
@@ -78,7 +93,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
   );
 
   // ─── GET /api/v1/admin/driver-applications/:id ─────────────────────────────
-  // Full detail including all document URLs for preview
   fastify.get(
     "/admin/driver-applications/:id",
     { preHandler: [fastify.authenticateAdmin] },
@@ -88,7 +102,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       const application = await fastify.prisma.driverApplication.findUnique({
         where: { id },
       });
-
       if (!application) {
         return reply.status(404).send({ error: "Application not found" });
       }
@@ -98,12 +111,11 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
   );
 
   // ─── PATCH /api/v1/admin/driver-applications/:id/approve ───────────────────
-  // Approve application.
-  // Multi-role aware:
-  //   - If phone has no User at all     → create User with roles: ['DRIVER']
-  //   - If phone is existing passenger  → add 'DRIVER' to their roles array
-  //   - If phone already has a Driver   → reject (already approved)
-  // Always creates Driver + Vehicle records.
+  // Approve application:
+  // - Creates User + Driver + Vehicle
+  // - Migrates all application documents → DriverDocument (status: PENDING, admin still reviews)
+  // - Expiry dates from application are pre-populated on DriverDocument and Vehicle
+  // - Sends approval SMS to driver
   fastify.patch(
     "/admin/driver-applications/:id/approve",
     { preHandler: [fastify.authenticateAdmin] },
@@ -117,19 +129,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       if (!application) {
         return reply.status(404).send({ error: "Application not found" });
       }
-
       if (application.status === "APPROVED") {
         return reply
           .status(409)
           .send({ error: "Application already approved" });
       }
 
-      // Check for existing user with this phone
+      // Check for existing user/driver
       const existingUser = await fastify.prisma.user.findUnique({
         where: { phone: application.phone },
         include: { driver: true },
       });
-
       if (existingUser?.driver) {
         return reply.status(409).send({
           error: "A driver account already exists for this phone number.",
@@ -140,13 +150,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       const vehicleCount = await fastify.prisma.driver.count();
       if (vehicleCount >= 20) {
         return reply.status(409).send({
-          error: `TfL vehicle cap reached (${vehicleCount}/20). Remove an existing driver before approving this application.`,
+          error: `TfL vehicle cap reached (${vehicleCount}/20). Remove an existing driver before approving.`,
         });
       }
 
-      await fastify.prisma.$transaction(async (tx) => {
-        let userId: string;
+      // Cast typed arrays from Prisma
+      const v5cUrls = application.docV5c as string[];
+      const insuranceUrls = application.docInsurance as string[];
 
+      await fastify.prisma.$transaction(async (tx) => {
+        // ── Create or update User ──────────────────────────────────────────
+        let userId: string;
         if (existingUser) {
           const [firstName, ...rest] = application.name.split(" ");
           await tx.user.update({
@@ -161,7 +175,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           });
           userId = existingUser.id;
         } else {
-          // Brand new user
           const newUser = await tx.user.create({
             data: {
               phone: application.phone,
@@ -174,7 +187,7 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           userId = newUser.id;
         }
 
-        // Create Driver record
+        // ── Create Driver ──────────────────────────────────────────────────
         const driver = await tx.driver.create({
           data: {
             userId,
@@ -185,7 +198,7 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           },
         });
 
-        // Create Vehicle record (reg + make/model/year/colour from application)
+        // ── Create Vehicle — use expiry dates from application ─────────────
         await tx.vehicle.create({
           data: {
             driverId: driver.id,
@@ -194,15 +207,23 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
             licensePlate: application.vehicleReg,
             year: application.vehicleYear,
             colour: application.vehicleColour,
-            // motExpiry and insuranceExpiry are required fields on Vehicle.
-            // Set a placeholder — admin should update these via the driver profile.
-            motExpiry: new Date("2099-01-01"),
-            insuranceExpiry: new Date("2099-01-01"),
+            // Use driver-supplied expiry dates if available; fallback to placeholder
+            // Admin should verify these when reviewing the DriverDocument records.
+            motExpiry: application.docMotExpiry ?? new Date("2099-01-01"),
+            insuranceExpiry:
+              application.docInsuranceExpiry ?? new Date("2099-01-01"),
           },
         });
 
-        // ── Migrate application documents → DriverDocument records ──────────
-        const docMappings = [
+        // ── Migrate documents → DriverDocument (status: PENDING) ──────────
+        // Admin reviews each doc individually in the Documents page.
+        // Expiry dates are pre-filled from what the driver entered.
+        type DocEntry = {
+          url: string | null;
+          type: string;
+          expiryDate: Date | null;
+        };
+        const singleDocs: DocEntry[] = [
           {
             url: application.docPcoBadge,
             type: "PCO_LICENSE",
@@ -221,36 +242,61 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           {
             url: application.docPhvLicence,
             type: "PHV_LICENCE",
-            expiryDate: null,
-          },
-          {
-            url: application.docInsurance,
-            type: "VEHICLE_INSURANCE",
-            expiryDate: null,
+            expiryDate: application.docPhvExpiry ?? null,
           },
           {
             url: application.docMot,
             type: "MOT_CERTIFICATE",
-            expiryDate: null,
+            expiryDate: application.docMotExpiry ?? null,
           },
-          { url: application.docDbs, type: "DBS_CHECK", expiryDate: null },
-          { url: application.docV5c, type: "V5C_LOGBOOK", expiryDate: null },
+          {
+            url: application.docDbs,
+            type: "DBS_CHECK",
+            expiryDate: application.docDbsExpiry ?? null,
+          },
         ];
-        for (const { url, type, expiryDate } of docMappings) {
+
+        for (const { url, type, expiryDate } of singleDocs) {
           if (url) {
             await tx.driverDocument.create({
               data: {
                 driverId: driver.id,
-                type: type as any, // cast: type comes from our mapping, not from Prisma enum directly
+                type: type as any,
                 fileUrl: url,
                 status: "PENDING",
-                expiryDate: expiryDate ? new Date(expiryDate) : null,
+                expiryDate: expiryDate ?? null,
               },
             });
           }
         }
 
-        // Mark application approved
+        // Insurance — multi-page: create one DriverDocument per page
+        for (const url of insuranceUrls) {
+          await tx.driverDocument.create({
+            data: {
+              driverId: driver.id,
+              type: "VEHICLE_INSURANCE" as any,
+              fileUrl: url,
+              status: "PENDING",
+              expiryDate: application.docInsuranceExpiry ?? null,
+            },
+          });
+        }
+
+        // V5C — multi-page: create one DriverDocument per page
+        for (const url of v5cUrls) {
+          await tx.driverDocument.create({
+            data: {
+              driverId: driver.id,
+              type: "V5C_LOGBOOK" as any,
+              fileUrl: url,
+              status: "PENDING",
+              expiryDate: null,
+            },
+          });
+        }
+
+        // ── Mark application approved ──────────────────────────────────────
         await tx.driverApplication.update({
           where: { id },
           data: {
@@ -261,6 +307,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       });
 
+      // ── SMS notification (non-blocking) ───────────────────────────────────
+      await sendSms(
+        fastify,
+        application.phone,
+        `Hi ${
+          application.name.split(" ")[0]
+        }, your OrangeRide driver application has been approved! ` +
+          `Open the OrangeRide Driver app and log in with your mobile number to get started. ` +
+          `Our team will now review your documents — you'll be notified once dispatch is enabled.`
+      );
+
       return reply.status(200).send({
         message: "Application approved. Driver account created.",
       });
@@ -268,7 +325,7 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
   );
 
   // ─── PATCH /api/v1/admin/driver-applications/:id/reject ────────────────────
-  // Reject with a mandatory reason.
+  // Reject with a mandatory reason + SMS to driver.
   // Body: { reason: string }
   fastify.patch(
     "/admin/driver-applications/:id/reject",
@@ -290,7 +347,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       if (!application) {
         return reply.status(404).send({ error: "Application not found" });
       }
-
       if (application.status === "APPROVED") {
         return reply
           .status(409)
@@ -306,6 +362,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           reviewedAt: new Date(),
         },
       });
+
+      // ── SMS notification (non-blocking) ───────────────────────────────────
+      await sendSms(
+        fastify,
+        application.phone,
+        `Hi ${
+          application.name.split(" ")[0]
+        }, unfortunately your OrangeRide driver application was not approved. ` +
+          `Reason: ${reason.trim()}. ` +
+          `Please open the OrangeRide Driver app to review the reason and resubmit your application.`
+      );
 
       return reply.status(200).send({ message: "Application rejected." });
     }
