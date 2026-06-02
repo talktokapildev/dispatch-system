@@ -230,6 +230,65 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
     });
   });
 
+  fastify.post(
+    "/driver-applications/:id/documents/file",
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      const data = await (request as any).file();
+      if (!data) return reply.status(400).send({ error: "No file provided" });
+
+      const docType = (data.fields.docType as any)?.value;
+      if (!docType)
+        return reply.status(400).send({ error: "docType is required" });
+
+      const folder = DOC_FOLDER_MAP[docType];
+      if (!folder) return reply.status(400).send({ error: "Invalid docType" });
+
+      const application = await fastify.prisma.driverApplication.findUnique({
+        where: { id },
+      });
+      if (!application)
+        return reply.status(404).send({ error: "Application not found" });
+      if (application.status === "APPROVED") {
+        return reply
+          .status(409)
+          .send({ error: "Cannot update an approved application" });
+      }
+
+      // Read file buffer and convert to base64 for Cloudinary
+      const chunks: Buffer[] = [];
+      for await (const chunk of data.file) chunks.push(chunk);
+      const buffer = Buffer.concat(chunks);
+      const base64DataUri = `data:${data.mimetype};base64,${buffer.toString(
+        "base64"
+      )}`;
+
+      let uploadResult;
+      try {
+        uploadResult = await uploadToCloudinary(base64DataUri, folder, id);
+      } catch (err: any) {
+        fastify.log.error({ err }, "Cloudinary upload failed");
+        return reply
+          .status(500)
+          .send({ error: "Upload failed. Please try again." });
+      }
+
+      const updateData = MULTI_PAGE_DOCS.has(docType)
+        ? { [docType]: { push: uploadResult.url } }
+        : { [docType]: uploadResult.url };
+
+      await fastify.prisma.driverApplication.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return reply
+        .status(200)
+        .send({ message: "Document uploaded", docType, url: uploadResult.url });
+    }
+  );
+
   // ─── PATCH /api/v1/driver-applications/:id/documents/:docType/expiry ───────
   // Set or update the expiry date for a document type.
   // Body: { expiryDate: string (ISO) }
@@ -320,6 +379,10 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docMot: true,
         docDbs: true,
         docV5c: true,
+        docPhvExpiry: true,
+        docInsuranceExpiry: true,
+        docMotExpiry: true,
+        docDbsExpiry: true,
       },
     });
 
@@ -361,6 +424,10 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docMot: application.docMot ?? null,
         docDbs: application.docDbs ?? null,
         docV5c: application.docV5c as string[],
+        docPhvExpiry: application.docPhvExpiry ?? null,
+        docInsuranceExpiry: application.docInsuranceExpiry ?? null,
+        docMotExpiry: application.docMotExpiry ?? null,
+        docDbsExpiry: application.docDbsExpiry ?? null,
       },
       submittedAt: application.createdAt,
       updatedAt: application.updatedAt,

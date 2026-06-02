@@ -28,6 +28,7 @@ import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { APPLICATION_SUBMITTED_KEY } from "./LoginScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
 
 type RouteParams = { applicationId: string };
 
@@ -136,6 +137,18 @@ export default function DocumentUploadScreen() {
           docInsurance: d.docInsurance ?? [],
           docV5c: d.docV5c ?? [],
         });
+        // Restore expiry dates
+        const EXPIRY_RESTORE: Record<string, string> = {
+          docPhvLicence: "docPhvExpiry",
+          docInsurance: "docInsuranceExpiry",
+          docMot: "docMotExpiry",
+          docDbs: "docDbsExpiry",
+        };
+        const restoredExpiry: Record<string, Date> = {};
+        for (const [slotKey, expiryKey] of Object.entries(EXPIRY_RESTORE)) {
+          if (d[expiryKey]) restoredExpiry[slotKey] = new Date(d[expiryKey]);
+        }
+        setExpiryDates(restoredExpiry);
       } catch {
         // Silent — start with empty state
       }
@@ -184,13 +197,50 @@ export default function DocumentUploadScreen() {
     return result.assets[0].base64!;
   };
 
+  const pickAndUploadFile = async (docKey: string): Promise<string | null> => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ["image/*", "application/pdf"],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return null;
+    const asset = result.assets[0];
+
+    setUploading((u) => ({ ...u, [docKey]: true }));
+    try {
+      const formData = new FormData();
+      formData.append("file", {
+        uri: asset.uri,
+        name: asset.name ?? `${docKey}.pdf`,
+        type: asset.mimeType ?? "application/octet-stream",
+      } as any);
+      formData.append("docType", docKey);
+
+      const { data } = await api.post(
+        `/driver-applications/${applicationId}/documents/file`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      return data.url as string;
+    } catch (err: any) {
+      Alert.alert(
+        "Upload failed",
+        err.response?.data?.error ?? "Could not upload file."
+      );
+      return null;
+    } finally {
+      setUploading((u) => ({ ...u, [docKey]: false }));
+    }
+  };
+
   const showPickerAlert = (
     label: string,
-    onPick: (useCamera: boolean) => void
+    onPhoto: (useCamera: boolean) => void,
+    onFile: () => void
   ) => {
     Alert.alert(label, "How would you like to add this document?", [
-      { text: "Take Photo", onPress: () => onPick(true) },
-      { text: "Choose from Library", onPress: () => onPick(false) },
+      { text: "Take Photo", onPress: () => onPhoto(true) },
+      { text: "Choose from Photos", onPress: () => onPhoto(false) },
+      { text: "Choose File (PDF)", onPress: onFile },
       { text: "Cancel", style: "cancel" },
     ]);
   };
@@ -221,43 +271,65 @@ export default function DocumentUploadScreen() {
 
   // ── Single-file slot handler ─────────────────────────────────────────────
   const handleSingleSlot = (slot: DocSlot) => {
-    showPickerAlert(slot.label, async (useCamera) => {
-      const base64 = await pickBase64(useCamera);
-      if (!base64) return;
-      const url = await uploadToBackend(slot.key, base64);
-      if (!url) return;
-      setUploaded((u) => ({ ...u, [slot.key as SingleDocKey]: url }));
-      // Auto-open expiry picker after successful upload
-      if (slot.requiresExpiry) {
-        setTempDate(expiryDates[slot.key] ?? new Date());
-        setDatePickerSlot(slot.key);
+    showPickerAlert(
+      slot.label,
+      async (useCamera) => {
+        const base64 = await pickBase64(useCamera);
+        if (!base64) return;
+        const url = await uploadToBackend(slot.key, base64);
+        if (!url) return;
+        setUploaded((u) => ({ ...u, [slot.key as SingleDocKey]: url }));
+        if (slot.requiresExpiry) {
+          setTempDate(expiryDates[slot.key] ?? new Date());
+          setDatePickerSlot(slot.key);
+        }
+      },
+      async () => {
+        const url = await pickAndUploadFile(slot.key);
+        if (!url) return;
+        setUploaded((u) => ({ ...u, [slot.key as SingleDocKey]: url }));
+        if (slot.requiresExpiry) {
+          setTempDate(expiryDates[slot.key] ?? new Date());
+          setDatePickerSlot(slot.key);
+        }
       }
-    });
+    );
   };
 
   // ── Multi-file slot handler ──────────────────────────────────────────────
   const handleAddPage = (slot: DocSlot) => {
     const pageCount = multiPages[slot.key]?.length ?? 0;
-    const title =
-      pageCount === 0
-        ? `${slot.label} — Upload first page`
-        : `${slot.label} — Add page ${pageCount + 1}`;
-
-    showPickerAlert(title, async (useCamera) => {
-      const base64 = await pickBase64(useCamera);
-      if (!base64) return;
-      const url = await uploadToBackend(slot.key, base64);
-      if (!url) return;
-      setMultiPages((m) => ({
-        ...m,
-        [slot.key]: [...(m[slot.key] ?? []), url],
-      }));
-      // Auto-open expiry picker after first page upload (if requiresExpiry)
-      if (slot.requiresExpiry && pageCount === 0) {
-        setTempDate(expiryDates[slot.key] ?? new Date());
-        setDatePickerSlot(slot.key);
+    showPickerAlert(
+      `${slot.label} — ${
+        pageCount === 0 ? "Upload first page" : `Add page ${pageCount + 1}`
+      }`,
+      async (useCamera) => {
+        const base64 = await pickBase64(useCamera);
+        if (!base64) return;
+        const url = await uploadToBackend(slot.key, base64);
+        if (!url) return;
+        setMultiPages((m) => ({
+          ...m,
+          [slot.key]: [...(m[slot.key] ?? []), url],
+        }));
+        if (slot.requiresExpiry && pageCount === 0) {
+          setTempDate(expiryDates[slot.key] ?? new Date());
+          setDatePickerSlot(slot.key);
+        }
+      },
+      async () => {
+        const url = await pickAndUploadFile(slot.key);
+        if (!url) return;
+        setMultiPages((m) => ({
+          ...m,
+          [slot.key]: [...(m[slot.key] ?? []), url],
+        }));
+        if (slot.requiresExpiry && pageCount === 0) {
+          setTempDate(expiryDates[slot.key] ?? new Date());
+          setDatePickerSlot(slot.key);
+        }
       }
-    });
+    );
   };
 
   // ── Expiry date save ─────────────────────────────────────────────────────

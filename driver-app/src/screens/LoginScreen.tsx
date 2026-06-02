@@ -102,16 +102,30 @@ export default function LoginScreen({
     }
 
     try {
-      await api.get(`/driver-applications/${applicationId}`);
+      const { data } = await api.get(`/driver-applications/${applicationId}`);
       if (submitted === "true") {
-        // Truly submitted — show review screen
         navigation.navigate("ApplicationPending", { applicationId });
       } else {
-        // Form created but not submitted — resume at document upload
-        navigation.navigate("DocumentUpload", { applicationId });
+        // Navigate through DriverApplication so back stack is: Login → DriverApplication → DocumentUpload
+        navigation.navigate("DriverApplication", {
+          prefill: {
+            name: data.name ?? "",
+            phone: data.phone ?? "+44",
+            email: data.email ?? "",
+            pcoBadgeNumber: data.pcoBadgeNumber ?? "",
+            pcoBadgeExpiry: data.pcoBadgeExpiry
+              ? new Date(data.pcoBadgeExpiry).toISOString().split("T")[0]
+              : "",
+            drivingLicenceNumber: data.drivingLicenceNumber ?? "",
+            vehicleMake: data.vehicleMake ?? "",
+            vehicleModel: data.vehicleModel ?? "",
+            vehicleReg: data.vehicleReg ?? "",
+            vehicleYear: String(data.vehicleYear ?? ""),
+            vehicleColour: data.vehicleColour ?? "",
+          },
+        });
       }
     } catch {
-      // Stale ID — clear and start fresh
       await AsyncStorage.removeItem(APPLICATION_ID_KEY);
       await AsyncStorage.removeItem(APPLICATION_SUBMITTED_KEY);
       navigation.navigate("DriverApplication");
