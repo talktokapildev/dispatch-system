@@ -28,6 +28,8 @@ import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { APPLICATION_ID_KEY } from "./LoginScreen";
 
+export const APPLICATION_DRAFT_KEY = "driver_application_draft";
+
 type Step = 1 | 2;
 
 const VEHICLE_CLASSES = ["STANDARD", "EXECUTIVE", "MPV", "MINIBUS"];
@@ -84,15 +86,34 @@ export default function DriverApplicationScreen() {
 
   const route = useRoute<any>();
 
+  // On mount: restore from prefill params OR from saved draft
   useEffect(() => {
     const prefill = route.params?.prefill;
-    if (!prefill) return;
-    setForm((f) => ({ ...EMPTY_FORM, ...prefill }));
-    if (prefill.vehicleIsUlezCompliant !== undefined) {
+    if (prefill) {
+      setForm({ ...EMPTY_FORM, ...prefill });
       setIsUlezCompliant(!!prefill.vehicleIsUlezCompliant);
+      setStep(1);
+      return;
     }
-    setStep(1);
+    // No prefill — try to restore from draft
+    AsyncStorage.getItem(APPLICATION_DRAFT_KEY).then((saved) => {
+      if (!saved) return;
+      try {
+        const draft = JSON.parse(saved);
+        const { vehicleIsUlezCompliant: ulezDraft, ...formFields } = draft;
+        setForm((f) => ({ ...f, ...formFields }));
+        if (ulezDraft !== undefined) setIsUlezCompliant(!!ulezDraft);
+      } catch {}
+    });
   }, [route.params?.prefill]);
+
+  // Save draft on every form change
+  useEffect(() => {
+    AsyncStorage.setItem(
+      APPLICATION_DRAFT_KEY,
+      JSON.stringify({ ...form, vehicleIsUlezCompliant: isUlezCompliant })
+    );
+  }, [form, isUlezCompliant]);
 
   const set = (key: keyof typeof EMPTY_FORM) => (value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -213,6 +234,7 @@ export default function DriverApplicationScreen() {
 
       const applicationId = data.applicationId;
       await AsyncStorage.setItem(APPLICATION_ID_KEY, applicationId);
+      await AsyncStorage.removeItem(APPLICATION_DRAFT_KEY);
 
       // navigate (not replace) so back button works from DocumentUpload
       navigation.navigate("DocumentUpload", { applicationId });

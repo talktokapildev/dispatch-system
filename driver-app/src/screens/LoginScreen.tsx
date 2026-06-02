@@ -17,7 +17,7 @@ import { useNavigation } from "@react-navigation/native";
 import { api, useAuthStore } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
-
+import { APPLICATION_DRAFT_KEY } from "./DriverApplicationScreen";
 type Step = "phone" | "otp";
 
 export const APPLICATION_ID_KEY = "driver_application_id";
@@ -139,6 +139,7 @@ export default function LoginScreen({
     } catch {
       await AsyncStorage.removeItem(APPLICATION_ID_KEY);
       await AsyncStorage.removeItem(APPLICATION_SUBMITTED_KEY);
+      await AsyncStorage.removeItem(APPLICATION_DRAFT_KEY);
       navigation.navigate("DriverApplication");
     }
   };
