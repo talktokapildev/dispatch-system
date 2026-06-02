@@ -5,7 +5,7 @@
 // - V5C and Insurance support multiple pages.
 // - "Submit Application" navigates to ApplicationPendingScreen.
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -26,6 +26,8 @@ import { format } from "date-fns";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import { APPLICATION_SUBMITTED_KEY } from "./LoginScreen";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type RouteParams = { applicationId: string };
 
@@ -115,6 +117,31 @@ export default function DocumentUploadScreen() {
   // Date picker state
   const [datePickerSlot, setDatePickerSlot] = useState<string | null>(null);
   const [tempDate, setTempDate] = useState<Date>(new Date());
+
+  useEffect(() => {
+    const loadExistingDocs = async () => {
+      try {
+        const { data } = await api.get(`/driver-applications/${applicationId}`);
+        const d = data.rawDocuments;
+        if (!d) return;
+        setUploaded({
+          docPcoBadge: d.docPcoBadge ?? null,
+          docDrivingLicFront: d.docDrivingLicFront ?? null,
+          docDrivingLicBack: d.docDrivingLicBack ?? null,
+          docPhvLicence: d.docPhvLicence ?? null,
+          docMot: d.docMot ?? null,
+          docDbs: d.docDbs ?? null,
+        });
+        setMultiPages({
+          docInsurance: d.docInsurance ?? [],
+          docV5c: d.docV5c ?? [],
+        });
+      } catch {
+        // Silent — start with empty state
+      }
+    };
+    loadExistingDocs();
+  }, [applicationId]);
 
   // Count: single-file + multi-file (1 per multi slot if ≥1 page)
   const uploadedCount =
@@ -261,22 +288,8 @@ export default function DocumentUploadScreen() {
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────
-  const handleSubmit = () => {
-    if (uploadedCount < totalSlots) {
-      Alert.alert(
-        "Missing documents",
-        `You have uploaded ${uploadedCount} of ${totalSlots} documents. You can submit now and upload the remaining later, but your application may be delayed.`,
-        [
-          { text: "Continue Uploading", style: "cancel" },
-          {
-            text: "Submit Anyway",
-            onPress: () =>
-              navigation.replace("ApplicationPending", { applicationId }),
-          },
-        ]
-      );
-      return;
-    }
+  const handleSubmit = async () => {
+    await AsyncStorage.setItem(APPLICATION_SUBMITTED_KEY, "true");
     navigation.replace("ApplicationPending", { applicationId });
   };
 
@@ -474,12 +487,12 @@ export default function DocumentUploadScreen() {
         <TouchableOpacity
           style={[s.submitBtn, uploadedCount === 0 && s.submitBtnDisabled]}
           onPress={handleSubmit}
-          disabled={uploadedCount === 0}
+          disabled={uploadedCount < totalSlots}
         >
           <Text style={s.submitBtnText}>
             {uploadedCount === totalSlots
               ? "Submit Application →"
-              : `Submit Application (${uploadedCount}/${totalSlots} uploaded)`}
+              : `Upload all documents to submit (${uploadedCount}/${totalSlots})`}
           </Text>
         </TouchableOpacity>
 

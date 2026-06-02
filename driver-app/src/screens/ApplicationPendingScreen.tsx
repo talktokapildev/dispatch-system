@@ -26,7 +26,7 @@ import {
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
-import { APPLICATION_ID_KEY } from "./LoginScreen";
+import { APPLICATION_ID_KEY, APPLICATION_SUBMITTED_KEY } from "./LoginScreen";
 
 type RouteParams = { applicationId: string };
 type AppStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -84,7 +84,8 @@ export default function ApplicationPendingScreen() {
   };
 
   // Go to DriverApplication to edit and resubmit
-  const handleResubmit = () => {
+  const handleResubmit = async () => {
+    await AsyncStorage.removeItem(APPLICATION_SUBMITTED_KEY);
     navigation.navigate("DriverApplication", {
       prefill: appData
         ? {
@@ -128,6 +129,17 @@ export default function ApplicationPendingScreen() {
         {/* ── PENDING ── */}
         {status === "PENDING" && (
           <>
+            {/* Back to login — subtle escape hatch */}
+            <TouchableOpacity
+              onPress={() =>
+                navigation.reset({ index: 0, routes: [{ name: "Login" }] })
+              }
+              style={{ alignSelf: "flex-start", marginBottom: Spacing.sm }}
+            >
+              <Text style={{ fontSize: FontSize.sm, color: Colors.muted }}>
+                ← Back to Login
+              </Text>
+            </TouchableOpacity>
             <View style={s.iconCircle}>
               <Text style={s.iconEmoji}>⏳</Text>
             </View>

@@ -21,6 +21,7 @@ import { useTheme } from "../lib/ThemeContext";
 type Step = "phone" | "otp";
 
 export const APPLICATION_ID_KEY = "driver_application_id";
+export const APPLICATION_SUBMITTED_KEY = "driver_application_submitted";
 
 export default function LoginScreen({
   onLogin,
@@ -93,9 +94,26 @@ export default function LoginScreen({
   // "Apply to drive" — check for existing application first
   const handleApplyToDrive = async () => {
     const applicationId = await AsyncStorage.getItem(APPLICATION_ID_KEY);
-    if (applicationId) {
-      navigation.navigate("ApplicationPending", { applicationId });
-    } else {
+    const submitted = await AsyncStorage.getItem(APPLICATION_SUBMITTED_KEY);
+
+    if (!applicationId) {
+      navigation.navigate("DriverApplication");
+      return;
+    }
+
+    try {
+      await api.get(`/driver-applications/${applicationId}`);
+      if (submitted === "true") {
+        // Truly submitted — show review screen
+        navigation.navigate("ApplicationPending", { applicationId });
+      } else {
+        // Form created but not submitted — resume at document upload
+        navigation.navigate("DocumentUpload", { applicationId });
+      }
+    } catch {
+      // Stale ID — clear and start fresh
+      await AsyncStorage.removeItem(APPLICATION_ID_KEY);
+      await AsyncStorage.removeItem(APPLICATION_SUBMITTED_KEY);
       navigation.navigate("DriverApplication");
     }
   };

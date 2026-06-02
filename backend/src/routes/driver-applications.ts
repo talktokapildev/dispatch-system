@@ -352,6 +352,16 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docDbs: !!application.docDbs,
         docV5c: (application.docV5c as string[]).length > 0,
       },
+      rawDocuments: {
+        docPcoBadge: application.docPcoBadge ?? null,
+        docDrivingLicFront: application.docDrivingLicFront ?? null,
+        docDrivingLicBack: application.docDrivingLicBack ?? null,
+        docPhvLicence: application.docPhvLicence ?? null,
+        docInsurance: application.docInsurance as string[],
+        docMot: application.docMot ?? null,
+        docDbs: application.docDbs ?? null,
+        docV5c: application.docV5c as string[],
+      },
       submittedAt: application.createdAt,
       updatedAt: application.updatedAt,
     });
