@@ -557,14 +557,14 @@ export default function ApplicationDetailPage() {
         title="Archive Application"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-300">
             <AlertTriangle
               size={16}
-              className="text-yellow-400 shrink-0 mt-0.5"
+              className="text-yellow-600 shrink-0 mt-0.5"
             />
-            <div className="text-xs text-yellow-300 space-y-1">
+            <div className="text-xs text-yellow-900 space-y-1">
               <p className="font-semibold">Archive {app.name}'s application?</p>
-              <p className="text-yellow-400/80">
+              <p className="text-yellow-800">
                 {app.status === "APPROVED"
                   ? "Their driver account will be suspended — they will no longer be able to log in or receive jobs. All data is preserved."
                   : "The application will be archived. All data is preserved and can be permanently deleted later."}

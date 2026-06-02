@@ -360,16 +360,16 @@ export default function ApplicationsPage() {
         title="Archive Application"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-300">
             <AlertTriangle
               size={16}
-              className="text-yellow-400 shrink-0 mt-0.5"
+              className="text-yellow-600 shrink-0 mt-0.5"
             />
-            <div className="text-xs text-yellow-300 space-y-1">
+            <div className="text-xs text-yellow-900 space-y-1">
               <p className="font-semibold">
                 This will archive {archiveTarget?.name}'s application.
               </p>
-              <p className="text-yellow-400/80">
+              <p className="text-yellow-800">
                 If their account was approved, their driver account will also be
                 suspended — they will no longer be able to log in or receive
                 jobs. All data is preserved and can be permanently deleted
@@ -413,11 +413,11 @@ export default function ApplicationsPage() {
         title="Permanently Delete"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-            <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-            <div className="text-xs text-red-300 space-y-1">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-red-50 border border-red-300">
+            <AlertTriangle size={16} className="text-red-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-red-900 space-y-1">
               <p className="font-semibold">This action cannot be undone.</p>
-              <p className="text-red-400/80">
+              <p className="text-red-800">
                 All data for {deleteTarget?.name} will be permanently deleted —
                 application, driver account, vehicle, and documents. Completed
                 booking history will be preserved.
