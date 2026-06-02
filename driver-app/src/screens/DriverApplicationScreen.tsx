@@ -21,7 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
@@ -49,8 +49,13 @@ const EMPTY_FORM = {
 export default function DriverApplicationScreen() {
   const { Colors, theme } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const prefill = route.params?.prefill;
   const [step, setStep] = useState<Step>(1);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState({
+    ...EMPTY_FORM,
+    ...(prefill ?? {}),
+  });
   const [loading, setLoading] = useState(false);
 
   // PCO expiry date picker state
@@ -58,7 +63,7 @@ export default function DriverApplicationScreen() {
   const [pcoTempDate, setPcoTempDate] = useState<Date>(new Date());
 
   const set = (key: keyof typeof EMPTY_FORM) => (value: string) =>
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f: any) => ({ ...f, [key]: value }));
 
   const openPcoPicker = () => {
     setPcoTempDate(

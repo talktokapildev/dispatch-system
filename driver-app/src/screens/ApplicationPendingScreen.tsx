@@ -45,6 +45,7 @@ export default function ApplicationPendingScreen() {
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appData, setAppData] = useState<any>(null);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -52,6 +53,7 @@ export default function ApplicationPendingScreen() {
       setStatus(data.status);
       setRejectionReason(data.rejectionReason ?? null);
       setSubmittedAt(data.submittedAt ?? null);
+      setAppData(data);
       setLastChecked(new Date());
       setError(null);
     } catch (err: any) {
@@ -83,7 +85,25 @@ export default function ApplicationPendingScreen() {
 
   // Go to DriverApplication to edit and resubmit
   const handleResubmit = () => {
-    navigation.navigate("DriverApplication");
+    navigation.navigate("DriverApplication", {
+      prefill: appData
+        ? {
+            name: appData.name,
+            phone: appData.phone,
+            email: appData.email ?? "",
+            pcoBadgeNumber: appData.pcoBadgeNumber,
+            pcoBadgeExpiry: appData.pcoBadgeExpiry
+              ? new Date(appData.pcoBadgeExpiry).toISOString().split("T")[0]
+              : "",
+            drivingLicenceNumber: appData.drivingLicenceNumber,
+            vehicleMake: appData.vehicleMake,
+            vehicleModel: appData.vehicleModel,
+            vehicleReg: appData.vehicleReg,
+            vehicleYear: String(appData.vehicleYear),
+            vehicleColour: appData.vehicleColour,
+          }
+        : null,
+    });
   };
 
   const s = styles(Colors);
