@@ -436,10 +436,15 @@ export default function DocumentUploadScreen() {
     <SafeAreaView style={s.container} edges={["top", "left", "right"]}>
       {/* Header */}
       <View style={s.header}>
-        <Text style={s.headerTitle}>Upload Documents</Text>
-        <Text style={s.headerSub}>
-          {uploadedCount} of {totalSlots} uploaded
-        </Text>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+          <Text style={s.backIcon}>←</Text>
+        </TouchableOpacity>
+        <View style={s.headerText}>
+          <Text style={s.headerTitle}>Upload Documents</Text>
+          <Text style={s.headerSub}>
+            {uploadedCount} of {totalSlots} uploaded
+          </Text>
+        </View>
       </View>
 
       {/* Progress bar */}
@@ -537,10 +542,25 @@ const styles = (
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
     header: {
+      flexDirection: "row",
+      alignItems: "center",
       paddingHorizontal: Spacing.lg,
       paddingTop: Spacing.md,
       paddingBottom: Spacing.sm,
+      gap: Spacing.sm,
     },
+    backBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: C.card,
+      borderWidth: 1,
+      borderColor: C.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    backIcon: { color: C.text, fontSize: FontSize.lg },
+    headerText: { flex: 1 },
     headerTitle: { fontSize: FontSize.xl, fontWeight: "700", color: C.text },
     headerSub: { fontSize: FontSize.sm, color: C.muted, marginTop: 2 },
     progressBg: {

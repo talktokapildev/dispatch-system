@@ -15,9 +15,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { format } from "date-fns";
 import { useNavigation } from "@react-navigation/native";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
@@ -50,8 +53,24 @@ export default function DriverApplicationScreen() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
 
+  // PCO expiry date picker state
+  const [showPcoDatePicker, setShowPcoDatePicker] = useState(false);
+  const [pcoTempDate, setPcoTempDate] = useState<Date>(new Date());
+
   const set = (key: keyof typeof EMPTY_FORM) => (value: string) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  const openPcoPicker = () => {
+    setPcoTempDate(
+      form.pcoBadgeExpiry ? new Date(form.pcoBadgeExpiry) : new Date()
+    );
+    setShowPcoDatePicker(true);
+  };
+
+  const confirmPcoDate = (date: Date) => {
+    set("pcoBadgeExpiry")(format(date, "yyyy-MM-dd"));
+    setShowPcoDatePicker(false);
+  };
 
   const validateStep1 = () => {
     if (!form.name.trim()) return "Please enter your full name";
@@ -59,7 +78,7 @@ export default function DriverApplicationScreen() {
     if (!form.pcoBadgeNumber.trim())
       return "Please enter your PCO badge number";
     if (!form.pcoBadgeExpiry.trim())
-      return "Please enter your PCO badge expiry date";
+      return "Please select your PCO badge expiry date";
     if (!form.drivingLicenceNumber.trim())
       return "Please enter your driving licence number";
     return null;
@@ -112,7 +131,8 @@ export default function DriverApplicationScreen() {
       const applicationId = data.applicationId;
       await AsyncStorage.setItem(APPLICATION_ID_KEY, applicationId);
 
-      navigation.replace("DocumentUpload", { applicationId });
+      // navigate (not replace) so back button works from DocumentUpload
+      navigation.navigate("DocumentUpload", { applicationId });
     } catch (err: any) {
       Alert.alert(
         "Error",
@@ -148,7 +168,7 @@ export default function DriverApplicationScreen() {
           {/* Step indicator */}
           <View style={s.stepRow}>
             <View style={[s.stepDot, step >= 1 && s.stepDotActive]} />
-            <View style={[s.stepLine]} />
+            <View style={s.stepLine} />
             <View style={[s.stepDot, step >= 2 && s.stepDotActive]} />
           </View>
         </View>
@@ -161,7 +181,7 @@ export default function DriverApplicationScreen() {
         >
           {step === 1 ? (
             <>
-              {/* Personal details */}
+              {/* ── Personal details ── */}
               <Text style={s.sectionLabel}>Personal Details</Text>
 
               <Text style={s.fieldLabel}>
@@ -202,7 +222,7 @@ export default function DriverApplicationScreen() {
                 keyboardAppearance={theme === "dark" ? "dark" : "light"}
               />
 
-              {/* Licence details */}
+              {/* ── Licence details ── */}
               <Text style={[s.sectionLabel, { marginTop: Spacing.lg }]}>
                 Licence Details
               </Text>
@@ -223,15 +243,24 @@ export default function DriverApplicationScreen() {
               <Text style={s.fieldLabel}>
                 PCO Badge Expiry <Text style={s.required}>*</Text>
               </Text>
-              <TextInput
-                style={[s.input, s.mono]}
-                value={form.pcoBadgeExpiry}
-                onChangeText={set("pcoBadgeExpiry")}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.muted}
-                keyboardType="numbers-and-punctuation"
-                keyboardAppearance={theme === "dark" ? "dark" : "light"}
-              />
+              <TouchableOpacity
+                style={[s.input, s.dateBtn]}
+                onPress={openPcoPicker}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={
+                    form.pcoBadgeExpiry
+                      ? s.dateBtnValueText
+                      : s.dateBtnPlaceholderText
+                  }
+                >
+                  {form.pcoBadgeExpiry
+                    ? format(new Date(form.pcoBadgeExpiry), "dd MMM yyyy")
+                    : "Select expiry date"}
+                </Text>
+                <Text style={s.dateBtnIcon}>📅</Text>
+              </TouchableOpacity>
 
               <Text style={s.fieldLabel}>
                 Driving Licence Number <Text style={s.required}>*</Text>
@@ -252,6 +281,7 @@ export default function DriverApplicationScreen() {
             </>
           ) : (
             <>
+              {/* ── Vehicle details ── */}
               <Text style={s.sectionLabel}>Vehicle Details</Text>
 
               <View style={s.row}>
@@ -349,6 +379,48 @@ export default function DriverApplicationScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── iOS PCO Date Picker Modal ── */}
+      {Platform.OS === "ios" && showPcoDatePicker && (
+        <Modal transparent animationType="slide">
+          <View style={s.dateOverlay}>
+            <View style={s.dateSheet}>
+              <View style={s.dateSheetHeader}>
+                <TouchableOpacity onPress={() => setShowPcoDatePicker(false)}>
+                  <Text style={s.dateCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={s.dateTitleText}>PCO Badge Expiry</Text>
+                <TouchableOpacity onPress={() => confirmPcoDate(pcoTempDate)}>
+                  <Text style={s.dateDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={pcoTempDate}
+                mode="date"
+                display="spinner"
+                onChange={(_, date) => {
+                  if (date) setPcoTempDate(date);
+                }}
+                minimumDate={new Date()}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* ── Android PCO Date Picker ── */}
+      {Platform.OS === "android" && showPcoDatePicker && (
+        <DateTimePicker
+          value={pcoTempDate}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowPcoDatePicker(false);
+            if (event.type !== "dismissed" && date) confirmPcoDate(date);
+          }}
+          minimumDate={new Date()}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -420,4 +492,43 @@ const styles = (
       marginTop: Spacing.lg,
       lineHeight: 18,
     },
+
+    // Date picker button (replaces TextInput for PCO expiry)
+    dateBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    dateBtnValueText: { fontSize: FontSize.md, color: C.text },
+    dateBtnPlaceholderText: { fontSize: FontSize.md, color: C.muted },
+    dateBtnIcon: { fontSize: 18 },
+
+    // iOS date picker bottom sheet
+    dateOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.4)",
+    },
+    dateSheet: {
+      backgroundColor: C.card,
+      borderTopLeftRadius: Radius.lg,
+      borderTopRightRadius: Radius.lg,
+      paddingBottom: Spacing.xl,
+    },
+    dateSheetHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: Spacing.lg,
+      paddingVertical: Spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: C.border,
+    },
+    dateCancelText: {
+      fontSize: FontSize.sm,
+      color: C.muted,
+      fontWeight: "600",
+    },
+    dateTitleText: { fontSize: FontSize.sm, color: C.text, fontWeight: "700" },
+    dateDoneText: { fontSize: FontSize.sm, color: C.brand, fontWeight: "700" },
   });
