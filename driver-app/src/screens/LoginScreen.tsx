@@ -122,6 +122,17 @@ export default function LoginScreen({
             vehicleReg: data.vehicleReg ?? "",
             vehicleYear: String(data.vehicleYear ?? ""),
             vehicleColour: data.vehicleColour ?? "",
+            vehicleClass: data.vehicleClass ?? "STANDARD",
+            vehicleSeats: String(data.vehicleSeats ?? 4),
+            vehiclePhvLicenceNumber: data.vehiclePhvLicenceNumber ?? "",
+            vehiclePhvLicenceExpiry: data.vehiclePhvLicenceExpiry
+              ? new Date(data.vehiclePhvLicenceExpiry)
+                  .toISOString()
+                  .split("T")[0]
+              : "",
+            vehiclePhvDiscNumber: data.vehiclePhvDiscNumber ?? "",
+            vehicleEmissionStandard: data.vehicleEmissionStandard ?? "",
+            vehicleIsUlezCompliant: data.vehicleIsUlezCompliant ?? false,
           },
         });
       }
