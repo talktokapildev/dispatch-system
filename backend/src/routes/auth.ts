@@ -162,6 +162,15 @@ export async function authRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Block archived drivers from logging in
+    if (body.requestedRole === "DRIVER" && user.driver?.archivedAt) {
+      return reply.status(403).send({
+        success: false,
+        error:
+          "This driver account has been suspended. Please contact your operator.",
+      });
+    }
+
     // ── Determine active role context for this session ────────────────────────
     // The JWT carries ALL the user's roles. activeRole tells the app which
     // context this session is for (e.g. driving vs riding).
@@ -303,6 +312,15 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply
           .status(404)
           .send({ success: false, error: "User not found" });
+      }
+
+      // Block archived drivers from using the app
+      if (user.driver?.archivedAt) {
+        return reply.status(403).send({
+          success: false,
+          error:
+            "This driver account has been suspended. Please contact your operator.",
+        });
       }
 
       return reply.send({
