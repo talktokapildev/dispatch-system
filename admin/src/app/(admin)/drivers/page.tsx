@@ -20,7 +20,7 @@ import {
   Modal,
 } from "@/components/ui";
 
-const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE"];
+const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE", "ARCHIVED"];
 const VEHICLE_CLASSES = ["STANDARD", "EXECUTIVE", "MPV", "MINIBUS"];
 const EMISSION_STANDARDS = [
   "",
@@ -241,9 +241,9 @@ export default function DriversPage() {
 
   const drivers: any[] = data?.items ?? data ?? [];
   const TFL_CAP = 20;
-  const vehicleCount = drivers.length;
-  const atCap = vehicleCount >= TFL_CAP;
-  const nearCap = vehicleCount >= 18 && !atCap;
+  const activeDriverCount = drivers.filter((d: any) => !d.archivedAt).length;
+  const atCap = activeDriverCount >= TFL_CAP;
+  const nearCap = activeDriverCount >= 18 && !atCap;
   const filtered = search
     ? drivers.filter(
         (d) =>
@@ -259,7 +259,9 @@ export default function DriversPage() {
     <div className="space-y-5 animate-fade-in">
       <SectionHeader
         title="Drivers"
-        subtitle={`${vehicleCount} / ${TFL_CAP} vehicles (TfL licence limit)`}
+        subtitle={`${
+          drivers.filter((d: any) => !d.archivedAt).length
+        } / ${TFL_CAP} vehicles (TfL licence limit)`}
         action={
           <button
             onClick={() => {
@@ -316,7 +318,7 @@ export default function DriversPage() {
           <div className="flex items-center gap-2 text-red-400">
             <AlertTriangle size={14} />
             <span className="text-sm font-medium">
-              TfL vehicle cap reached — {vehicleCount}/{TFL_CAP} vehicles
+              TfL vehicle cap reached — {activeDriverCount}/{TFL_CAP} vehicles
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1 ml-5">
@@ -330,13 +332,14 @@ export default function DriversPage() {
           <div className="flex items-center gap-2 text-yellow-400">
             <AlertTriangle size={14} />
             <span className="text-sm font-medium">
-              Approaching TfL vehicle cap — {vehicleCount}/{TFL_CAP} vehicles
+              Approaching TfL vehicle cap — {activeDriverCount}/{TFL_CAP}{" "}
+              vehicles
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1 ml-5">
-            You can add {TFL_CAP - vehicleCount} more vehicle
-            {TFL_CAP - vehicleCount === 1 ? "" : "s"} before reaching your Tier
-            11-20 licence limit.
+            You can add {TFL_CAP - activeDriverCount} more vehicle
+            {TFL_CAP - activeDriverCount === 1 ? "" : "s"} before reaching your
+            Tier 11-20 licence limit.
           </p>
         </div>
       )}
@@ -391,6 +394,7 @@ export default function DriversPage() {
             emptyMessage="No drivers found"
           >
             {filtered.map((d: any) => {
+              const isArchived = !!d.archivedAt;
               const pcoExpiry = new Date(d.pcoLicenseExpiry);
               const daysUntil = Math.ceil(
                 (pcoExpiry.getTime() - Date.now()) / 86400000
@@ -399,7 +403,9 @@ export default function DriversPage() {
               return (
                 <tr
                   key={d.id}
-                  className="table-row cursor-pointer"
+                  className={`table-row cursor-pointer ${
+                    isArchived ? "opacity-40" : ""
+                  }`}
                   onClick={() => setSelected(d)}
                 >
                   <td className="px-4 py-3">
@@ -436,7 +442,13 @@ export default function DriversPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <DriverBadge status={d.status} />
+                    {isArchived ? (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-500">
+                        ARCHIVED
+                      </span>
+                    ) : (
+                      <DriverBadge status={d.status} />
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-brand-400 text-xs font-medium">

@@ -643,8 +643,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
         status,
       } = request.query as Record<string, string>;
 
-      const where: any = {};
-      if (status) where.status = status;
+      const isArchived = status === "ARCHIVED";
+      const where: any = isArchived
+        ? { archivedAt: { not: null } }
+        : status
+        ? { archivedAt: null, status: status as DriverStatus }
+        : { archivedAt: null }; // hide archived from default "all drivers" list
 
       const [items, total] = await Promise.all([
         fastify.prisma.driver.findMany({
@@ -702,7 +706,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
       threshold.setDate(threshold.getDate() + parseInt(days));
 
       const docs = await fastify.prisma.driverDocument.findMany({
-        where: { expiryDate: { lte: threshold }, status: "APPROVED" },
+        where: {
+          expiryDate: { lte: threshold },
+          status: "APPROVED",
+          archivedAt: null, // exclude archived driver documents
+          driver: { archivedAt: null }, // exclude documents of archived drivers
+        },
         include: { driver: { include: { user: true } } },
         orderBy: { expiryDate: "asc" },
       });
@@ -726,7 +735,10 @@ export async function driverRoutes(fastify: FastifyInstance) {
         driverId,
       } = request.query as Record<string, string>;
 
-      const where: any = {};
+      const where: any = {
+        archivedAt: null, // never show archived documents
+        driver: { archivedAt: null }, // never show documents of archived drivers
+      };
 
       if (driverId) where.driverId = driverId;
 
@@ -798,7 +810,9 @@ export async function driverRoutes(fastify: FastifyInstance) {
       // Tier 11-20 licence: must not exceed 20 PHVs available to carry out
       // bookings at all operating centres at any time.
       const TFL_VEHICLE_CAP = 20;
-      const currentVehicleCount = await fastify.prisma.driver.count();
+      const currentVehicleCount = await fastify.prisma.driver.count({
+        where: { archivedAt: null }, // archived drivers don't count toward TfL cap
+      });
       if (currentVehicleCount >= TFL_VEHICLE_CAP) {
         return reply.status(409).send({
           success: false,

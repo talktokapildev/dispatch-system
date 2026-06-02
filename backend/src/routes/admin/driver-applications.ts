@@ -1,13 +1,14 @@
 // backend/src/routes/admin/driver-applications.ts
 // Admin-only routes — protected by fastify.authenticateAdmin.
-// GET   /api/v1/admin/driver-applications           — list all (filter by status)
-// GET   /api/v1/admin/driver-applications/:id       — single application detail
-// PATCH /api/v1/admin/driver-applications/:id/approve — approve + create User/Driver/Vehicle/Documents
-// PATCH /api/v1/admin/driver-applications/:id/reject  — reject with reason + SMS
+// GET   /api/v1/admin/driver-applications           — list (filter by status, or archived)
+// GET   /api/v1/admin/driver-applications/:id       — single detail
+// PATCH /api/v1/admin/driver-applications/:id/approve
+// PATCH /api/v1/admin/driver-applications/:id/reject
+// DELETE /api/v1/admin/driver-applications/:id              — soft delete (archive)
+// DELETE /api/v1/admin/driver-applications/:id/permanent    — hard delete (requires name confirmation)
 
 import { FastifyInstance } from "fastify";
 
-// Helper: send SMS via Twilio (non-blocking — failure is logged but never throws)
 async function sendSms(fastify: FastifyInstance, to: string, body: string) {
   try {
     const twilio = require("twilio");
@@ -32,9 +33,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { status } = request.query as { status?: string };
-      const where = status
-        ? { status: status as "PENDING" | "APPROVED" | "REJECTED" }
-        : {};
+
+      // Archived is a virtual status — filter on deletedAt
+      const isArchived = status === "ARCHIVED";
+      const where = isArchived
+        ? { deletedAt: { not: null } }
+        : status
+        ? {
+            status: status as "PENDING" | "APPROVED" | "REJECTED",
+            deletedAt: null,
+          }
+        : { deletedAt: null };
 
       const applications = await fastify.prisma.driverApplication.findMany({
         where,
@@ -52,6 +61,8 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           vehicleReg: true,
           rejectionReason: true,
           reviewedAt: true,
+          deletedAt: true,
+          deletedBy: true,
           createdAt: true,
           docPcoBadge: true,
           docDrivingLicFront: true,
@@ -79,11 +90,21 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         documentsTotal: 8,
       }));
 
+      // Counts per status (non-archived only)
       const counts = await fastify.prisma.driverApplication.groupBy({
         by: ["status"],
+        where: { deletedAt: null },
         _count: { id: true },
       });
-      const summary = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
+      const archivedCount = await fastify.prisma.driverApplication.count({
+        where: { deletedAt: { not: null } },
+      });
+      const summary = {
+        PENDING: 0,
+        APPROVED: 0,
+        REJECTED: 0,
+        ARCHIVED: archivedCount,
+      };
       counts.forEach((c) => {
         summary[c.status] = c._count.id;
       });
@@ -98,24 +119,16 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-
       const application = await fastify.prisma.driverApplication.findUnique({
         where: { id },
       });
-      if (!application) {
+      if (!application)
         return reply.status(404).send({ error: "Application not found" });
-      }
-
       return reply.status(200).send({ application });
     }
   );
 
   // ─── PATCH /api/v1/admin/driver-applications/:id/approve ───────────────────
-  // Approve application:
-  // - Creates User + Driver + Vehicle
-  // - Migrates all application documents → DriverDocument (status: PENDING, admin still reviews)
-  // - Expiry dates from application are pre-populated on DriverDocument and Vehicle
-  // - Sends approval SMS to driver
   fastify.patch(
     "/admin/driver-applications/:id/approve",
     { preHandler: [fastify.authenticateAdmin] },
@@ -126,16 +139,17 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       const application = await fastify.prisma.driverApplication.findUnique({
         where: { id },
       });
-      if (!application) {
+      if (!application)
         return reply.status(404).send({ error: "Application not found" });
-      }
-      if (application.status === "APPROVED") {
+      if (application.status === "APPROVED")
         return reply
           .status(409)
           .send({ error: "Application already approved" });
-      }
+      if (application.deletedAt)
+        return reply
+          .status(409)
+          .send({ error: "Cannot approve an archived application" });
 
-      // Check for existing user/driver
       const existingUser = await fastify.prisma.user.findUnique({
         where: { phone: application.phone },
         include: { driver: true },
@@ -146,7 +160,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // TfL Condition 11: 20-vehicle cap
       const vehicleCount = await fastify.prisma.driver.count();
       if (vehicleCount >= 20) {
         return reply.status(409).send({
@@ -154,13 +167,12 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Cast typed arrays from Prisma
       const v5cUrls = application.docV5c as string[];
       const insuranceUrls = application.docInsurance as string[];
 
       await fastify.prisma.$transaction(async (tx) => {
-        // ── Create or update User ──────────────────────────────────────────
         let userId: string;
+
         if (existingUser) {
           const [firstName, ...rest] = application.name.split(" ");
           await tx.user.update({
@@ -187,7 +199,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           userId = newUser.id;
         }
 
-        // ── Create Driver ──────────────────────────────────────────────────
         const driver = await tx.driver.create({
           data: {
             userId,
@@ -198,7 +209,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           },
         });
 
-        // ── Create Vehicle — use expiry dates from application ─────────────
         await tx.vehicle.create({
           data: {
             driverId: driver.id,
@@ -207,17 +217,12 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
             licensePlate: application.vehicleReg,
             year: application.vehicleYear,
             colour: application.vehicleColour,
-            // Use driver-supplied expiry dates if available; fallback to placeholder
-            // Admin should verify these when reviewing the DriverDocument records.
             motExpiry: application.docMotExpiry ?? new Date("2099-01-01"),
             insuranceExpiry:
               application.docInsuranceExpiry ?? new Date("2099-01-01"),
           },
         });
 
-        // ── Migrate documents → DriverDocument (status: PENDING) ──────────
-        // Admin reviews each doc individually in the Documents page.
-        // Expiry dates are pre-filled from what the driver entered.
         type DocEntry = {
           url: string | null;
           type: string;
@@ -264,13 +269,12 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
                 type: type as any,
                 fileUrl: url,
                 status: "PENDING",
-                expiryDate: expiryDate ?? null,
+                expiryDate,
               },
             });
           }
         }
 
-        // Insurance — multi-page: create one DriverDocument per page
         for (const url of insuranceUrls) {
           await tx.driverDocument.create({
             data: {
@@ -283,7 +287,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // V5C — multi-page: create one DriverDocument per page
         for (const url of v5cUrls) {
           await tx.driverDocument.create({
             data: {
@@ -296,7 +299,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // ── Mark application approved ──────────────────────────────────────
         await tx.driverApplication.update({
           where: { id },
           data: {
@@ -307,7 +309,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       });
 
-      // ── SMS notification (non-blocking) ───────────────────────────────────
       await sendSms(
         fastify,
         application.phone,
@@ -318,15 +319,13 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           `Our team will now review your documents — you'll be notified once dispatch is enabled.`
       );
 
-      return reply.status(200).send({
-        message: "Application approved. Driver account created.",
-      });
+      return reply
+        .status(200)
+        .send({ message: "Application approved. Driver account created." });
     }
   );
 
   // ─── PATCH /api/v1/admin/driver-applications/:id/reject ────────────────────
-  // Reject with a mandatory reason + SMS to driver.
-  // Body: { reason: string }
   fastify.patch(
     "/admin/driver-applications/:id/reject",
     { preHandler: [fastify.authenticateAdmin] },
@@ -335,23 +334,20 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       const { reason } = request.body as { reason?: string };
       const adminUser = (request as any).user;
 
-      if (!reason || reason.trim() === "") {
+      if (!reason?.trim())
         return reply
           .status(400)
           .send({ error: "A rejection reason is required" });
-      }
 
       const application = await fastify.prisma.driverApplication.findUnique({
         where: { id },
       });
-      if (!application) {
+      if (!application)
         return reply.status(404).send({ error: "Application not found" });
-      }
-      if (application.status === "APPROVED") {
+      if (application.status === "APPROVED")
         return reply
           .status(409)
           .send({ error: "Cannot reject an already approved application" });
-      }
 
       await fastify.prisma.driverApplication.update({
         where: { id },
@@ -363,7 +359,6 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // ── SMS notification (non-blocking) ───────────────────────────────────
       await sendSms(
         fastify,
         application.phone,
@@ -371,10 +366,168 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           application.name.split(" ")[0]
         }, unfortunately your OrangeRide driver application was not approved. ` +
           `Reason: ${reason.trim()}. ` +
-          `Please open the OrangeRide Driver app to review the reason and resubmit your application.`
+          `Please open the OrangeRide Driver app to review and resubmit your application.`
       );
 
       return reply.status(200).send({ message: "Application rejected." });
+    }
+  );
+
+  // ─── DELETE /api/v1/admin/driver-applications/:id — SOFT DELETE (ARCHIVE) ──
+  // Archives the application and, if APPROVED, archives the associated driver
+  // account so they can no longer log in or receive jobs.
+  // No data is permanently removed at this stage.
+  fastify.delete(
+    "/admin/driver-applications/:id",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const adminUser = (request as any).user;
+
+      const application = await fastify.prisma.driverApplication.findUnique({
+        where: { id },
+      });
+      if (!application)
+        return reply.status(404).send({ error: "Application not found" });
+      if (application.deletedAt)
+        return reply
+          .status(409)
+          .send({ error: "Application is already archived" });
+
+      const now = new Date();
+
+      await fastify.prisma.$transaction(async (tx) => {
+        // Soft-delete the application record
+        await tx.driverApplication.update({
+          where: { id },
+          data: { deletedAt: now, deletedBy: adminUser.userId },
+        });
+
+        // If APPROVED, also archive the associated driver account
+        if (application.status === "APPROVED") {
+          const user = await tx.user.findUnique({
+            where: { phone: application.phone },
+            include: { driver: true },
+          });
+
+          if (user?.driver) {
+            // Archive driver, vehicle, and all documents
+            await tx.driver.update({
+              where: { id: user.driver.id },
+              data: {
+                archivedAt: now,
+                archivedBy: adminUser.userId,
+                status: "OFFLINE",
+              },
+            });
+            await tx.vehicle.updateMany({
+              where: { driverId: user.driver.id },
+              data: { archivedAt: now },
+            });
+            await tx.driverDocument.updateMany({
+              where: { driverId: user.driver.id },
+              data: { archivedAt: now },
+            });
+
+            // Remove from Redis online set (can't be dispatched)
+            try {
+              await fastify.redis.srem("drivers:online", user.driver.id);
+            } catch {
+              // Non-blocking
+            }
+          }
+        }
+      });
+
+      return reply
+        .status(200)
+        .send({ message: "Application archived successfully." });
+    }
+  );
+
+  // ─── DELETE /api/v1/admin/driver-applications/:id/permanent — HARD DELETE ──
+  // Permanently deletes ALL data for this application and associated driver.
+  // Only works on already-archived applications.
+  // Requires the driver's name to be confirmed in the request body.
+  // Booking history is preserved (driverId nulled out, not deleted).
+  fastify.delete(
+    "/admin/driver-applications/:id/permanent",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { confirmName } = request.body as { confirmName?: string };
+
+      const application = await fastify.prisma.driverApplication.findUnique({
+        where: { id },
+      });
+      if (!application)
+        return reply.status(404).send({ error: "Application not found" });
+      if (!application.deletedAt) {
+        return reply.status(409).send({
+          error:
+            "Application must be archived before it can be permanently deleted.",
+        });
+      }
+
+      // Name confirmation check (case-insensitive trim)
+      if (
+        !confirmName ||
+        confirmName.trim().toLowerCase() !==
+          application.name.trim().toLowerCase()
+      ) {
+        return reply.status(400).send({
+          error: `Name confirmation does not match. Expected: "${application.name}"`,
+        });
+      }
+
+      await fastify.prisma.$transaction(async (tx) => {
+        // Find associated user/driver if APPROVED
+        const user = await tx.user.findUnique({
+          where: { phone: application.phone },
+          include: { driver: true },
+        });
+
+        if (user?.driver) {
+          const driverId = user.driver.id;
+
+          // Null out driverId on bookings (preserve booking history)
+          await tx.booking.updateMany({
+            where: { driverId },
+            data: { driverId: null },
+          });
+
+          // Delete dependent records in correct order
+          await tx.driverEarning.deleteMany({ where: { driverId } });
+          await tx.driverBreak.deleteMany({ where: { driverId } });
+          await tx.driverDocument.deleteMany({ where: { driverId } });
+          await tx.teslaIntegration.deleteMany({ where: { driverId } });
+          await tx.vehicle.deleteMany({ where: { driverId } });
+          await tx.driver.delete({ where: { id: driverId } });
+
+          // Handle user: remove DRIVER role or delete if driver-only
+          const updatedRoles = user.roles.filter((r) => r !== "DRIVER");
+          if (updatedRoles.length === 0) {
+            // Driver-only account — delete the user entirely
+            await tx.pushToken.deleteMany({ where: { userId: user.id } });
+            await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+            await tx.otpCode.deleteMany({ where: { userId: user.id } });
+            await tx.user.delete({ where: { id: user.id } });
+          } else {
+            // Multi-role user — just remove the DRIVER role
+            await tx.user.update({
+              where: { id: user.id },
+              data: { roles: updatedRoles },
+            });
+          }
+        }
+
+        // Finally delete the application
+        await tx.driverApplication.delete({ where: { id } });
+      });
+
+      return reply.status(200).send({
+        message: "Application and all associated data permanently deleted.",
+      });
     }
   );
 }

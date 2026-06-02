@@ -11,19 +11,21 @@ import {
   FileText,
   ExternalLink,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { Spinner, Modal } from "@/components/ui";
 import toast from "react-hot-toast";
 import { ApplicationStatusBadge } from "../ApplicationStatusBadge";
 
-// ── Document slot definitions ────────────────────────────────────────────────
 const DOCUMENT_SLOTS = [
   { key: "docPcoBadge", label: "PCO Badge" },
   { key: "docDrivingLicFront", label: "Driving Licence (Front)" },
   { key: "docDrivingLicBack", label: "Driving Licence (Back)" },
   { key: "docPhvLicence", label: "PHV Licence" },
-  { key: "docInsurance", label: "Insurance Certificate" },
+  { key: "docInsurance", label: "Insurance Certificate", multi: true },
   { key: "docMot", label: "MOT Certificate" },
+  { key: "docDbs", label: "DBS Certificate" },
+  { key: "docV5c", label: "V5C Logbook", multi: true },
 ];
 
 function DocumentCard({ label, url }: { label: string; url?: string | null }) {
@@ -61,6 +63,28 @@ function DocumentCard({ label, url }: { label: string; url?: string | null }) {
   );
 }
 
+function MultiDocumentCards({
+  label,
+  urls,
+}: {
+  label: string;
+  urls: string[];
+}) {
+  if (!urls || urls.length === 0)
+    return <DocumentCard label={label} url={null} />;
+  return (
+    <>
+      {urls.map((url, idx) => (
+        <DocumentCard
+          key={idx}
+          label={`${label} — Page ${idx + 1}`}
+          url={url}
+        />
+      ))}
+    </>
+  );
+}
+
 function DetailRow({
   label,
   value,
@@ -86,6 +110,7 @@ export default function ApplicationDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectError, setRejectError] = useState("");
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["driver-application", id],
@@ -118,6 +143,17 @@ export default function ApplicationDetailPage() {
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.error ?? "Rejection failed"),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => api.delete(`/admin/driver-applications/${id}`),
+    onSuccess: () => {
+      toast.success("Application archived");
+      qc.invalidateQueries({ queryKey: ["driver-applications"] });
+      router.push("/applications");
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error ?? "Archive failed"),
   });
 
   const handleReject = () => {
@@ -153,11 +189,15 @@ export default function ApplicationDetailPage() {
   }
 
   const app = data;
-  const isPending = app.status === "PENDING";
-  const isApproved = app.status === "APPROVED";
-  const isRejected = app.status === "REJECTED";
+  const isPending = app.status === "PENDING" && !app.deletedAt;
+  const isApproved = app.status === "APPROVED" && !app.deletedAt;
+  const isRejected = app.status === "REJECTED" && !app.deletedAt;
+  const isArchived = !!app.deletedAt;
 
-  const docsUploaded = DOCUMENT_SLOTS.filter((s) => !!app[s.key]).length;
+  const docsUploaded = DOCUMENT_SLOTS.filter((s) => {
+    const val = app[s.key];
+    return s.multi ? Array.isArray(val) && val.length > 0 : !!val;
+  }).length;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl">
@@ -191,7 +231,25 @@ export default function ApplicationDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <ApplicationStatusBadge status={app.status} />
+          {isArchived ? (
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-slate-500/15 text-slate-400">
+              ARCHIVED
+            </span>
+          ) : (
+            <ApplicationStatusBadge status={app.status} />
+          )}
+
+          {/* Archive button — available on all non-archived applications */}
+          {!isArchived && (
+            <button
+              onClick={() => setShowArchiveModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-600 text-slate-400 hover:bg-slate-700/40 transition-colors"
+              title="Archive this application"
+            >
+              <Trash2 size={13} /> Archive
+            </button>
+          )}
+
           {isPending && (
             <>
               <button
@@ -221,37 +279,50 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
-      {/* ── Rejection reason banner ── */}
-      {isRejected && app.rejectionReason && (
-        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-          <p className="text-xs font-medium text-red-400 mb-1">
-            Rejection Reason
+      {/* Archived banner */}
+      {isArchived && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-slate-500/10 border border-slate-500/20">
+          <Trash2 size={16} className="text-slate-400 shrink-0" />
+          <p className="text-sm text-slate-400">
+            This application was archived on{" "}
+            {app.deletedAt
+              ? format(new Date(app.deletedAt), "dd MMM yyyy 'at' HH:mm")
+              : "—"}
+            . To permanently delete all data, go to the{" "}
+            <button
+              onClick={() => router.push("/applications?status=ARCHIVED")}
+              className="text-brand-400 hover:underline"
+            >
+              Archived tab
+            </button>
+            .
           </p>
-          <p className="text-sm text-slate-300">{app.rejectionReason}</p>
-          {app.reviewedAt && (
-            <p className="text-[10px] text-slate-600 mt-2">
-              Reviewed{" "}
-              {format(new Date(app.reviewedAt), "dd MMM yyyy 'at' HH:mm")}
-            </p>
-          )}
         </div>
       )}
 
-      {/* ── Approved banner ── */}
-      {isApproved && (
-        <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center gap-3">
-          <CheckCircle size={18} className="text-green-400 shrink-0" />
+      {/* Rejection reason banner */}
+      {isRejected && app.rejectionReason && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+          <XCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
           <div>
-            <p className="text-xs font-medium text-green-400">
-              Driver account created
+            <p className="text-xs font-semibold text-red-400 mb-1">
+              Rejection Reason
             </p>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              This application was approved on{" "}
-              {app.reviewedAt
-                ? format(new Date(app.reviewedAt), "dd MMM yyyy")
-                : "—"}
-            </p>
+            <p className="text-xs text-red-300">{app.rejectionReason}</p>
           </div>
+        </div>
+      )}
+
+      {/* Approved banner */}
+      {isApproved && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+          <CheckCircle size={16} className="text-green-400 shrink-0" />
+          <p className="text-sm text-green-400">
+            This application was approved on{" "}
+            {app.reviewedAt
+              ? format(new Date(app.reviewedAt), "dd MMM yyyy")
+              : "—"}
+          </p>
         </div>
       )}
 
@@ -321,57 +392,117 @@ export default function ApplicationDetailPage() {
             </div>
           </div>
 
+          {/* Document expiry summary (shows driver-supplied dates) */}
+          {(app.docPhvExpiry ||
+            app.docInsuranceExpiry ||
+            app.docMotExpiry ||
+            app.docDbsExpiry) && (
+            <div className="card p-5">
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-4">
+                Document Expiry Dates
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {app.docPhvExpiry && (
+                  <DetailRow
+                    label="PHV Licence Expiry"
+                    value={format(new Date(app.docPhvExpiry), "dd MMM yyyy")}
+                  />
+                )}
+                {app.docInsuranceExpiry && (
+                  <DetailRow
+                    label="Insurance Expiry"
+                    value={format(
+                      new Date(app.docInsuranceExpiry),
+                      "dd MMM yyyy"
+                    )}
+                  />
+                )}
+                {app.docMotExpiry && (
+                  <DetailRow
+                    label="MOT Expiry"
+                    value={format(new Date(app.docMotExpiry), "dd MMM yyyy")}
+                  />
+                )}
+                {app.docDbsExpiry && (
+                  <DetailRow
+                    label="DBS Expiry"
+                    value={format(new Date(app.docDbsExpiry), "dd MMM yyyy")}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Document progress summary */}
           <div className="card p-5">
             <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">
               Document Progress
             </p>
             <div className="space-y-2">
-              {DOCUMENT_SLOTS.map((slot) => (
-                <div
-                  key={slot.key}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <span className="text-slate-400">{slot.label}</span>
-                  {app[slot.key] ? (
-                    <span className="text-green-400 flex items-center gap-1">
-                      <CheckCircle size={11} /> Uploaded
-                    </span>
-                  ) : (
-                    <span className="text-slate-600">Not uploaded</span>
-                  )}
-                </div>
-              ))}
+              {DOCUMENT_SLOTS.map((slot) => {
+                const val = app[slot.key];
+                const present = slot.multi
+                  ? Array.isArray(val) && val.length > 0
+                  : !!val;
+                const pages =
+                  slot.multi && Array.isArray(val) ? val.length : null;
+                return (
+                  <div
+                    key={slot.key}
+                    className="flex items-center justify-between text-xs"
+                  >
+                    <span className="text-slate-400">{slot.label}</span>
+                    {present ? (
+                      <span className="text-green-400 flex items-center gap-1">
+                        <CheckCircle size={11} />
+                        {pages !== null
+                          ? `${pages} page${pages > 1 ? "s" : ""}`
+                          : "Uploaded"}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">Not uploaded</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between text-xs">
               <span className="text-slate-500">Total</span>
               <span
                 className={
-                  docsUploaded === 6
+                  docsUploaded === 8
                     ? "text-green-400 font-medium"
                     : "text-yellow-400"
                 }
               >
-                {docsUploaded} / 6 uploaded
+                {docsUploaded} / 8 uploaded
               </span>
             </div>
           </div>
         </div>
 
-        {/* ── Right: Documents ── */}
+        {/* ── Right: Document images ── */}
         <div className="space-y-4">
           <div className="card p-5">
             <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-4">
               Document Images
             </p>
             <div className="grid grid-cols-2 gap-3">
-              {DOCUMENT_SLOTS.map((slot) => (
-                <DocumentCard
-                  key={slot.key}
-                  label={slot.label}
-                  url={app[slot.key]}
-                />
-              ))}
+              {DOCUMENT_SLOTS.map((slot) =>
+                slot.multi ? (
+                  <MultiDocumentCards
+                    key={slot.key}
+                    label={slot.label}
+                    urls={app[slot.key] as string[]}
+                  />
+                ) : (
+                  <DocumentCard
+                    key={slot.key}
+                    label={slot.label}
+                    url={app[slot.key]}
+                  />
+                )
+              )}
             </div>
             <p className="text-[10px] text-slate-600 mt-3">
               Click any image to open full size in a new tab
@@ -380,13 +511,19 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
-      {/* ── Bottom action bar (sticky for easy access) ── */}
+      {/* ── Bottom action bar ── */}
       {isPending && (
         <div className="sticky bottom-0 -mx-6 px-6 py-4 bg-[var(--sidebar-bg)] border-t border-[var(--border)] flex items-center justify-between">
           <p className="text-xs text-slate-500">
             Review all documents before approving or rejecting.
           </p>
           <div className="flex gap-3">
+            <button
+              onClick={() => setShowArchiveModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-slate-600 text-slate-400 hover:bg-slate-700/40 transition-colors"
+            >
+              <Trash2 size={14} /> Archive
+            </button>
             <button
               onClick={() => {
                 setShowRejectModal(true);
@@ -413,7 +550,51 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
-      {/* ── Reject Modal ── */}
+      {/* ── Archive modal ── */}
+      <Modal
+        open={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        title="Archive Application"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+            <AlertTriangle
+              size={16}
+              className="text-yellow-400 shrink-0 mt-0.5"
+            />
+            <div className="text-xs text-yellow-300 space-y-1">
+              <p className="font-semibold">Archive {app.name}'s application?</p>
+              <p className="text-yellow-400/80">
+                {app.status === "APPROVED"
+                  ? "Their driver account will be suspended — they will no longer be able to log in or receive jobs. All data is preserved."
+                  : "The application will be archived. All data is preserved and can be permanently deleted later."}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={() => setShowArchiveModal(false)}
+              className="flex-1 btn-ghost py-2.5 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => archiveMutation.mutate()}
+              disabled={archiveMutation.isPending}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {archiveMutation.isPending ? (
+                <Spinner size={14} />
+              ) : (
+                <Trash2 size={14} />
+              )}
+              Archive
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Reject modal ── */}
       <Modal
         open={showRejectModal}
         onClose={() => setShowRejectModal(false)}
@@ -421,10 +602,9 @@ export default function ApplicationDetailPage() {
       >
         <div className="space-y-4">
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            The applicant will be able to see this reason and resubmit their
-            application after correcting the issue.
+            The applicant will be able to see this reason and resubmit after
+            correcting the issue.
           </p>
-
           <div>
             <label className="text-xs text-slate-400 mb-1.5 block">
               Rejection Reason <span className="text-red-400">*</span>
@@ -432,19 +612,17 @@ export default function ApplicationDetailPage() {
             <textarea
               className="input w-full resize-none"
               rows={4}
-              placeholder="e.g. PCO badge image is unclear — please reupload a sharper photo. Insurance certificate appears expired."
+              placeholder="e.g. PCO badge image is unclear — please reupload a sharper photo."
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
               autoFocus
             />
           </div>
-
           {rejectError && (
             <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
               {rejectError}
             </p>
           )}
-
           <div className="flex gap-3 pt-1">
             <button
               onClick={() => setShowRejectModal(false)}
