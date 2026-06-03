@@ -102,6 +102,17 @@ export default function ApplicationPendingScreen() {
             vehicleReg: appData.vehicleReg,
             vehicleYear: String(appData.vehicleYear),
             vehicleColour: appData.vehicleColour,
+            vehicleClass: appData.vehicleClass ?? "STANDARD",
+            vehicleSeats: String(appData.vehicleSeats ?? 4),
+            vehiclePhvLicenceNumber: appData.vehiclePhvLicenceNumber ?? "",
+            vehiclePhvLicenceExpiry: appData.vehiclePhvLicenceExpiry
+              ? new Date(appData.vehiclePhvLicenceExpiry)
+                  .toISOString()
+                  .split("T")[0]
+              : "",
+            vehiclePhvDiscNumber: appData.vehiclePhvDiscNumber ?? "",
+            vehicleEmissionStandard: appData.vehicleEmissionStandard ?? "",
+            vehicleIsUlezCompliant: appData.vehicleIsUlezCompliant ?? false,
           }
         : null,
     });
