@@ -458,10 +458,9 @@ export class DispatchService {
           const actualPence = StripeService.toPence(
             completedBooking.actualFare ?? completedBooking.estimatedFare
           );
-          const feePence = StripeService.calculateStripeFee(actualPence);
           await capturePaymentIntentByMode(
             completedBooking.stripePaymentIntentId,
-            actualPence + feePence
+            actualPence
           );
         } catch (err) {
           console.error("[Stripe] Capture failed:", err);
