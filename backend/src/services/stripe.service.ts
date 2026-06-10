@@ -83,11 +83,11 @@ export class StripeService {
     paymentIntentId: string,
     actualAmountPence?: number
   ): Promise<void> {
-    if (actualAmountPence) {
-      await this.stripe.paymentIntents.update(paymentIntentId, {
-        amount: actualAmountPence,
-      });
-    }
+    // if (actualAmountPence) {
+    //   await this.stripe.paymentIntents.update(paymentIntentId, {
+    //     amount: actualAmountPence,
+    //   });
+    // }
     await this.stripe.paymentIntents.capture(paymentIntentId);
   }
 
@@ -123,11 +123,11 @@ export async function capturePaymentIntentByMode(
   actualAmountPence?: number
 ): Promise<void> {
   const stripe = await resolveClientForIntent(paymentIntentId);
-  if (actualAmountPence) {
-    await stripe.paymentIntents.update(paymentIntentId, {
-      amount: actualAmountPence,
-    });
-  }
+  // if (actualAmountPence) {
+  //   await stripe.paymentIntents.update(paymentIntentId, {
+  //     amount: actualAmountPence,
+  //   });
+  // }
   await stripe.paymentIntents.capture(paymentIntentId);
 }
 
