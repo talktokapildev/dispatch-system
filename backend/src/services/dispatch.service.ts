@@ -500,6 +500,18 @@ export class DispatchService {
           console.error("[Stripe] Capture failed:", err);
         }
       }
+
+      // ── Welcome bonus — fires after first completed trip ────────────────
+      // Wrapped in try/catch — wallet failure never breaks trip completion
+      if (completedBooking?.passengerId) {
+        try {
+          const { WalletService } = await import("../services/wallet.service");
+          const walletService = new WalletService(this.prisma);
+          await walletService.processWelcomeBonus(completedBooking.passengerId);
+        } catch (err) {
+          console.error("[Wallet] Welcome bonus failed:", err);
+        }
+      }
     }
 
     await this.prisma.$transaction([
