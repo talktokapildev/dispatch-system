@@ -68,6 +68,14 @@ export default function RideCompleteScreen({ route, navigation }: any) {
     "idle" | "loading" | "success"
   >("idle");
 
+  // Tip state
+  const [tipVisible, setTipVisible] = useState(false);
+  const [tipAmount, setTipAmount] = useState<number | null>(null);
+  const [tipCustom, setTipCustom] = useState("");
+  const [tipState, setTipState] = useState<"idle" | "loading" | "success">(
+    "idle"
+  );
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -102,6 +110,22 @@ export default function RideCompleteScreen({ route, navigation }: any) {
       s.off("booking:card_payment_requested", handleCardRequested);
     };
   }, [booking.id]);
+
+  // Auto-show tip modal if actual fare > estimated fare by >10%
+  useEffect(() => {
+    const CARD_METHODS = ["CARD", "APPLE_PAY", "GOOGLE_PAY"];
+    const estimated = booking?.estimatedFare ?? 0;
+    const actual = booking?.actualFare ?? estimated;
+    if (
+      CARD_METHODS.includes(booking?.paymentMethod) &&
+      actual > estimated * 1.1 &&
+      actual - estimated >= 1.0
+    ) {
+      // Small delay so the arrival animation completes first
+      const t = setTimeout(() => setTipVisible(true), 1500);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const submitRating = async (stars: number) => {
     setRating(stars);
@@ -246,6 +270,55 @@ export default function RideCompleteScreen({ route, navigation }: any) {
         err.response?.data?.error ?? "Could not set up card payment"
       );
       setCardPaymentState("idle");
+    }
+  };
+
+  const handleTip = async (amount: number) => {
+    setTipAmount(amount);
+    setTipState("loading");
+    try {
+      const { data } = await api.post(
+        `/passengers/bookings/${booking.id}/tip`,
+        { amount }
+      );
+      const { clientSecret } = data.data;
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: clientSecret,
+        merchantDisplayName: "OrangeRide",
+        style: "automatic",
+        applePay: { merchantCountryCode: "GB" },
+        googlePay: {
+          merchantCountryCode: "GB",
+          testEnv: false,
+          currencyCode: "gbp",
+        },
+        defaultBillingDetails: { address: { country: "GB" } },
+      });
+
+      if (initError) {
+        Alert.alert("Error", initError.message);
+        setTipState("idle");
+        return;
+      }
+
+      const { error: presentError } = await presentPaymentSheet();
+      if (presentError) {
+        if (presentError.code !== "Canceled")
+          Alert.alert("Payment failed", presentError.message);
+        setTipState("idle");
+        return;
+      }
+
+      // Confirm tip on backend
+      await api.post(`/passengers/bookings/${booking.id}/tip/confirm`, {
+        amount,
+      });
+      setTipState("success");
+      setTipVisible(false);
+    } catch (err: any) {
+      Alert.alert("Error", err.response?.data?.error ?? "Something went wrong");
+      setTipState("idle");
     }
   };
 
@@ -710,6 +783,122 @@ export default function RideCompleteScreen({ route, navigation }: any) {
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Tip Modal ── */}
+      <Modal
+        visible={tipVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTipVisible(false)}
+      >
+        <SafeAreaView
+          style={[s.modalContainer, { backgroundColor: Colors.bg }]}
+        >
+          <View style={[s.modalHeader, { borderBottomColor: Colors.border }]}>
+            <Text style={[s.modalTitle, { color: Colors.text }]}>
+              Thank your driver 🙏
+            </Text>
+            <TouchableOpacity onPress={() => setTipVisible(false)}>
+              <Text style={[s.modalClose, { color: Colors.muted }]}>
+                No thanks
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={s.modalBody}>
+            <Text
+              style={{
+                color: Colors.muted,
+                fontSize: FontSize.sm,
+                marginBottom: Spacing.lg,
+                textAlign: "center",
+              }}
+            >
+              Your trip took a little longer than estimated.{"\n"}
+              Would you like to add a tip for your driver?
+            </Text>
+
+            {/* Quick tip amounts */}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: Spacing.sm,
+                marginBottom: Spacing.md,
+              }}
+            >
+              {[1, 2, 5].map((amt) => (
+                <TouchableOpacity
+                  key={amt}
+                  style={{
+                    flex: 1,
+                    borderRadius: Radius.md,
+                    borderWidth: 1,
+                    borderColor:
+                      tipAmount === amt ? Colors.brand : Colors.border,
+                    backgroundColor:
+                      tipAmount === amt ? Colors.brand + "15" : Colors.card,
+                    padding: Spacing.md,
+                    alignItems: "center",
+                  }}
+                  onPress={() => {
+                    setTipAmount(amt);
+                    setTipCustom("");
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: tipAmount === amt ? Colors.brand : Colors.white,
+                      fontWeight: "700",
+                      fontSize: FontSize.md,
+                    }}
+                  >
+                    £{amt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Custom amount */}
+            <TextInput
+              style={[
+                s.descInput,
+                {
+                  backgroundColor: Colors.card,
+                  borderColor: Colors.border,
+                  color: Colors.text,
+                  minHeight: 0,
+                  height: 48,
+                },
+              ]}
+              placeholder="Custom amount (£)"
+              placeholderTextColor={Colors.muted}
+              keyboardType="decimal-pad"
+              value={tipCustom}
+              onChangeText={(v) => {
+                setTipCustom(v);
+                setTipAmount(parseFloat(v) || null);
+              }}
+            />
+
+            <TouchableOpacity
+              style={[
+                s.submitBtn,
+                { backgroundColor: Colors.brand, marginTop: Spacing.md },
+                (!tipAmount || tipState === "loading") && { opacity: 0.5 },
+              ]}
+              onPress={() => tipAmount && handleTip(tipAmount)}
+              disabled={!tipAmount || tipState === "loading"}
+            >
+              {tipState === "loading" ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <Text style={s.submitBtnText}>
+                  Send £{tipAmount?.toFixed(2) ?? "0.00"} tip
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

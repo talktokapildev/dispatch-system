@@ -461,6 +461,93 @@ export async function passengerRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── POST /passengers/bookings/:id/tip ──────────────────────────────────────
+  fastify.post(
+    "/passengers/bookings/:id/tip",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { amount } = request.body as { amount: number };
+
+      if (!amount || amount <= 0 || amount > 100) {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Invalid tip amount" });
+      }
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id },
+        include: { passenger: { include: { user: true } } },
+      });
+
+      if (!booking) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+      }
+
+      if (booking.status !== "COMPLETED") {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Trip not completed" });
+      }
+
+      if (booking.tipAmount) {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Tip already paid" });
+      }
+
+      try {
+        const { StripeService } = await import("../services/stripe.service");
+        const passengerPhone = booking.passenger?.user.phone ?? "";
+        const stripeService = new StripeService(passengerPhone);
+        const amountPence = StripeService.toPence(amount);
+
+        const { clientSecret, paymentIntentId } =
+          await stripeService.createPaymentIntent(
+            amountPence,
+            "gbp",
+            { bookingId: id, tipFor: "driver" },
+            "automatic" // tip captures immediately
+          );
+
+        // Store tipPaymentIntentId so we can track it
+        await fastify.prisma.booking.update({
+          where: { id },
+          data: { tipPaymentIntentId: paymentIntentId },
+        });
+
+        return reply.send({
+          success: true,
+          data: { clientSecret, paymentIntentId },
+        });
+      } catch (err: any) {
+        fastify.log.error("[Tip] Failed to create tip intent:", err);
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to set up tip payment" });
+      }
+    }
+  );
+
+  // ─── POST /passengers/bookings/:id/tip/confirm ───────────────────────────────
+  fastify.post(
+    "/passengers/bookings/:id/tip/confirm",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { amount } = request.body as { amount: number };
+
+      await fastify.prisma.booking.update({
+        where: { id },
+        data: { tipAmount: amount },
+      });
+
+      return reply.send({ success: true });
+    }
+  );
+
   // ─── PATCH /passengers/profile ─────────────────────────────────────────────
   // First-time name capture + future profile updates
   fastify.patch(
