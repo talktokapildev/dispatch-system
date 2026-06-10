@@ -443,9 +443,13 @@ export class DispatchService {
         });
       }
 
+      const STRIPE_PAYMENT_METHODS = ["CARD", "APPLE_PAY", "GOOGLE_PAY"];
+
       if (
         completedBooking?.stripePaymentIntentId &&
-        completedBooking?.paymentMethod === "CARD"
+        STRIPE_PAYMENT_METHODS.includes(
+          completedBooking.paymentMethod as string
+        )
       ) {
         try {
           const { StripeService, capturePaymentIntentByMode } = await import(
