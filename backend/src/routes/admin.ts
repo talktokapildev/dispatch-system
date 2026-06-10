@@ -1118,4 +1118,45 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, message: "Booking cancelled" });
     }
   );
+
+  // ─── GET /admin/wallet/monthly-stats ─────────────────────────────────────
+  fastify.get(
+    "/admin/wallet/monthly-stats",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const user = request.user;
+      if (
+        !user.roles.some((r: string) => ["ADMIN", "DISPATCHER"].includes(r))
+      ) {
+        return reply.status(403).send({ success: false, error: "Forbidden" });
+      }
+
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+
+        const config = await fastify.prisma.pricingConfig.findFirst({
+          orderBy: { updatedAt: "desc" },
+        });
+        const cap = config?.walletMonthlyPromoCap ?? 1000;
+        const capRemaining = await walletService.getMonthlyCapRemaining(cap);
+        const issuedThisMonth = cap - capRemaining;
+
+        return reply.send({
+          success: true,
+          data: {
+            issuedThisMonth,
+            capRemaining,
+            cap,
+            capPercent: cap > 0 ? (issuedThisMonth / cap) * 100 : 0,
+          },
+        });
+      } catch (err) {
+        fastify.log.error({ err }, "[Wallet] monthly-stats failed");
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to fetch stats" });
+      }
+    }
+  );
 }

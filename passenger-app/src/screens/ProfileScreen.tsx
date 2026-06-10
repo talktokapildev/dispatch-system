@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,7 +22,22 @@ export default function ProfileScreen({ navigation }: any) {
   const { user, logout } = useAuthStore();
   const { unregisterToken } = usePushNotifications();
   const [deleting, setDeleting] = useState(false);
+  const [wallet, setWallet] = useState<{
+    promoBalance: number;
+    totalBalance: number;
+    welcomeBonusPending: boolean;
+    welcomeBonusIssued: boolean;
+  } | null>(null);
+  const [walletLoading, setWalletLoading] = useState(true);
   const { settings } = useOperatorSettings();
+
+  useEffect(() => {
+    api
+      .get("/passengers/wallet")
+      .then(({ data }) => setWallet(data.data))
+      .catch(() => setWallet(null))
+      .finally(() => setWalletLoading(false));
+  }, []);
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -116,6 +131,42 @@ export default function ProfileScreen({ navigation }: any) {
           <InfoRow label="First name" value={user?.firstName ?? "—"} />
           <InfoRow label="Last name" value={user?.lastName ?? "—"} />
           <InfoRow label="Phone" value={user?.phone ?? "—"} />
+        </View>
+
+        {/* Wallet */}
+        <View style={[s.card, { borderColor: Colors.brand + "30" }]}>
+          <Text style={[s.cardTitle, { color: Colors.brand }]}>
+            💰 My Wallet
+          </Text>
+          {walletLoading ? (
+            <ActivityIndicator color={Colors.brand} size="small" />
+          ) : wallet ? (
+            <>
+              <View style={s.infoRow}>
+                <Text style={s.infoLabel}>Promo credit</Text>
+                <Text
+                  style={[
+                    s.infoValue,
+                    { color: Colors.brand, fontWeight: "800" },
+                  ]}
+                >
+                  £{wallet.promoBalance.toFixed(2)}
+                </Text>
+              </View>
+              <View style={[s.infoRow, { borderBottomWidth: 0 }]}>
+                <Text style={s.infoLabel}>Status</Text>
+                <Text style={[s.infoValue, { color: Colors.success }]}>
+                  {wallet.welcomeBonusIssued
+                    ? "Welcome bonus applied ✓"
+                    : wallet.welcomeBonusPending
+                    ? "Complete first trip to unlock £25"
+                    : "Active"}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={s.infoBody}>Unable to load wallet</Text>
+          )}
         </View>
 
         {/* TfL note */}

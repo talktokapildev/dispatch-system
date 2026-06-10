@@ -7,10 +7,12 @@ import { SectionHeader } from "@/components/ui";
 import { GeneralSection } from "./GeneralSection";
 import { PricingSection } from "./PricingSection";
 import { ComplianceSection } from "./ComplianceSection";
+import { WalletSection } from "./WalletSection";
 
 const SECTIONS = [
   "General",
   "Pricing",
+  "Wallet",
   "Dispatch",
   "Notifications",
   "Compliance",
@@ -193,8 +195,9 @@ export default function SettingsPage() {
         {/* Content panel */}
         <div className="flex-1 min-w-0">
           {active === "Pricing" ? (
-            // Pricing has its own save button — rendered outside the card
             <PricingSection />
+          ) : active === "Wallet" ? (
+            <WalletSection />
           ) : (
             <div className="card p-6 space-y-6">
               {active === "General" && <GeneralSection />}

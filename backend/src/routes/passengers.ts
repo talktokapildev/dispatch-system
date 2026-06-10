@@ -1139,4 +1139,106 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, data: enriched });
     }
   );
+
+  // ─── GET /passengers/wallet ──────────────────────────────────────────────
+  fastify.get(
+    "/passengers/wallet",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const passenger = await fastify.prisma.passenger.findUnique({
+        where: { userId: request.user.userId },
+      });
+      if (!passenger) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "Passenger not found" });
+      }
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        const balance = await walletService.getBalance(passenger.id);
+        return reply.send({ success: true, data: balance });
+      } catch (err) {
+        fastify.log.error({ err }, "[Wallet] getBalance failed");
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to fetch wallet" });
+      }
+    }
+  );
+
+  // ─── GET /passengers/wallet/transactions ─────────────────────────────────
+  fastify.get(
+    "/passengers/wallet/transactions",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const passenger = await fastify.prisma.passenger.findUnique({
+        where: { userId: request.user.userId },
+      });
+      if (!passenger) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "Passenger not found" });
+      }
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        const transactions = await walletService.getTransactions(passenger.id);
+        return reply.send({ success: true, data: transactions });
+      } catch (err) {
+        fastify.log.error({ err }, "[Wallet] getTransactions failed");
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to fetch transactions" });
+      }
+    }
+  );
+
+  // ─── GET /passengers/wallet/check/:fare ──────────────────────────────────
+  // Used by BookingConfirmScreen to check if wallet covers the fare
+  fastify.get(
+    "/passengers/wallet/check/:fare",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { fare } = request.params as { fare: string };
+      const fareAmount = parseFloat(fare);
+
+      if (isNaN(fareAmount) || fareAmount <= 0) {
+        return reply
+          .status(400)
+          .send({ success: false, error: "Invalid fare" });
+      }
+
+      const passenger = await fastify.prisma.passenger.findUnique({
+        where: { userId: request.user.userId },
+      });
+      if (!passenger) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "Passenger not found" });
+      }
+
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        const balance = await walletService.getBalance(passenger.id);
+        const canPay = balance.promoBalance >= fareAmount;
+
+        return reply.send({
+          success: true,
+          data: {
+            canPay,
+            promoBalance: balance.promoBalance,
+            totalBalance: balance.totalBalance,
+            fareAmount,
+          },
+        });
+      } catch (err) {
+        fastify.log.error({ err }, "[Wallet] check failed");
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to check wallet" });
+      }
+    }
+  );
 }
