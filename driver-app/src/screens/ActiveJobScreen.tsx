@@ -68,6 +68,14 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   // Prevents both socket AND polling from each showing the cancellation alert
   const cancellationHandled = useRef(false);
 
+  // ── Distance accumulator for dynamic fare ──────────────────────────────
+  const tripDistanceMilesRef = useRef<number>(0);
+  const tripStartedAtRef = useRef<Date | null>(null);
+  const lastTripLocationRef = useRef<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
   // Shows an alert immediately if app is active, or waits until foregrounded.
   // Prevents the iOS native nav bar artifact that appears when an Alert fires
   // during the background→foreground transition.
@@ -115,6 +123,16 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     latitude: number;
     longitude: number;
   } | null>(null);
+
+  // ── Accumulate trip distance during IN_PROGRESS ─────────────────────────
+  useEffect(() => {
+    if (!location || booking?.status !== "IN_PROGRESS") return;
+    if (lastTripLocationRef.current) {
+      const d = haversineMiles(lastTripLocationRef.current, location);
+      tripDistanceMilesRef.current += d;
+    }
+    lastTripLocationRef.current = location;
+  }, [location]);
 
   useEffect(() => {
     if (!location || !booking) return;
@@ -234,7 +252,26 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const doUpdate = async (status: string) => {
     setUpdating(true);
     try {
-      await api.patch(`/drivers/jobs/${bookingId}/status`, { status });
+      // Record trip start time and reset accumulator when trip begins
+      if (status === "IN_PROGRESS") {
+        tripStartedAtRef.current = new Date();
+        tripDistanceMilesRef.current = 0;
+        lastTripLocationRef.current = locationRef.current;
+      }
+
+      // Build completion payload with actual distance/duration if available
+      const body: Record<string, any> = { status };
+      if (status === "COMPLETED" && tripStartedAtRef.current) {
+        const durationMins = Math.round(
+          (Date.now() - tripStartedAtRef.current.getTime()) / 60000
+        );
+        body.actualDistance = parseFloat(
+          tripDistanceMilesRef.current.toFixed(2)
+        );
+        body.actualDuration = durationMins;
+      }
+
+      await api.patch(`/drivers/jobs/${bookingId}/status`, body);
       if (status === "COMPLETED") {
         // replace() keeps [Main] below so JobComplete can popToTop() cleanly
         navigation.replace("JobComplete", { booking });
@@ -573,6 +610,22 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       </Animated.View>
     </View>
   );
+}
+
+// ── Haversine distance in miles between two coordinates ──────────────────
+function haversineMiles(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number }
+): number {
+  const R = 3958.8; // Earth radius in miles
+  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+  const x =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.latitude * Math.PI) / 180) *
+      Math.cos((b.latitude * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 const styles = (
