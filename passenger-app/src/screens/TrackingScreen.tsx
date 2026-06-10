@@ -47,7 +47,7 @@ export default function TrackingScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { settings } = useOperatorSettings();
   const { token } = useAuthStore();
-  const { bookingId, booking: initialBooking } = route.params;
+  const { bookingId, booking: initialBooking, totalFare } = route.params;
 
   const [booking, setBooking] = useState<any>(initialBooking ?? null);
   const [driverLocation, setDriverLocation] = useState<{
@@ -578,7 +578,7 @@ export default function TrackingScreen({ route, navigation }: any) {
             >
               <Text style={s.fareLabel}>Estimated fare</Text>
               <Text style={[s.fareValue, { color: Colors.brand }]}>
-                £{booking.estimatedFare.toFixed(2)}
+                £{(totalFare ?? booking.estimatedFare).toFixed(2)}
               </Text>
             </View>
           )}

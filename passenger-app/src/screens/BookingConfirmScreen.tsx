@@ -141,7 +141,11 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       routes: [
         {
           name: "Tracking",
-          params: { bookingId: bookingData.data.id, booking: bookingData.data },
+          params: {
+            bookingId: bookingData.data.id,
+            booking: bookingData.data,
+            totalFare,
+          },
         },
       ],
     });
