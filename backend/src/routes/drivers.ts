@@ -419,7 +419,11 @@ export async function driverRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateDriver] },
     async (request, reply) => {
       const { bookingId } = request.params as { bookingId: string };
-      const { status } = request.body as { status: BookingStatus };
+      const { status, actualDistance, actualDuration } = request.body as {
+        status: BookingStatus;
+        actualDistance?: number;
+        actualDuration?: number;
+      };
       const { userId } = request.user;
 
       const driver = await fastify.prisma.driver.findUnique({
@@ -449,7 +453,13 @@ export async function driverRoutes(fastify: FastifyInstance) {
         fastify.io,
         maps
       );
-      await dispatch.updateBookingStatus(bookingId, driver.id, status);
+      await dispatch.updateBookingStatus(
+        bookingId,
+        driver.id,
+        status,
+        actualDistance,
+        actualDuration
+      );
 
       // Also emit directly to passenger room for instant update
       if (

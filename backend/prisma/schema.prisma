@@ -78,6 +78,19 @@ enum PaymentStatus {
   CASH
 }
 
+enum WalletTxType {
+  CREDIT_PROMO
+  DEBIT_TRIP
+  REFUND_CANCEL
+  REFUND_ADMIN
+  EXPIRY
+}
+
+enum PromoTarget {
+  ALL_PASSENGERS
+  NEW_PASSENGERS_ONLY
+}
+
 enum DriverStatus {
   OFFLINE
   AVAILABLE
@@ -211,6 +224,7 @@ model Passenger {
   corporateAccount CorporateAccount? @relation(fields: [corporateAccountId], references: [id])
   bookings         Booking[]
   paymentMethods   SavedPaymentMethod[]
+  wallet             WalletAccount?
 
   @@index([userId])
 }
@@ -429,6 +443,13 @@ model Booking {
   driverEarning   Float?
   platformFee     Float?
 
+  // Dynamic fare fields (added for actual distance/time tracking)
+  actualDistance      Float?
+  actualDuration      Int?
+  tipAmount           Float?
+  tipPaymentIntentId  String?
+  cashReceived        Float?
+
   // Payment
   paymentMethod         PaymentMethod @default(CARD)
   paymentStatus         PaymentStatus @default(PENDING)
@@ -569,6 +590,10 @@ model PricingConfig {
   careHomeFullDay           Float @default(250.00)
   careHomeHourlyBeyondFull  Float @default(35.00)
 
+  walletWelcomeBonus     Float @default(25)
+  walletMonthlyPromoCap  Float @default(1000)
+  walletBonusExpiryDays  Int   @default(90)
+  
   updatedAt DateTime @updatedAt
   updatedBy String?
 }
@@ -850,4 +875,54 @@ model TeslaIntegration {
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model WalletAccount {
+  id                  String    @id @default(uuid())
+  passengerId         String    @unique
+  promoBalance        Float     @default(0)
+  realBalance         Float     @default(0)
+  welcomeBonusPending Boolean   @default(true)
+  welcomeBonusIssued  Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  passenger    Passenger          @relation(fields: [passengerId], references: [id])
+  transactions WalletTransaction[]
+
+  @@index([passengerId])
+}
+
+model WalletTransaction {
+  id              String        @id @default(uuid())
+  walletId        String
+  type            WalletTxType
+  amount          Float
+  balanceAfter    Float
+  bookingId       String?
+  promoCampaignId String?
+  expiresAt       DateTime?
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  wallet       WalletAccount  @relation(fields: [walletId], references: [id])
+  campaign     PromoCampaign? @relation(fields: [promoCampaignId], references: [id])
+
+  @@index([walletId])
+  @@index([bookingId])
+}
+
+model PromoCampaign {
+  id              String      @id @default(uuid())
+  name            String
+  amount          Float
+  targetType      PromoTarget
+  expiryDays      Int?
+  isActive        Boolean     @default(true)
+  totalIssued     Float       @default(0)
+  totalRecipients Int         @default(0)
+  createdBy       String
+  createdAt       DateTime    @default(now())
+
+  transactions WalletTransaction[]
 }

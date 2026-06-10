@@ -353,7 +353,9 @@ export class DispatchService {
   async updateBookingStatus(
     bookingId: string,
     driverId: string,
-    status: BookingStatus
+    status: BookingStatus,
+    actualDistance?: number,
+    actualDuration?: number
   ): Promise<void> {
     const updates: Record<string, Date> = {};
 
@@ -376,8 +378,34 @@ export class DispatchService {
         where: { id: bookingId },
       });
       if (completedBooking) {
-        const fare =
-          completedBooking.actualFare ?? completedBooking.estimatedFare;
+        // ── Calculate actual fare if driver sent real distance/time ──────────
+        // Falls back to estimatedFare if not provided — existing behaviour preserved
+        let fare = completedBooking.estimatedFare;
+        try {
+          if (actualDistance !== undefined && actualDuration !== undefined) {
+            const { PricingService } = await import(
+              "../services/pricing.service"
+            );
+            const pricingService = new PricingService(this.prisma, this.redis);
+            const actualEstimate = await pricingService.estimateFare({
+              distanceMiles: actualDistance,
+              durationMinutes: actualDuration,
+              scheduledAt:
+                completedBooking.scheduledAt ?? completedBooking.createdAt,
+              pickupLatitude: completedBooking.pickupLatitude,
+              pickupLongitude: completedBooking.pickupLongitude,
+              dropoffLatitude: completedBooking.dropoffLatitude,
+              dropoffLongitude: completedBooking.dropoffLongitude,
+            });
+            fare = actualEstimate.total;
+          }
+        } catch (err) {
+          console.error(
+            "[Fare] Actual fare calculation failed, using estimate:",
+            err
+          );
+          fare = completedBooking.estimatedFare;
+        }
 
         // ── Surcharge-aware commission ──────────────────────────────────
         // Airport/zone supplements pass through 100% to the driver (auto-debited).
@@ -439,7 +467,13 @@ export class DispatchService {
         // Store on booking too
         await this.prisma.booking.update({
           where: { id: bookingId },
-          data: { actualFare: fare, driverEarning: net, platformFee },
+          data: {
+            actualFare: fare,
+            driverEarning: net,
+            platformFee,
+            ...(actualDistance !== undefined && { actualDistance }),
+            ...(actualDuration !== undefined && { actualDuration }),
+          },
         });
       }
 
