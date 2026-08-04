@@ -28,6 +28,7 @@ import { adminDriverApplicationRoutes } from "./routes/admin/driver-applications
 import { settingsRoutes } from "./routes/settings";
 import { complianceRoutes } from "./routes/compliance";
 import { teslaRoutes } from "./routes/tesla";
+import { scheduledBookingRoutes } from "./routes/scheduledBooking.routes";
 
 // How long a PENDING booking can sit before being auto-cancelled (30 minutes)
 const STALE_BOOKING_THRESHOLD_MS = 30 * 60 * 1000;
@@ -69,6 +70,7 @@ async function buildServer() {
   const prefix = config.API_PREFIX;
   await fastify.register(authRoutes, { prefix });
   await fastify.register(bookingRoutes, { prefix });
+  await fastify.register(scheduledBookingRoutes, { prefix });
   await fastify.register(driverRoutes, { prefix });
   await fastify.register(adminRoutes, { prefix });
   await fastify.register(passengerRoutes, { prefix });

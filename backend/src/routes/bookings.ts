@@ -9,6 +9,7 @@ import {
 import { MapsService } from "../services/maps.service";
 import { PricingService } from "../services/pricing.service";
 import { DispatchService } from "../services/dispatch.service";
+import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import { SocketEvent } from "../types";
 
 const createBookingSchema = z.object({
@@ -111,12 +112,26 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
+      // Scheduled bookings (≥2hr lead time) go into SCHEDULED_OPEN and are
+      // claimed via the job board, instead of being auto-dispatched.
+      let initialStatus: BookingStatus = BookingStatus.PENDING;
+      if (body.scheduledAt) {
+        const scheduledDate = new Date(body.scheduledAt);
+        if (!ScheduledBookingService.hasMinimumLeadTime(scheduledDate)) {
+          return reply.status(400).send({
+            success: false,
+            error: "Scheduled bookings require at least 2 hours' notice",
+          });
+        }
+        initialStatus = BookingStatus.SCHEDULED_OPEN;
+      }
+
       const booking = await fastify.prisma.booking.create({
         data: {
           reference: generateRef(),
           passengerId: passenger.id,
           type: body.type,
-          status: BookingStatus.PENDING,
+          status: initialStatus,
           pickupAddress: body.pickupAddress,
           pickupLatitude: body.pickupLatitude,
           pickupLongitude: body.pickupLongitude,
@@ -441,12 +456,25 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
+      // Same SCHEDULED_OPEN branch as the passenger route.
+      let initialStatus: BookingStatus = BookingStatus.CONFIRMED;
+      if (body.scheduledAt) {
+        const scheduledDate = new Date(body.scheduledAt);
+        if (!ScheduledBookingService.hasMinimumLeadTime(scheduledDate)) {
+          return reply.status(400).send({
+            success: false,
+            error: "Scheduled bookings require at least 2 hours' notice",
+          });
+        }
+        initialStatus = BookingStatus.SCHEDULED_OPEN;
+      }
+
       const booking = await fastify.prisma.booking.create({
         data: {
           reference: generateRef(),
           passengerId: passenger?.id,
           type: body.type,
-          status: BookingStatus.CONFIRMED,
+          status: initialStatus,
           pickupAddress: body.pickupAddress,
           pickupLatitude: body.pickupLatitude,
           pickupLongitude: body.pickupLongitude,

@@ -44,6 +44,7 @@ enum BookingStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+  SCHEDULED_OPEN
 }
 
 enum BookingType {
@@ -432,6 +433,9 @@ model Booking {
   // TfL Compliance: dispatcher record (Condition 6)
   dispatchedBy String?
 
+  // Scheduled job-board (added for advance-booking driver claim flow)
+  claimedAt DateTime?   // set when a driver claims this from the open job board
+
    // TfL Compliance: PHV licence number at time of booking (Condition — booking record requirement)
   driverPhvLicenceNumber String?
 
@@ -508,6 +512,7 @@ model Booking {
   @@index([scheduledAt])
   @@index([reference])
   @@index([dispatchedBy])
+  @@index([status, scheduledAt])   // job board queries: open jobs sorted by pickup time
 }
 
 model BookingStatusHistory {

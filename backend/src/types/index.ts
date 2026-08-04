@@ -98,6 +98,7 @@ export enum SocketEvent {
   ADMIN_BOOKING_CREATED = "admin:booking_created",
   ADMIN_BOOKING_UPDATED = "admin:booking_updated",
   ADMIN_DRIVER_UPDATE = "admin:driver_update",
+  ADMIN_SCHEDULED_JOB_ALERT = "admin:scheduled_job_alert",
 
   // System
   PING = "ping",
