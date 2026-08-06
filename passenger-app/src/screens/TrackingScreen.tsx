@@ -41,6 +41,11 @@ const STATUS_CONFIG: Record<
   IN_PROGRESS: { label: "Trip in progress", icon: "🛣️", color: "#f59e0b" },
   COMPLETED: { label: "Trip completed", icon: "🏁", color: "#22c55e" },
   CANCELLED: { label: "Trip cancelled", icon: "✕", color: "#ef4444" },
+  SCHEDULED_OPEN: {
+    label: "Scheduled — awaiting driver",
+    icon: "🗓️",
+    color: "#f59e0b",
+  },
 };
 
 export default function TrackingScreen({ route, navigation }: any) {
@@ -332,6 +337,7 @@ export default function TrackingScreen({ route, navigation }: any) {
   const cancelBooking = () => {
     // To:
     const isCancellable = [
+      "SCHEDULED_OPEN",
       "PENDING",
       "CONFIRMED",
       "DRIVER_ASSIGNED",
@@ -402,6 +408,7 @@ export default function TrackingScreen({ route, navigation }: any) {
   const statusInfo = STATUS_CONFIG[status] ?? STATUS_CONFIG["PENDING"];
   const driver = booking?.driver;
   const canCancel = [
+    "SCHEDULED_OPEN",
     "PENDING",
     "CONFIRMED",
     "DRIVER_ASSIGNED",

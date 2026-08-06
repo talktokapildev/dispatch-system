@@ -21,6 +21,7 @@ import ActiveJobScreen from "./src/screens/ActiveJobScreen";
 import JobCompleteScreen from "./src/screens/JobCompleteScreen";
 import DocumentsScreen from "./src/screens/DocumentsScreen";
 import JobHistoryScreen from "./src/screens/JobHistoryScreen";
+import JobBoardScreen from "./src/screens/JobBoardScreen";
 import LocationDisclosureScreen, {
   DISCLOSURE_ACCEPTED_KEY,
 } from "./src/screens/LocationDisclosureScreen";
@@ -227,6 +228,11 @@ function AppNavigator() {
               <Stack.Screen
                 name="JobHistory"
                 component={JobHistoryScreen}
+                options={{}}
+              />
+              <Stack.Screen
+                name="JobBoard"
+                component={JobBoardScreen}
                 options={{}}
               />
               <Stack.Screen

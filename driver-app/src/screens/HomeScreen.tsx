@@ -389,6 +389,7 @@ export default function HomeScreen({ navigation }: any) {
         {/* Quick actions */}
         <View style={s.actionsGrid}>
           {[
+            { label: "Job Board", icon: "🗓️", screen: "JobBoard" },
             { label: "Job History", icon: "📋", screen: "JobHistory" },
             { label: "Earnings", icon: "💷", screen: "Earnings" },
             { label: "Documents", icon: "📄", screen: "Documents" },

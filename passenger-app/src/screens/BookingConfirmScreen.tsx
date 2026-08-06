@@ -43,7 +43,7 @@ const PAYMENT_OPTIONS = [
 export default function BookingConfirmScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const { pickup, dropoff, estimate } = route.params;
+  const { pickup, dropoff, estimate, scheduledAt } = route.params;
 
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("CASH");
   const [loading, setLoading] = useState(false);
@@ -133,6 +133,7 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       paymentMethod: "CARD",
       stripePaymentIntentId: paymentIntentId,
       estimatedFare: baseFare, // FIX: price the passenger agreed to
+      scheduledAt: scheduledAt ?? undefined,
     });
 
     // 5. Navigate to tracking
@@ -165,6 +166,7 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       passengerCount: 1,
       paymentMethod: selectedPayment,
       estimatedFare: baseFare, // FIX: price the passenger agreed to
+      scheduledAt: scheduledAt ?? undefined,
     });
 
     navigation.reset({
@@ -215,6 +217,40 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
             </View>
           </View>
         </View>
+
+        {scheduledAt && (
+          <View style={[s.card, { borderColor: Colors.brand + "40" }]}>
+            <Text style={[s.cardTitle, { color: Colors.brand }]}>
+              Scheduled Pickup
+            </Text>
+            <Text
+              style={{
+                color: Colors.white,
+                fontSize: FontSize.md,
+                fontWeight: "700",
+              }}
+            >
+              📅{" "}
+              {new Date(scheduledAt).toLocaleDateString("en-GB", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </Text>
+            <Text
+              style={{
+                color: Colors.brand,
+                fontSize: FontSize.sm,
+                marginTop: 2,
+              }}
+            >
+              {new Date(scheduledAt).toLocaleTimeString("en-GB", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Text>
+          </View>
+        )}
 
         {/* Fare */}
         {estimate && (
@@ -361,7 +397,11 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
           ) : (
             <Text style={s.confirmBtnText}>
               {selectedPayment === "CARD"
-                ? `Pay £${totalFare.toFixed(2)} & Book`
+                ? `Pay £${totalFare.toFixed(2)} & ${
+                    scheduledAt ? "Schedule" : "Book"
+                  }`
+                : scheduledAt
+                ? "Confirm Scheduled Booking"
                 : "Confirm Booking"}
             </Text>
           )}

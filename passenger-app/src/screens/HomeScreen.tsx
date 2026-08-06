@@ -10,8 +10,12 @@ import {
   Keyboard,
   Dimensions,
   ScrollView,
+  Platform,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import MapView from "react-native-maps";
@@ -24,6 +28,8 @@ import TripMap from "../components/TripMap";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const GOOGLE_API_KEY = "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI";
+const MIN_LEAD_HOURS = 2; // must match ScheduledBookingService.hasMinimumLeadTime on backend
+const MIN_LEAD_MS = MIN_LEAD_HOURS * 60 * 60 * 1000;
 
 interface PlaceResult {
   address: string;
@@ -143,6 +149,17 @@ export default function HomeScreen({ navigation }: any) {
   const [routeCoords, setRouteCoords] = useState<
     { latitude: number; longitude: number }[]
   >([]);
+
+  const [bookingMode, setBookingMode] = useState<"ASAP" | "SCHEDULED">("ASAP");
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const [showIosPicker, setShowIosPicker] = useState(false);
+  const [iosTempDate, setIosTempDate] = useState<Date>(
+    new Date(Date.now() + MIN_LEAD_MS)
+  );
+  const [androidStage, setAndroidStage] = useState<"date" | "time" | null>(
+    null
+  );
+  const [androidTempDate, setAndroidTempDate] = useState<Date | null>(null);
 
   const mapRef = useRef<MapView>(null);
   const sheetAnim = useRef(new Animated.Value(0)).current;
@@ -346,7 +363,62 @@ export default function HomeScreen({ navigation }: any) {
       Alert.alert("Missing addresses", "Please enter both pickup and dropoff.");
       return;
     }
-    navigation.navigate("BookingConfirm", { pickup, dropoff, estimate });
+    if (bookingMode === "SCHEDULED" && !scheduledAt) {
+      Alert.alert("Pick a time", "Please choose a pickup date and time.");
+      return;
+    }
+    navigation.navigate("BookingConfirm", {
+      pickup,
+      dropoff,
+      estimate,
+      scheduledAt:
+        bookingMode === "SCHEDULED" ? scheduledAt!.toISOString() : null,
+    });
+  };
+
+  const validateAndSetSchedule = (date: Date) => {
+    if (date.getTime() < Date.now() + MIN_LEAD_MS) {
+      Alert.alert(
+        "Too soon",
+        `Scheduled bookings need at least ${MIN_LEAD_HOURS} hours' notice. Please pick a later time.`
+      );
+      return;
+    }
+    setScheduledAt(date);
+  };
+
+  const openSchedulePicker = () => {
+    if (Platform.OS === "ios") {
+      setIosTempDate(scheduledAt ?? new Date(Date.now() + MIN_LEAD_MS));
+      setShowIosPicker(true);
+    } else {
+      // Android has no combined datetime mode — date dialog, then time dialog
+      setAndroidStage("date");
+    }
+  };
+
+  const onAndroidPickerChange = (
+    event: DateTimePickerEvent,
+    selected?: Date
+  ) => {
+    if (event.type === "dismissed" || !selected) {
+      setAndroidStage(null);
+      return;
+    }
+    if (androidStage === "date") {
+      setAndroidTempDate(selected);
+      setAndroidStage("time");
+    } else if (androidStage === "time" && androidTempDate) {
+      const combined = new Date(androidTempDate);
+      combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      setAndroidStage(null);
+      validateAndSetSchedule(combined);
+    }
+  };
+
+  const confirmIosPicker = () => {
+    setShowIosPicker(false);
+    validateAndSetSchedule(iosTempDate);
   };
 
   const hasRoute = routeCoords.length > 1;
@@ -389,6 +461,94 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={s.greeting}>
             {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
           </Text>
+
+          {/* When: Now vs Schedule */}
+          <View style={s.modeRow}>
+            <TouchableOpacity
+              style={[s.modeBtn, bookingMode === "ASAP" && s.modeBtnActive]}
+              onPress={() => setBookingMode("ASAP")}
+            >
+              <Text
+                style={[
+                  s.modeBtnText,
+                  bookingMode === "ASAP" && s.modeBtnTextActive,
+                ]}
+              >
+                Now
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                s.modeBtn,
+                bookingMode === "SCHEDULED" && s.modeBtnActive,
+              ]}
+              onPress={() => setBookingMode("SCHEDULED")}
+            >
+              <Text
+                style={[
+                  s.modeBtnText,
+                  bookingMode === "SCHEDULED" && s.modeBtnTextActive,
+                ]}
+              >
+                Schedule
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {bookingMode === "SCHEDULED" && (
+            <TouchableOpacity
+              style={s.scheduleBtn}
+              onPress={openSchedulePicker}
+            >
+              <Text style={s.scheduleBtnText}>
+                {scheduledAt
+                  ? `📅 ${scheduledAt.toLocaleDateString("en-GB", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })} · ${scheduledAt.toLocaleTimeString("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  : "📅 Choose pickup date & time"}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* iOS: inline spinner card with Done button */}
+          {showIosPicker && Platform.OS === "ios" && (
+            <View style={s.iosPickerCard}>
+              <DateTimePicker
+                value={iosTempDate}
+                mode="datetime"
+                display="spinner"
+                minimumDate={new Date(Date.now() + MIN_LEAD_MS)}
+                onChange={(_, selected) => selected && setIosTempDate(selected)}
+                style={{ height: 180 }}
+              />
+              <TouchableOpacity
+                style={s.iosPickerDoneBtn}
+                onPress={confirmIosPicker}
+              >
+                <Text style={s.iosPickerDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Android: sequential native date then time dialogs */}
+          {androidStage && (
+            <DateTimePicker
+              value={
+                androidStage === "date"
+                  ? androidTempDate ?? new Date(Date.now() + MIN_LEAD_MS)
+                  : androidTempDate ?? new Date()
+              }
+              mode={androidStage}
+              is24Hour
+              minimumDate={androidStage === "date" ? new Date() : undefined}
+              onChange={onAndroidPickerChange}
+            />
+          )}
 
           <AddressPicker
             label="Pickup"
@@ -469,13 +629,27 @@ export default function HomeScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
-            style={[s.bookBtn, (!pickup || !dropoff) && s.bookBtnDisabled]}
+            style={[
+              s.bookBtn,
+              (!pickup ||
+                !dropoff ||
+                (bookingMode === "SCHEDULED" && !scheduledAt)) &&
+                s.bookBtnDisabled,
+            ]}
             onPress={proceedToConfirm}
             activeOpacity={0.85}
-            disabled={!pickup || !dropoff}
+            disabled={
+              !pickup ||
+              !dropoff ||
+              (bookingMode === "SCHEDULED" && !scheduledAt)
+            }
           >
             <Text style={s.bookBtnText}>
-              {estimate
+              {bookingMode === "SCHEDULED"
+                ? estimate
+                  ? `Schedule  ·  £${estimate.estimatedFare.toFixed(2)}`
+                  : "Schedule Ride →"
+                : estimate
                 ? `Book  ·  £${estimate.estimatedFare.toFixed(2)}`
                 : "Book Ride →"}
             </Text>
@@ -533,6 +707,58 @@ const styles = (
       marginBottom: Spacing.md,
     },
     myLocBtn: { marginBottom: Spacing.sm, marginTop: -4 },
+    modeRow: {
+      flexDirection: "row",
+      gap: Spacing.sm,
+      marginBottom: Spacing.md,
+    },
+    modeBtn: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: Spacing.sm,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.inputBg,
+    },
+    modeBtnActive: {
+      backgroundColor: C.brand,
+      borderColor: C.brand,
+    },
+    modeBtnText: { fontSize: FontSize.sm, color: C.muted, fontWeight: "600" },
+    modeBtnTextActive: { color: "#000" },
+    scheduleBtn: {
+      borderWidth: 1,
+      borderColor: C.brand + "40",
+      backgroundColor: C.brand + "10",
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      alignItems: "center",
+      marginBottom: Spacing.sm,
+    },
+    scheduleBtnText: {
+      fontSize: FontSize.sm,
+      color: C.brand,
+      fontWeight: "700",
+    },
+    iosPickerCard: {
+      backgroundColor: C.inputBg,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+      marginBottom: Spacing.sm,
+      overflow: "hidden",
+    },
+    iosPickerDoneBtn: {
+      backgroundColor: C.brand,
+      paddingVertical: Spacing.sm,
+      alignItems: "center",
+    },
+    iosPickerDoneText: {
+      color: "#000",
+      fontWeight: "700",
+      fontSize: FontSize.sm,
+    },
     myLocText: { fontSize: FontSize.xs, color: C.brand, fontWeight: "600" },
     bottomFixed: {
       paddingHorizontal: Spacing.lg,

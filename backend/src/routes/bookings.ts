@@ -265,6 +265,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "Booking not found" });
 
       const cancellable: BookingStatus[] = [
+        BookingStatus.SCHEDULED_OPEN,
         BookingStatus.PENDING,
         BookingStatus.CONFIRMED,
         BookingStatus.DRIVER_ASSIGNED,
