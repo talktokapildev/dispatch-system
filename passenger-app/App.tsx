@@ -167,7 +167,7 @@ function RootNavigator() {
                 options={{
                   headerShown: false,
                   presentation: "fullScreenModal",
-                  gestureEnabled: false,
+                  gestureEnabled: true,
                   animation: "slide_from_bottom",
                 }}
               />

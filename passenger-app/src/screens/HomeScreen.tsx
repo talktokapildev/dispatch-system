@@ -162,6 +162,7 @@ export default function HomeScreen({ navigation }: any) {
   const [androidTempDate, setAndroidTempDate] = useState<Date | null>(null);
 
   const mapRef = useRef<MapView>(null);
+  const autoNavigatedRef = useRef<Set<string>>(new Set());
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
   const SHEET_NORMAL = estimate ? 370 + insets.bottom : 300 + insets.bottom;
@@ -193,7 +194,11 @@ export default function HomeScreen({ navigation }: any) {
         try {
           const { data } = await api.get("/passengers/active-booking");
           const booking = data?.data;
-          if (booking) {
+          // Only auto-navigate the first time we see this booking as
+          // "active" this session — otherwise every return to Home
+          // re-triggers the redirect and traps the passenger here.
+          if (booking && !autoNavigatedRef.current.has(booking.id)) {
+            autoNavigatedRef.current.add(booking.id);
             const rootNav = navigation.getParent() ?? navigation;
             rootNav.navigate("Tracking", {
               bookingId: booking.id,

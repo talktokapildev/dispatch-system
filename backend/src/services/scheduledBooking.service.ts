@@ -252,6 +252,22 @@ export class ScheduledBookingService {
   }
 
   // ───────────────────────────────────────────────────────────────────────
+  // listClaimedByDriver — jobs this driver claimed from the job board that
+  // haven't started yet. Needed because a claimed job disappears from the
+  // open pool immediately — this is the only way back to it afterward.
+  // ───────────────────────────────────────────────────────────────────────
+  async listClaimedByDriver(driverId: string): Promise<Booking[]> {
+    return this.prisma.booking.findMany({
+      where: {
+        driverId,
+        claimedAt: { not: null },
+        status: BookingStatus.DRIVER_ASSIGNED,
+      },
+      orderBy: { scheduledAt: "asc" },
+    });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
   // Validates minimum lead time — called from the booking-creation route
   // ───────────────────────────────────────────────────────────────────────
   static hasMinimumLeadTime(scheduledAt: Date): boolean {

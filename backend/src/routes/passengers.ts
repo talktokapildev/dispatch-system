@@ -1114,20 +1114,47 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       if (!passenger)
         return reply.status(403).send({ success: false, error: "Not found" });
 
+      // "Active" means: force the passenger app into Tracking on launch.
+      // ASAP bookings are always active while in-flight (unchanged from
+      // before). Scheduled bookings are only "active" once pickup is
+      // imminent (within 2hrs) or the trip has genuinely started — a
+      // booking that's merely claimed but days away should NOT hijack
+      // navigation; the passenger should be free to use the rest of the app.
+      const IMMINENT_WINDOW_MS = 30 * 60 * 1000;
       const booking = await fastify.prisma.booking.findFirst({
         where: {
           passengerId: passenger.id,
-          status: {
-            in: [
-              BookingStatus.SCHEDULED_OPEN,
-              BookingStatus.PENDING,
-              BookingStatus.CONFIRMED,
-              BookingStatus.DRIVER_ASSIGNED,
-              BookingStatus.DRIVER_EN_ROUTE,
-              BookingStatus.DRIVER_ARRIVED,
-              BookingStatus.IN_PROGRESS,
-            ],
-          },
+          OR: [
+            {
+              scheduledAt: null,
+              status: {
+                in: [
+                  BookingStatus.PENDING,
+                  BookingStatus.CONFIRMED,
+                  BookingStatus.DRIVER_ASSIGNED,
+                  BookingStatus.DRIVER_EN_ROUTE,
+                  BookingStatus.DRIVER_ARRIVED,
+                  BookingStatus.IN_PROGRESS,
+                ],
+              },
+            },
+            {
+              scheduledAt: {
+                not: null,
+                lte: new Date(Date.now() + IMMINENT_WINDOW_MS),
+              },
+              status: {
+                in: [
+                  BookingStatus.SCHEDULED_OPEN,
+                  BookingStatus.CONFIRMED,
+                  BookingStatus.DRIVER_ASSIGNED,
+                  BookingStatus.DRIVER_EN_ROUTE,
+                  BookingStatus.DRIVER_ARRIVED,
+                  BookingStatus.IN_PROGRESS,
+                ],
+              },
+            },
+          ],
         },
         include: {
           driver: {

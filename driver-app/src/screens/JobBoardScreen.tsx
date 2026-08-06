@@ -1,8 +1,9 @@
 // driver-app/src/screens/JobBoardScreen.tsx
 //
-// Lists SCHEDULED_OPEN bookings (the "job board") and lets a driver claim
-// or release one. Claiming requires current GPS (used server-side for the
-// ETA feasibility check). Follows JobHistoryScreen's list/header pattern.
+// Two tabs: "Open" (SCHEDULED_OPEN pool, claimable) and "My Claimed"
+// (jobs this driver has claimed but not yet started — needed because a
+// claimed job disappears from the open pool immediately, so this is the
+// only way back to it to release it later).
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -21,7 +22,6 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
-import { toMiles } from "../lib/mapUtils";
 
 interface ScheduledJob {
   id: string;
@@ -39,23 +39,28 @@ interface ScheduledJob {
   terminal?: string;
 }
 
+type Tab = "open" | "claimed";
+
 export default function JobBoardScreen({ navigation }: any) {
   const { Colors } = useTheme();
+  const [tab, setTab] = useState<Tab>("open");
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [claimingId, setClaimingId] = useState<string | null>(null);
-  const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
-  const [releasingId, setReleasingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const fetchJobs = useCallback(async (isRefresh = false) => {
+  const fetchJobs = useCallback(async (activeTab: Tab, isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const { data } = await api.get("/bookings/scheduled/open");
+      const endpoint =
+        activeTab === "open"
+          ? "/bookings/scheduled/open"
+          : "/bookings/scheduled/mine";
+      const { data } = await api.get(endpoint);
       setJobs(data.data ?? []);
     } catch {
-      // silent — list just stays as-is / empty, pull-to-refresh available
+      // silent — pull-to-refresh available
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -63,14 +68,13 @@ export default function JobBoardScreen({ navigation }: any) {
   }, []);
 
   useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+    fetchJobs(tab);
+  }, [tab, fetchJobs]);
 
-  // Refresh whenever the driver returns to this tab — job board changes fast
   useFocusEffect(
     useCallback(() => {
-      fetchJobs();
-    }, [fetchJobs])
+      fetchJobs(tab);
+    }, [tab, fetchJobs])
   );
 
   const getCurrentLocation = async (): Promise<{
@@ -102,10 +106,16 @@ export default function JobBoardScreen({ navigation }: any) {
     const coords = await getCurrentLocation();
     if (!coords) return;
 
-    setClaimingId(job.id);
+    setBusyId(job.id);
     try {
       await api.post(`/bookings/${job.id}/claim`, coords);
-      setClaimedIds((prev) => new Set(prev).add(job.id));
+      // Job leaves the open pool — remove locally for instant feedback,
+      // then let the "My Claimed" tab pick it up next time it's viewed.
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
+      Alert.alert(
+        "Job claimed",
+        'Find it any time under the "My Claimed" tab.'
+      );
     } catch (err: any) {
       const reason = err.response?.data?.error;
       const messages: Record<string, string> = {
@@ -122,50 +132,26 @@ export default function JobBoardScreen({ navigation }: any) {
         setJobs((prev) => prev.filter((j) => j.id !== job.id));
       }
     } finally {
-      setClaimingId(null);
+      setBusyId(null);
     }
   };
 
   const handleRelease = async (job: ScheduledJob) => {
-    setReleasingId(job.id);
+    setBusyId(job.id);
     try {
       await api.post(`/bookings/${job.id}/release`);
-      setClaimedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(job.id);
-        return next;
-      });
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
     } catch (err: any) {
       Alert.alert(
         "Couldn't release job",
         err.response?.data?.error ?? "Please try again."
       );
     } finally {
-      setReleasingId(null);
+      setBusyId(null);
     }
   };
 
   const s = styles(Colors);
-
-  if (loading) {
-    return (
-      <SafeAreaView style={s.container}>
-        <View style={s.header}>
-          <TouchableOpacity
-            style={s.backBtn}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={s.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={s.title}>Job Board</Text>
-        </View>
-        <ActivityIndicator
-          color={Colors.brand}
-          style={{ marginTop: Spacing.xxl }}
-        />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={s.container}>
@@ -175,105 +161,137 @@ export default function JobBoardScreen({ navigation }: any) {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.title}>Job Board</Text>
-          <Text style={s.subtitle}>{jobs.length} scheduled jobs available</Text>
+          <Text style={s.subtitle}>
+            {tab === "open"
+              ? `${jobs.length} scheduled jobs available`
+              : `${jobs.length} jobs you've claimed`}
+          </Text>
         </View>
       </View>
 
-      <FlatList
-        data={jobs}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={s.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => fetchJobs(true)}
-            tintColor={Colors.brand}
-          />
-        }
-        ListEmptyComponent={
-          <View style={s.empty}>
-            <Text style={s.emptyIcon}>🗓️</Text>
-            <Text style={s.emptyText}>No scheduled jobs open right now</Text>
-            <Text style={s.emptySubtext}>
-              Pull down to refresh — new jobs appear here as they're booked.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => {
-          const isClaimed = claimedIds.has(item.id);
-          const isClaiming = claimingId === item.id;
-          const isReleasing = releasingId === item.id;
+      <View style={s.tabRow}>
+        <TouchableOpacity
+          style={[s.tabBtn, tab === "open" && s.tabBtnActive]}
+          onPress={() => setTab("open")}
+        >
+          <Text style={[s.tabBtnText, tab === "open" && s.tabBtnTextActive]}>
+            Open
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.tabBtn, tab === "claimed" && s.tabBtnActive]}
+          onPress={() => setTab("claimed")}
+        >
+          <Text style={[s.tabBtnText, tab === "claimed" && s.tabBtnTextActive]}>
+            My Claimed
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-          return (
-            <View style={s.jobCard}>
-              <View style={s.jobTop}>
-                <View style={s.typeBadge}>
-                  <Text style={s.typeText}>
-                    {item.type?.replace(/_/g, " ")}
-                  </Text>
-                </View>
-                <Text style={s.jobFare}>£{item.estimatedFare?.toFixed(2)}</Text>
-              </View>
-
-              <Text style={s.scheduledTime}>
-                📅 {format(new Date(item.scheduledAt), "EEE dd MMM · HH:mm")}
+      {loading ? (
+        <ActivityIndicator
+          color={Colors.brand}
+          style={{ marginTop: Spacing.xxl }}
+        />
+      ) : (
+        <FlatList
+          data={jobs}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={s.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchJobs(tab, true)}
+              tintColor={Colors.brand}
+            />
+          }
+          ListEmptyComponent={
+            <View style={s.empty}>
+              <Text style={s.emptyIcon}>{tab === "open" ? "🗓️" : "📌"}</Text>
+              <Text style={s.emptyText}>
+                {tab === "open"
+                  ? "No scheduled jobs open right now"
+                  : "You haven't claimed any jobs yet"}
               </Text>
-
-              <View style={s.jobRoute}>
-                <View style={s.routeRow}>
-                  <View style={[s.dot, { backgroundColor: Colors.success }]} />
-                  <Text style={s.routeText} numberOfLines={1}>
-                    {item.pickupAddress}
-                  </Text>
-                </View>
-                <View style={s.routeLine} />
-                <View style={s.routeRow}>
-                  <View style={[s.dot, { backgroundColor: Colors.danger }]} />
-                  <Text style={s.routeText} numberOfLines={1}>
-                    {item.dropoffAddress}
-                  </Text>
-                </View>
-              </View>
-
-              {item.flightNumber && (
-                <Text style={s.metaText}>✈️ {item.flightNumber}</Text>
-              )}
-              {item.notes && <Text style={s.metaText}>📝 {item.notes}</Text>}
-
-              {isClaimed ? (
-                <View style={s.claimedRow}>
-                  <View style={s.claimedBadge}>
-                    <Text style={s.claimedBadgeText}>✓ Claimed by you</Text>
+              <Text style={s.emptySubtext}>
+                {tab === "open"
+                  ? "Pull down to refresh — new jobs appear here as they're booked."
+                  : "Claimed jobs from the Open tab will show up here."}
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const isBusy = busyId === item.id;
+            return (
+              <View style={s.jobCard}>
+                <View style={s.jobTop}>
+                  <View style={s.typeBadge}>
+                    <Text style={s.typeText}>
+                      {item.type?.replace(/_/g, " ")}
+                    </Text>
                   </View>
+                  <Text style={s.jobFare}>
+                    £{item.estimatedFare?.toFixed(2)}
+                  </Text>
+                </View>
+
+                <Text style={s.scheduledTime}>
+                  📅 {format(new Date(item.scheduledAt), "EEE dd MMM · HH:mm")}
+                </Text>
+
+                <View style={s.jobRoute}>
+                  <View style={s.routeRow}>
+                    <View
+                      style={[s.dot, { backgroundColor: Colors.success }]}
+                    />
+                    <Text style={s.routeText} numberOfLines={1}>
+                      {item.pickupAddress}
+                    </Text>
+                  </View>
+                  <View style={s.routeLine} />
+                  <View style={s.routeRow}>
+                    <View style={[s.dot, { backgroundColor: Colors.danger }]} />
+                    <Text style={s.routeText} numberOfLines={1}>
+                      {item.dropoffAddress}
+                    </Text>
+                  </View>
+                </View>
+
+                {item.flightNumber && (
+                  <Text style={s.metaText}>✈️ {item.flightNumber}</Text>
+                )}
+                {item.notes && <Text style={s.metaText}>📝 {item.notes}</Text>}
+
+                {tab === "open" ? (
                   <TouchableOpacity
-                    style={s.releaseBtn}
-                    onPress={() => handleRelease(item)}
-                    disabled={isReleasing}
+                    style={[s.claimBtn, isBusy && s.btnDisabled]}
+                    onPress={() => handleClaim(item)}
+                    disabled={isBusy || !!busyId}
                   >
-                    {isReleasing ? (
-                      <ActivityIndicator size="small" color={Colors.danger} />
+                    {isBusy ? (
+                      <ActivityIndicator color="#000" />
                     ) : (
-                      <Text style={s.releaseBtnText}>Release</Text>
+                      <Text style={s.claimBtnText}>Claim Job</Text>
                     )}
                   </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={[s.claimBtn, isClaiming && s.btnDisabled]}
-                  onPress={() => handleClaim(item)}
-                  disabled={isClaiming || !!claimingId}
-                >
-                  {isClaiming ? (
-                    <ActivityIndicator color="#000" />
-                  ) : (
-                    <Text style={s.claimBtnText}>Claim Job</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          );
-        }}
-      />
+                ) : (
+                  <TouchableOpacity
+                    style={[s.releaseBtn, isBusy && s.btnDisabled]}
+                    onPress={() => handleRelease(item)}
+                    disabled={isBusy || !!busyId}
+                  >
+                    {isBusy ? (
+                      <ActivityIndicator size="small" color={Colors.danger} />
+                    ) : (
+                      <Text style={s.releaseBtnText}>Release Job</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -303,6 +321,24 @@ const styles = (
     backIcon: { color: C.text, fontSize: FontSize.lg },
     title: { fontSize: FontSize.xxl, fontWeight: "700", color: C.white },
     subtitle: { fontSize: FontSize.sm, color: C.muted, marginTop: 2 },
+    tabRow: {
+      flexDirection: "row",
+      gap: Spacing.sm,
+      paddingHorizontal: Spacing.lg,
+      marginBottom: Spacing.sm,
+    },
+    tabBtn: {
+      flex: 1,
+      alignItems: "center",
+      paddingVertical: Spacing.sm,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.card,
+    },
+    tabBtnActive: { backgroundColor: C.brand, borderColor: C.brand },
+    tabBtnText: { fontSize: FontSize.sm, color: C.muted, fontWeight: "600" },
+    tabBtnTextActive: { color: "#000" },
     list: { padding: Spacing.lg, gap: Spacing.sm },
     jobCard: {
       backgroundColor: C.card,
@@ -354,38 +390,20 @@ const styles = (
       marginTop: Spacing.sm,
     },
     claimBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
-    btnDisabled: { opacity: 0.5 },
-    claimedRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginTop: Spacing.sm,
-    },
-    claimedBadge: {
-      backgroundColor: C.success + "20",
-      borderRadius: Radius.full,
-      paddingHorizontal: Spacing.md,
-      paddingVertical: 6,
-      borderWidth: 1,
-      borderColor: C.success + "40",
-    },
-    claimedBadgeText: {
-      color: C.success,
-      fontSize: FontSize.xs,
-      fontWeight: "700",
-    },
     releaseBtn: {
       borderRadius: Radius.md,
       borderWidth: 1,
       borderColor: C.danger + "40",
-      paddingHorizontal: Spacing.md,
-      paddingVertical: 8,
+      padding: Spacing.md,
+      alignItems: "center",
+      marginTop: Spacing.sm,
     },
     releaseBtnText: {
       color: C.danger,
-      fontSize: FontSize.xs,
       fontWeight: "700",
+      fontSize: FontSize.md,
     },
+    btnDisabled: { opacity: 0.5 },
     empty: { alignItems: "center", paddingTop: Spacing.xxl },
     emptyIcon: { fontSize: 48, marginBottom: Spacing.md },
     emptyText: { fontSize: FontSize.md, color: C.muted, marginBottom: 4 },

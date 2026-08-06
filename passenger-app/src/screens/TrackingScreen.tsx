@@ -85,6 +85,14 @@ export default function TrackingScreen({ route, navigation }: any) {
     setIsExpanded(!isExpanded);
   };
 
+  // The passenger should always be able to leave this screen — Ride
+  // History is the way back in for any active booking, regardless of
+  // ride type or urgency.
+  const handleBackToHome = () => {
+    const rootNav = navigation.getParent() ?? navigation;
+    rootNav.navigate("Main");
+  };
+
   // ── Socket setup ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) return;
@@ -512,6 +520,10 @@ export default function TrackingScreen({ route, navigation }: any) {
             )}
         </TouchableOpacity>
 
+        <TouchableOpacity style={s.homeBtn} onPress={handleBackToHome}>
+          <Text style={s.homeBtnText}>← Back to Home</Text>
+        </TouchableOpacity>
+
         {/* Reference + cancel */}
         <View style={s.refRow}>
           <Text style={s.refLabel}>Ref</Text>
@@ -653,6 +665,17 @@ const styles = (
       paddingTop: Spacing.sm,
       paddingHorizontal: Spacing.lg,
       paddingBottom: Spacing.xs,
+    },
+    homeBtn: {
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.sm,
+      alignItems: "center",
+      paddingVertical: Spacing.xs,
+    },
+    homeBtnText: {
+      fontSize: FontSize.sm,
+      color: C.muted,
+      fontWeight: "600",
     },
     handle: {
       width: 40,

@@ -43,6 +43,27 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── List jobs I've claimed (not yet started) ───
+  fastify.get(
+    "/bookings/scheduled/mine",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver) {
+        return reply
+          .status(403)
+          .send({ success: false, error: "Driver account required" });
+      }
+
+      const jobs = await scheduledBookings.listClaimedByDriver(driver.id);
+      return reply.send({ success: true, data: jobs });
+    }
+  );
+
   // ─── Claim a job ───
   fastify.post(
     "/bookings/:id/claim",

@@ -252,8 +252,29 @@ export default function RideHistoryScreen({ navigation }: any) {
           const lostPropertyStatus = lostProperty?.status ?? null;
           const lostPropertyNotes = lostProperty?.adminNotes ?? null;
 
+          const isTrackable = [
+            "SCHEDULED_OPEN",
+            "PENDING",
+            "CONFIRMED",
+            "DRIVER_ASSIGNED",
+            "DRIVER_EN_ROUTE",
+            "DRIVER_ARRIVED",
+            "IN_PROGRESS",
+          ].includes(item.status);
+
           return (
-            <View style={s.card}>
+            <TouchableOpacity
+              activeOpacity={isTrackable ? 0.7 : 1}
+              disabled={!isTrackable}
+              onPress={() => {
+                const rootNav = navigation.getParent() ?? navigation;
+                rootNav.navigate("Tracking", {
+                  bookingId: item.id,
+                  booking: item,
+                });
+              }}
+              style={s.card}
+            >
               <View style={s.cardTop}>
                 <Text style={s.ref}>{item.reference}</Text>
                 <View
@@ -369,6 +390,16 @@ export default function RideHistoryScreen({ navigation }: any) {
                 </View>
               )}
 
+              {isTrackable && (
+                <View style={[s.actionRow, { borderTopColor: Colors.border }]}>
+                  <View style={s.actionBtn}>
+                    <Text style={[s.actionBtnText, { color: Colors.brand }]}>
+                      Tap to view & manage →
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* Complaint detail — expandable */}
               {complaint && (
                 <>
@@ -465,7 +496,7 @@ export default function RideHistoryScreen({ navigation }: any) {
                   )}
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
           );
         }}
       />
