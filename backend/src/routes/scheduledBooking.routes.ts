@@ -60,7 +60,11 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
       }
 
       const jobs = await scheduledBookings.listClaimedByDriver(driver.id);
-      return reply.send({ success: true, data: jobs });
+      const jobsWithCanStart = jobs.map((j) => ({
+        ...j,
+        canStart: ScheduledBookingService.canStartNow(j.scheduledAt),
+      }));
+      return reply.send({ success: true, data: jobsWithCanStart });
     }
   );
 
@@ -143,6 +147,46 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
         success: true,
         data: { adminAlertRequired: result.adminAlertRequired },
       });
+    }
+  );
+
+  // ─── Start a claimed job (transition into live trip flow) ───
+  fastify.post(
+    "/bookings/:id/start",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const { userId } = request.user;
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver) {
+        return reply
+          .status(403)
+          .send({ success: false, error: "Driver account required" });
+      }
+
+      const result = await scheduledBookings.startClaimedJob(id, driver.id);
+
+      if (!result.success) {
+        const statusMap: Record<string, number> = {
+          not_found: 404,
+          not_your_booking: 403,
+          not_startable_state: 409,
+          too_early: 422,
+        };
+        const messages: Record<string, string> = {
+          too_early:
+            "You can't start this trip yet — it's outside the start window.",
+        };
+        return reply.status(statusMap[result.reason] ?? 400).send({
+          success: false,
+          error: messages[result.reason] ?? result.reason,
+        });
+      }
+
+      return reply.send({ success: true, data: result.booking });
     }
   );
 }

@@ -274,4 +274,56 @@ export class ScheduledBookingService {
     const hoursUntil = (scheduledAt.getTime() - Date.now()) / 3_600_000;
     return hoursUntil >= SCHEDULED_BOOKING_MIN_LEAD_HOURS;
   }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Start-trip window — configurable via env var so ops can tune it without
+  // a code deploy. Defaults to 30 minutes if unset.
+  // ───────────────────────────────────────────────────────────────────────
+  static getStartWindowMinutes(): number {
+    return Number(process.env.SCHEDULED_START_WINDOW_MINUTES) || 30;
+  }
+
+  static canStartNow(scheduledAt: Date | null): boolean {
+    if (!scheduledAt) return false;
+    const windowMs = ScheduledBookingService.getStartWindowMinutes() * 60_000;
+    return scheduledAt.getTime() - Date.now() <= windowMs;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // startClaimedJob — transitions a claimed scheduled job into the live
+  // trip flow. Flips the driver to ON_JOB (mirrors whatever the ASAP
+  // accept-offer path already does) so they stop receiving other ASAP
+  // offers while this trip is starting. Deliberately does NOT touch the
+  // booking's own status — it stays DRIVER_ASSIGNED, since ActiveJobScreen
+  // owns that state machine from here (arrive → start → complete).
+  // ───────────────────────────────────────────────────────────────────────
+  async startClaimedJob(
+    bookingId: string,
+    driverId: string
+  ): Promise<
+    { success: true; booking: Booking } | { success: false; reason: string }
+  > {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+    });
+    if (!booking) return { success: false, reason: "not_found" };
+    if (booking.driverId !== driverId)
+      return { success: false, reason: "not_your_booking" };
+    if (
+      booking.status !== BookingStatus.DRIVER_ASSIGNED ||
+      !booking.claimedAt
+    ) {
+      return { success: false, reason: "not_startable_state" };
+    }
+    if (!ScheduledBookingService.canStartNow(booking.scheduledAt)) {
+      return { success: false, reason: "too_early" };
+    }
+
+    await this.prisma.driver.update({
+      where: { id: driverId },
+      data: { status: "ON_JOB" },
+    });
+
+    return { success: true, booking };
+  }
 }

@@ -37,6 +37,7 @@ interface ScheduledJob {
   notes?: string;
   flightNumber?: string;
   terminal?: string;
+  canStart?: boolean;
 }
 
 type Tab = "open" | "claimed";
@@ -146,6 +147,29 @@ export default function JobBoardScreen({ navigation, route }: any) {
     } catch (err: any) {
       Alert.alert(
         "Couldn't release job",
+        err.response?.data?.error ?? "Please try again."
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleStart = async (job: ScheduledJob) => {
+    setBusyId(job.id);
+    try {
+      const { data } = await api.post(`/bookings/${job.id}/start`);
+      navigation.reset({
+        index: 0,
+        routes: [
+          {
+            name: "ActiveJob",
+            params: { bookingId: job.id, preloadedBooking: data.data },
+          },
+        ],
+      });
+    } catch (err: any) {
+      Alert.alert(
+        "Couldn't start trip",
         err.response?.data?.error ?? "Please try again."
       );
     } finally {
@@ -277,17 +301,32 @@ export default function JobBoardScreen({ navigation, route }: any) {
                     )}
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity
-                    style={[s.releaseBtn, isBusy && s.btnDisabled]}
-                    onPress={() => handleRelease(item)}
-                    disabled={isBusy || !!busyId}
-                  >
-                    {isBusy ? (
-                      <ActivityIndicator size="small" color={Colors.danger} />
-                    ) : (
-                      <Text style={s.releaseBtnText}>Release Job</Text>
+                  <View style={s.claimedActionsRow}>
+                    {item.canStart && (
+                      <TouchableOpacity
+                        style={[s.startBtn, isBusy && s.btnDisabled]}
+                        onPress={() => handleStart(item)}
+                        disabled={isBusy || !!busyId}
+                      >
+                        {isBusy ? (
+                          <ActivityIndicator color="#000" />
+                        ) : (
+                          <Text style={s.startBtnText}>▶ Start Trip</Text>
+                        )}
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[s.releaseBtn, isBusy && s.btnDisabled]}
+                      onPress={() => handleRelease(item)}
+                      disabled={isBusy || !!busyId}
+                    >
+                      {isBusy ? (
+                        <ActivityIndicator size="small" color={Colors.danger} />
+                      ) : (
+                        <Text style={s.releaseBtnText}>Release Job</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );
@@ -392,13 +431,29 @@ const styles = (
       marginTop: Spacing.sm,
     },
     claimBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
+    claimedActionsRow: {
+      flexDirection: "row",
+      gap: Spacing.sm,
+      marginTop: Spacing.sm,
+    },
+    startBtn: {
+      flex: 1,
+      backgroundColor: C.brand,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 6,
+    },
+    startBtnText: { color: "#000", fontWeight: "800", fontSize: FontSize.md },
     releaseBtn: {
+      flex: 1,
       borderRadius: Radius.md,
       borderWidth: 1,
       borderColor: C.danger + "40",
       padding: Spacing.md,
       alignItems: "center",
-      marginTop: Spacing.sm,
     },
     releaseBtnText: {
       color: C.danger,
