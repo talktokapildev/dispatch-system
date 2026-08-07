@@ -41,9 +41,11 @@ interface ScheduledJob {
 
 type Tab = "open" | "claimed";
 
-export default function JobBoardScreen({ navigation }: any) {
+export default function JobBoardScreen({ navigation, route }: any) {
   const { Colors } = useTheme();
-  const [tab, setTab] = useState<Tab>("open");
+  const [tab, setTab] = useState<Tab>(
+    route?.params?.initialTab === "claimed" ? "claimed" : "open"
+  );
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

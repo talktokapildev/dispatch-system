@@ -152,6 +152,7 @@ export default function HomeScreen({ navigation }: any) {
   >([]);
 
   const [bookingMode, setBookingMode] = useState<"ASAP" | "SCHEDULED">("ASAP");
+  const [upcomingBooking, setUpcomingBooking] = useState<any>(null);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [showIosPicker, setShowIosPicker] = useState(false);
   const [iosTempDate, setIosTempDate] = useState<Date>(
@@ -209,6 +210,21 @@ export default function HomeScreen({ navigation }: any) {
         } catch {}
       };
       recover();
+    }, [token])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) return;
+      const fetchUpcoming = async () => {
+        try {
+          const { data } = await api.get("/passengers/upcoming-booking");
+          setUpcomingBooking(data?.data ?? null);
+        } catch {
+          setUpcomingBooking(null);
+        }
+      };
+      fetchUpcoming();
     }, [token])
   );
 
@@ -451,6 +467,41 @@ export default function HomeScreen({ navigation }: any) {
           activeOpacity={0.85}
         >
           <CrosshairIcon color={Colors.brand} size={22} />
+        </TouchableOpacity>
+      )}
+
+      {upcomingBooking && (
+        <TouchableOpacity
+          style={[s.upcomingBanner, { top: insets.top + Spacing.sm }]}
+          onPress={() =>
+            navigation.navigate("Tracking", {
+              bookingId: upcomingBooking.id,
+              booking: upcomingBooking,
+            })
+          }
+          activeOpacity={0.85}
+        >
+          <Text style={s.upcomingBannerIcon}>📅</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.upcomingBannerTitle} numberOfLines={1}>
+              {upcomingBooking.scheduledAt
+                ? `Ride scheduled — ${new Date(
+                    upcomingBooking.scheduledAt
+                  ).toLocaleDateString("en-GB", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  })} · ${new Date(
+                    upcomingBooking.scheduledAt
+                  ).toLocaleTimeString("en-GB", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`
+                : "Ride in progress"}
+            </Text>
+            <Text style={s.upcomingBannerSub}>Tap to view</Text>
+          </View>
+          <Text style={s.upcomingBannerChevron}>→</Text>
         </TouchableOpacity>
       )}
 
@@ -866,5 +917,40 @@ const styles = (
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 6,
+    },
+    upcomingBanner: {
+      position: "absolute",
+      left: Spacing.lg,
+      right: Spacing.lg,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: C.brand,
+      borderRadius: Radius.lg,
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+      gap: Spacing.sm,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+      zIndex: 10,
+    },
+    upcomingBannerIcon: { fontSize: 20 },
+    upcomingBannerTitle: {
+      fontSize: FontSize.sm,
+      fontWeight: "800",
+      color: "#000",
+    },
+    upcomingBannerSub: {
+      fontSize: FontSize.xs,
+      color: "#000",
+      opacity: 0.7,
+      marginTop: 1,
+    },
+    upcomingBannerChevron: {
+      fontSize: FontSize.md,
+      color: "#000",
+      fontWeight: "700",
     },
   });

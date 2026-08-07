@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { api, useAuthStore } from "../lib/api";
@@ -29,6 +30,7 @@ export default function HomeScreen({ navigation }: any) {
   const [status, setStatus] = useState(driver?.status ?? "OFFLINE");
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [todayJobs, setTodayJobs] = useState(0);
+  const [claimedJobs, setClaimedJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { eligibility } = useDocumentStatus();
 
@@ -132,6 +134,22 @@ export default function HomeScreen({ navigation }: any) {
     const t = setTimeout(recover, 800);
     return () => clearTimeout(t);
   }, [status]);
+
+  // Refresh whenever the driver returns to Home — claimed jobs can change
+  // from the Job Board screen (claim/release) while this screen isn't visible.
+  useFocusEffect(
+    useCallback(() => {
+      const fetchClaimedJobs = async () => {
+        try {
+          const { data } = await api.get("/bookings/scheduled/mine");
+          setClaimedJobs(data?.data ?? []);
+        } catch {
+          setClaimedJobs([]);
+        }
+      };
+      fetchClaimedJobs();
+    }, [])
+  );
 
   // Re-run fetch when store finishes hydrating from AsyncStorage
   useEffect(() => {
@@ -310,6 +328,38 @@ export default function HomeScreen({ navigation }: any) {
           eligibility={eligibility}
           onPress={() => navigation.navigate("Documents")}
         />
+
+        {claimedJobs.length > 0 && (
+          <TouchableOpacity
+            style={s.upcomingBanner}
+            onPress={() =>
+              navigation.navigate("JobBoard", { initialTab: "claimed" })
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={s.upcomingBannerIcon}>📌</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.upcomingBannerTitle}>
+                {claimedJobs.length === 1
+                  ? "1 upcoming claimed job"
+                  : `${claimedJobs.length} upcoming claimed jobs`}
+              </Text>
+              <Text style={s.upcomingBannerSub} numberOfLines={1}>
+                Next:{" "}
+                {new Date(claimedJobs[0].scheduledAt).toLocaleDateString(
+                  "en-GB",
+                  { weekday: "short", day: "numeric", month: "short" }
+                )}{" "}
+                ·{" "}
+                {new Date(claimedJobs[0].scheduledAt).toLocaleTimeString(
+                  "en-GB",
+                  { hour: "2-digit", minute: "2-digit" }
+                )}
+              </Text>
+            </View>
+            <Text style={s.upcomingBannerChevron}>→</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Status card */}
         <View
@@ -550,4 +600,31 @@ const styles = (
     },
     pcoLabel: { fontSize: FontSize.sm, color: C.muted },
     pcoNumber: { fontSize: FontSize.sm, color: C.brand, fontWeight: "700" },
+    upcomingBanner: {
+      marginHorizontal: Spacing.lg,
+      marginBottom: Spacing.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: Spacing.sm,
+      backgroundColor: C.brand,
+      borderRadius: Radius.lg,
+      padding: Spacing.md,
+    },
+    upcomingBannerIcon: { fontSize: 20 },
+    upcomingBannerTitle: {
+      fontSize: FontSize.sm,
+      fontWeight: "800",
+      color: "#000",
+    },
+    upcomingBannerSub: {
+      fontSize: FontSize.xs,
+      color: "#000",
+      opacity: 0.7,
+      marginTop: 1,
+    },
+    upcomingBannerChevron: {
+      fontSize: FontSize.md,
+      color: "#000",
+      fontWeight: "700",
+    },
   });

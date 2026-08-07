@@ -1184,6 +1184,47 @@ export async function passengerRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ─── GET /passengers/upcoming-booking ──────────────────────────────────────
+  // Unlike /passengers/active-booking (which only returns something inside
+  // the 30min "imminent" window, purely to decide whether to force-navigate),
+  // this returns ANY non-terminal booking regardless of how far away it is.
+  // Used to show a persistent "you have an upcoming ride" banner on Home —
+  // deliberately not gated by urgency, since the whole point is visibility
+  // well before the imminent window kicks in.
+  fastify.get(
+    "/passengers/upcoming-booking",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const passenger = await getPassenger(userId);
+      if (!passenger)
+        return reply.status(403).send({ success: false, error: "Not found" });
+
+      const booking = await fastify.prisma.booking.findFirst({
+        where: {
+          passengerId: passenger.id,
+          status: {
+            in: [
+              BookingStatus.SCHEDULED_OPEN,
+              BookingStatus.PENDING,
+              BookingStatus.CONFIRMED,
+              BookingStatus.DRIVER_ASSIGNED,
+              BookingStatus.DRIVER_EN_ROUTE,
+              BookingStatus.DRIVER_ARRIVED,
+              BookingStatus.IN_PROGRESS,
+            ],
+          },
+        },
+        // Simplifying assumption: a passenger only has one active/scheduled
+        // booking at a time in practice, so "most recently created" is a
+        // reasonable tiebreaker if that assumption is ever wrong.
+        orderBy: { createdAt: "desc" },
+      });
+
+      return reply.send({ success: true, data: booking ?? null });
+    }
+  );
+
   // ─── GET /passengers/wallet ──────────────────────────────────────────────
   fastify.get(
     "/passengers/wallet",
