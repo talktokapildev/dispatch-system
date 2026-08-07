@@ -399,6 +399,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
       }
 
       const cancellable: string[] = [
+        BookingStatus.SCHEDULED_OPEN,
         BookingStatus.PENDING,
         BookingStatus.CONFIRMED,
         BookingStatus.DRIVER_ASSIGNED,

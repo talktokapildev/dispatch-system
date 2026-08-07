@@ -312,6 +312,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
 
       // Cannot cancel once trip has started
       const cancellable: BookingStatus[] = [
+        BookingStatus.SCHEDULED_OPEN,
         BookingStatus.PENDING,
         BookingStatus.CONFIRMED,
         BookingStatus.DRIVER_ASSIGNED,

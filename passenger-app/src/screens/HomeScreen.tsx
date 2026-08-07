@@ -11,6 +11,7 @@ import {
   Dimensions,
   ScrollView,
   Platform,
+  Modal,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import DateTimePicker, {
@@ -463,84 +464,72 @@ export default function HomeScreen({ navigation }: any) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scrollContent}
         >
-          <Text style={s.greeting}>
+          <Text style={s.greeting} numberOfLines={1} ellipsizeMode="tail">
             {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
           </Text>
 
-          {/* When: Now vs Schedule */}
-          <View style={s.modeRow}>
-            <TouchableOpacity
-              style={[s.modeBtn, bookingMode === "ASAP" && s.modeBtnActive]}
-              onPress={() => setBookingMode("ASAP")}
-            >
-              <Text
-                style={[
-                  s.modeBtnText,
-                  bookingMode === "ASAP" && s.modeBtnTextActive,
-                ]}
-              >
-                Now
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                s.modeBtn,
-                bookingMode === "SCHEDULED" && s.modeBtnActive,
-              ]}
-              onPress={() => setBookingMode("SCHEDULED")}
-            >
-              <Text
-                style={[
-                  s.modeBtnText,
-                  bookingMode === "SCHEDULED" && s.modeBtnTextActive,
-                ]}
-              >
-                Schedule
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {bookingMode === "SCHEDULED" && (
-            <TouchableOpacity
-              style={s.scheduleBtn}
-              onPress={openSchedulePicker}
-            >
-              <Text style={s.scheduleBtnText}>
-                {scheduledAt
-                  ? `📅 ${scheduledAt.toLocaleDateString("en-GB", {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                    })} · ${scheduledAt.toLocaleTimeString("en-GB", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                  : "📅 Choose pickup date & time"}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* iOS: inline spinner card with Done button */}
-          {showIosPicker && Platform.OS === "ios" && (
-            <View style={s.iosPickerCard}>
-              <DateTimePicker
-                value={iosTempDate}
-                mode="datetime"
-                display="spinner"
-                minimumDate={new Date(Date.now() + MIN_LEAD_MS)}
-                onChange={(_, selected) => selected && setIosTempDate(selected)}
-                style={{ height: 180 }}
-              />
+          {/* When: Now vs Schedule — compact pill + inline date/time chip,
+              merged into a single row to save vertical space */}
+          <View style={s.scheduleRow}>
+            <View style={s.modePill}>
               <TouchableOpacity
-                style={s.iosPickerDoneBtn}
-                onPress={confirmIosPicker}
+                style={[
+                  s.modePillBtn,
+                  bookingMode === "ASAP" && s.modePillBtnActive,
+                ]}
+                onPress={() => setBookingMode("ASAP")}
               >
-                <Text style={s.iosPickerDoneText}>Done</Text>
+                <Text
+                  style={[
+                    s.modePillText,
+                    bookingMode === "ASAP" && s.modePillTextActive,
+                  ]}
+                >
+                  Now
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  s.modePillBtn,
+                  bookingMode === "SCHEDULED" && s.modePillBtnActive,
+                ]}
+                onPress={() => setBookingMode("SCHEDULED")}
+              >
+                <Text
+                  style={[
+                    s.modePillText,
+                    bookingMode === "SCHEDULED" && s.modePillTextActive,
+                  ]}
+                >
+                  Schedule
+                </Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {/* Android: sequential native date then time dialogs */}
+            {bookingMode === "SCHEDULED" && (
+              <TouchableOpacity
+                style={s.scheduleChip}
+                onPress={openSchedulePicker}
+                activeOpacity={0.8}
+              >
+                <Text style={s.scheduleChipText} numberOfLines={1}>
+                  {scheduledAt
+                    ? `📅 ${scheduledAt.toLocaleDateString("en-GB", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                      })} · ${scheduledAt.toLocaleTimeString("en-GB", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}`
+                    : "📅 Pick time"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Android: sequential native date then time dialogs — these are
+              native OS popups, zero layout footprint, no change needed */}
           {androidStage && (
             <DateTimePicker
               value={
@@ -663,6 +652,39 @@ export default function HomeScreen({ navigation }: any) {
           <View style={{ height: insets.bottom > 0 ? 0 : Spacing.md }} />
         </View>
       </Animated.View>
+
+      {/* iOS date/time picker — a real Modal, not inline, so the main sheet
+          height never changes regardless of whether this is open */}
+      <Modal
+        visible={showIosPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowIosPicker(false)}
+      >
+        <View style={s.pickerModalOverlay}>
+          <View style={s.iosPickerCard}>
+            <View style={s.iosPickerHeader}>
+              <TouchableOpacity onPress={() => setShowIosPicker(false)}>
+                <Text style={s.iosPickerCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={s.iosPickerTitle}>Pickup date & time</Text>
+              <TouchableOpacity onPress={confirmIosPicker}>
+                <Text style={s.iosPickerDone}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <DateTimePicker
+              value={iosTempDate}
+              mode="datetime"
+              display="spinner"
+              minimumDate={new Date(Date.now() + MIN_LEAD_MS)}
+              onChange={(_event: DateTimePickerEvent, selected?: Date) =>
+                selected && setIosTempDate(selected)
+              }
+              style={{ height: 200 }}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -712,58 +734,74 @@ const styles = (
       marginBottom: Spacing.md,
     },
     myLocBtn: { marginBottom: Spacing.sm, marginTop: -4 },
-    modeRow: {
+    scheduleRow: {
       flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
       gap: Spacing.sm,
       marginBottom: Spacing.md,
     },
-    modeBtn: {
-      flex: 1,
-      alignItems: "center",
-      paddingVertical: Spacing.sm,
-      borderRadius: Radius.md,
+    modePill: {
+      flexDirection: "row",
+      backgroundColor: C.inputBg,
+      borderRadius: Radius.full,
       borderWidth: 1,
       borderColor: C.border,
-      backgroundColor: C.inputBg,
+      padding: 3,
     },
-    modeBtnActive: {
+    modePillBtn: {
+      paddingHorizontal: Spacing.md,
+      paddingVertical: 6,
+      borderRadius: Radius.full,
+    },
+    modePillBtnActive: {
       backgroundColor: C.brand,
-      borderColor: C.brand,
     },
-    modeBtnText: { fontSize: FontSize.sm, color: C.muted, fontWeight: "600" },
-    modeBtnTextActive: { color: "#000" },
-    scheduleBtn: {
+    modePillText: { fontSize: FontSize.xs, color: C.muted, fontWeight: "700" },
+    modePillTextActive: { color: "#000" },
+    scheduleChip: {
+      flexShrink: 1,
       borderWidth: 1,
       borderColor: C.brand + "40",
       backgroundColor: C.brand + "10",
-      borderRadius: Radius.md,
-      padding: Spacing.md,
-      alignItems: "center",
-      marginBottom: Spacing.sm,
+      borderRadius: Radius.full,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: 8,
     },
-    scheduleBtnText: {
-      fontSize: FontSize.sm,
+    scheduleChipText: {
+      fontSize: FontSize.xs,
       color: C.brand,
       fontWeight: "700",
     },
+    pickerModalOverlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.4)",
+    },
     iosPickerCard: {
-      backgroundColor: C.inputBg,
-      borderRadius: Radius.md,
-      borderWidth: 1,
+      backgroundColor: C.card,
+      borderTopLeftRadius: Radius.xl,
+      borderTopRightRadius: Radius.xl,
+      borderTopWidth: 1,
       borderColor: C.border,
-      marginBottom: Spacing.sm,
+      paddingBottom: Spacing.xl,
       overflow: "hidden",
     },
-    iosPickerDoneBtn: {
-      backgroundColor: C.brand,
-      paddingVertical: Spacing.sm,
+    iosPickerHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
       alignItems: "center",
+      padding: Spacing.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: C.border,
     },
-    iosPickerDoneText: {
-      color: "#000",
+    iosPickerCancel: { fontSize: FontSize.sm, color: C.muted },
+    iosPickerTitle: {
+      fontSize: FontSize.md,
       fontWeight: "700",
-      fontSize: FontSize.sm,
+      color: C.white,
     },
+    iosPickerDone: { fontSize: FontSize.sm, color: C.brand, fontWeight: "700" },
     myLocText: { fontSize: FontSize.xs, color: C.brand, fontWeight: "600" },
     bottomFixed: {
       paddingHorizontal: Spacing.lg,

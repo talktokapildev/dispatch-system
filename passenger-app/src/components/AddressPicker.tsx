@@ -106,10 +106,8 @@ export default function AddressPicker({
 
   return (
     <View style={s.wrapper}>
-      <Text style={s.label}>
-        {icon} {label}
-      </Text>
       <View style={[s.inputRow, focused && { borderColor: Colors.brand }]}>
+        <Text style={s.inlineIcon}>{icon}</Text>
         <TextInput
           style={s.input}
           value={query}
@@ -126,6 +124,7 @@ export default function AddressPicker({
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
+          accessibilityLabel={label}
         />
         {loading && (
           <ActivityIndicator
@@ -179,12 +178,6 @@ const styles = (
 ) =>
   StyleSheet.create({
     wrapper: { marginBottom: Spacing.sm },
-    label: {
-      fontSize: FontSize.xs,
-      color: C.muted,
-      marginBottom: 6,
-      fontWeight: "600",
-    },
     inputRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -192,7 +185,11 @@ const styles = (
       borderWidth: 1,
       borderColor: C.border,
       borderRadius: Radius.md,
-      paddingLeft: Spacing.md,
+      paddingLeft: Spacing.sm,
+    },
+    inlineIcon: {
+      fontSize: FontSize.md,
+      marginRight: Spacing.xs,
     },
     input: {
       flex: 1,

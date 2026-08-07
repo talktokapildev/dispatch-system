@@ -12,6 +12,7 @@ import {
   AppState,
   Linking,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, useAuthStore } from "../lib/api";
 import { getSocket, initSocket } from "../lib/socket";
 import { FontSize, Spacing, Radius } from "../lib/theme";
@@ -52,6 +53,7 @@ export default function TrackingScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { settings } = useOperatorSettings();
   const { token } = useAuthStore();
+  const insets = useSafeAreaInsets();
   const { bookingId, booking: initialBooking, totalFare } = route.params;
 
   const [booking, setBooking] = useState<any>(initialBooking ?? null);
@@ -60,6 +62,9 @@ export default function TrackingScreen({ route, navigation }: any) {
     longitude: number;
   } | null>(null);
   const [routeCoords, setRouteCoords] = useState<
+    { latitude: number; longitude: number }[]
+  >([]);
+  const [previewRouteCoords, setPreviewRouteCoords] = useState<
     { latitude: number; longitude: number }[]
   >([]);
   const [loading, setLoading] = useState(!initialBooking);
@@ -87,10 +92,16 @@ export default function TrackingScreen({ route, navigation }: any) {
 
   // The passenger should always be able to leave this screen — Ride
   // History is the way back in for any active booking, regardless of
-  // ride type or urgency.
+  // ride type or urgency. Use goBack() (not navigate) so the native
+  // fullScreenModal dismiss animation runs and reveals the *existing*
+  // Main screen underneath, rather than pushing a duplicate on top of it.
   const handleBackToHome = () => {
     const rootNav = navigation.getParent() ?? navigation;
-    rootNav.navigate("Main");
+    if (rootNav.canGoBack()) {
+      rootNav.goBack();
+    } else {
+      rootNav.reset({ index: 0, routes: [{ name: "Main" }] });
+    }
   };
 
   // ── Socket setup ──────────────────────────────────────────────────────────
@@ -246,6 +257,30 @@ export default function TrackingScreen({ route, navigation }: any) {
       if (animIntervalRef.current) clearInterval(animIntervalRef.current);
     };
   }, []);
+
+  // Before a driver is actively en route (no live routeCoords yet), show
+  // the planned pickup→dropoff route as context — otherwise the map is
+  // just a lone pickup pin with nothing else, which isn't useful,
+  // especially for a scheduled booking sitting unclaimed for days.
+  useEffect(() => {
+    if (!booking?.pickupLatitude || !booking?.dropoffLatitude) return;
+    if (routeCoords.length > 1) return; // live route already available
+    const fetchPreviewRoute = async () => {
+      try {
+        const { data } = await api.get("/maps/directions", {
+          params: {
+            originLat: booking.pickupLatitude,
+            originLng: booking.pickupLongitude,
+            destLat: booking.dropoffLatitude,
+            destLng: booking.dropoffLongitude,
+          },
+        });
+        const polyline = data?.data?.polyline;
+        if (polyline) setPreviewRouteCoords(decodePolyline(polyline));
+      } catch {}
+    };
+    fetchPreviewRoute();
+  }, [booking?.pickupLatitude, booking?.dropoffLatitude, routeCoords.length]);
 
   const fetchBooking = async () => {
     try {
@@ -453,19 +488,29 @@ export default function TrackingScreen({ route, navigation }: any) {
           latitude: booking?.pickupLatitude,
           longitude: booking?.pickupLongitude,
         }}
-        dropoff={
-          status === "IN_PROGRESS"
-            ? {
-                latitude: booking?.dropoffLatitude,
-                longitude: booking?.dropoffLongitude,
-              }
+        dropoff={{
+          latitude: booking?.dropoffLatitude,
+          longitude: booking?.dropoffLongitude,
+        }}
+        routeCoords={
+          routeCoords.length > 1
+            ? routeCoords
+            : previewRouteCoords.length > 1
+            ? previewRouteCoords
             : undefined
         }
-        routeCoords={routeCoords.length > 1 ? routeCoords : undefined}
         stage="tracking"
         bottomPadding={SHEET_COLLAPSED + 20}
         driverName={driver?.user?.firstName}
       />
+
+      {/* Home — floating, top-left, Uber-style return-to-booking affordance */}
+      <TouchableOpacity
+        style={[s.floatingHomeBtn, { top: insets.top + Spacing.sm }]}
+        onPress={handleBackToHome}
+      >
+        <Text style={s.floatingHomeIcon}>🏠</Text>
+      </TouchableOpacity>
 
       {/* Waiting overlay when no driver yet */}
       {status === "PENDING" && (
@@ -518,10 +563,6 @@ export default function TrackingScreen({ route, navigation }: any) {
                 </View>
               </View>
             )}
-        </TouchableOpacity>
-
-        <TouchableOpacity style={s.homeBtn} onPress={handleBackToHome}>
-          <Text style={s.homeBtnText}>← Back to Home</Text>
         </TouchableOpacity>
 
         {/* Reference + cancel */}
@@ -628,6 +669,23 @@ const styles = (
 ) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: C.bg },
+    floatingHomeBtn: {
+      position: "absolute",
+      left: Spacing.lg,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: C.card,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 6,
+      elevation: 6,
+      zIndex: 10,
+    },
+    floatingHomeIcon: { fontSize: 18 },
     waitingOverlay: {
       position: "absolute",
       top: "38%",
@@ -665,17 +723,6 @@ const styles = (
       paddingTop: Spacing.sm,
       paddingHorizontal: Spacing.lg,
       paddingBottom: Spacing.xs,
-    },
-    homeBtn: {
-      marginHorizontal: Spacing.lg,
-      marginBottom: Spacing.sm,
-      alignItems: "center",
-      paddingVertical: Spacing.xs,
-    },
-    homeBtnText: {
-      fontSize: FontSize.sm,
-      color: C.muted,
-      fontWeight: "600",
     },
     handle: {
       width: 40,
