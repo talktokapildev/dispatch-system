@@ -22,6 +22,7 @@ import JobCompleteScreen from "./src/screens/JobCompleteScreen";
 import DocumentsScreen from "./src/screens/DocumentsScreen";
 import JobHistoryScreen from "./src/screens/JobHistoryScreen";
 import JobBoardScreen from "./src/screens/JobBoardScreen";
+import JobDetailScreen from "./src/screens/JobDetailScreen";
 import LocationDisclosureScreen, {
   DISCLOSURE_ACCEPTED_KEY,
 } from "./src/screens/LocationDisclosureScreen";
@@ -234,6 +235,15 @@ function AppNavigator() {
                 name="JobBoard"
                 component={JobBoardScreen}
                 options={{}}
+              />
+              <Stack.Screen
+                name="JobDetail"
+                component={JobDetailScreen}
+                options={{
+                  presentation: "fullScreenModal",
+                  gestureEnabled: true,
+                  animation: "slide_from_bottom",
+                }}
               />
               <Stack.Screen
                 name="TeslaSettings"

@@ -563,6 +563,29 @@ export default function TrackingScreen({ route, navigation }: any) {
                 </View>
               </View>
             )}
+
+          {booking?.scheduledAt &&
+            ["SCHEDULED_OPEN", "CONFIRMED", "DRIVER_ASSIGNED"].includes(
+              status
+            ) && (
+              <View style={s.etaRow}>
+                <View style={s.scheduledPill}>
+                  <Text style={s.scheduledText}>
+                    📅{" "}
+                    {new Date(booking.scheduledAt).toLocaleDateString("en-GB", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}{" "}
+                    ·{" "}
+                    {new Date(booking.scheduledAt).toLocaleTimeString("en-GB", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </View>
+              </View>
+            )}
         </TouchableOpacity>
 
         {/* Reference + cancel */}
@@ -836,6 +859,16 @@ const styles = (
       paddingVertical: 4,
       backgroundColor: "transparent",
     },
+    scheduledPill: {
+      alignSelf: "flex-start",
+      borderWidth: 1,
+      borderColor: C.brand + "50",
+      backgroundColor: C.brand + "10",
+      borderRadius: Radius.lg,
+      paddingHorizontal: Spacing.md,
+      paddingVertical: 4,
+    },
+    scheduledText: { fontSize: FontSize.sm, fontWeight: "700", color: C.brand },
     etaText: {
       fontSize: FontSize.sm,
       fontWeight: "700",

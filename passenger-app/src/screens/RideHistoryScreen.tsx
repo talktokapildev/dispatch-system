@@ -310,7 +310,12 @@ export default function RideHistoryScreen({ navigation }: any) {
 
               <View style={s.cardBottom}>
                 <Text style={s.date}>
-                  {format(new Date(item.createdAt), "dd MMM yyyy · HH:mm")}
+                  {item.scheduledAt
+                    ? `📅 ${format(
+                        new Date(item.scheduledAt),
+                        "dd MMM yyyy · HH:mm"
+                      )}`
+                    : format(new Date(item.createdAt), "dd MMM yyyy · HH:mm")}
                 </Text>
                 {fare > 0 && <Text style={s.fare}>£{fare.toFixed(2)}</Text>}
               </View>

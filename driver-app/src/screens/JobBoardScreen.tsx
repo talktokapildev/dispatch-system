@@ -38,6 +38,7 @@ interface ScheduledJob {
   flightNumber?: string;
   terminal?: string;
   canStart?: boolean;
+  status?: string;
 }
 
 type Tab = "open" | "claimed";
@@ -249,7 +250,12 @@ export default function JobBoardScreen({ navigation, route }: any) {
           renderItem={({ item }) => {
             const isBusy = busyId === item.id;
             return (
-              <View style={s.jobCard}>
+              <TouchableOpacity
+                style={s.jobCard}
+                activeOpacity={tab === "claimed" ? 0.8 : 1}
+                disabled={tab !== "claimed"}
+                onPress={() => navigation.navigate("JobDetail", { job: item })}
+              >
                 <View style={s.jobTop}>
                   <View style={s.typeBadge}>
                     <Text style={s.typeText}>
@@ -328,7 +334,7 @@ export default function JobBoardScreen({ navigation, route }: any) {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
