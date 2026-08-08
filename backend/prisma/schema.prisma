@@ -556,10 +556,17 @@ model Receipt {
 model PricingConfig {
   id String @id @default(uuid())
 
-  baseFare    Float @default(3.50)
-  perMile     Float @default(1.80)
+  baseFare    Float @default(2.00)
   perMinute   Float @default(0.20)
-  minimumFare Float @default(15.00)
+  minimumFare Float @default(10.00)
+
+  // Tiered distance pricing (blended/progressive — replaces the old flat
+  // perMile rate). Miles up to tierThresholdMiles are charged at
+  // perMileFirstTier; any miles beyond that are charged at
+  // perMileAfterTier. Same rate applies to ASAP and Scheduled bookings.
+  perMileFirstTier   Float @default(2.00)
+  perMileAfterTier   Float @default(1.80)
+  tierThresholdMiles Float @default(20)
 
   platformCommission Float @default(0.15)
 

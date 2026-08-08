@@ -19,7 +19,9 @@ import toast from "react-hot-toast";
 
 interface PricingConfig {
   baseFare: number;
-  perMile: number;
+  perMileFirstTier: number;
+  perMileAfterTier: number;
+  tierThresholdMiles: number;
   perMinute: number;
   minimumFare: number;
   platformCommission: number;
@@ -626,11 +628,27 @@ export function PricingSection() {
                 hint="Charged on every booking"
               />
               <Field
-                label="Per mile"
-                value={config.perMile}
-                onChange={(v) => update("perMile", v)}
+                label="Per mile (first tier)"
+                value={config.perMileFirstTier}
+                onChange={(v) => update("perMileFirstTier", v)}
                 prefix="£"
                 suffix="/mile"
+                hint="Rate for miles up to the threshold"
+              />
+              <Field
+                label="Per mile (after tier)"
+                value={config.perMileAfterTier}
+                onChange={(v) => update("perMileAfterTier", v)}
+                prefix="£"
+                suffix="/mile"
+                hint="Rate for miles beyond the threshold"
+              />
+              <Field
+                label="Tier threshold"
+                value={config.tierThresholdMiles}
+                onChange={(v) => update("tierThresholdMiles", v)}
+                suffix="miles"
+                hint="Distance at which the lower rate kicks in"
               />
               <Field
                 label="Per minute"

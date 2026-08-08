@@ -90,10 +90,12 @@ const UK_BANK_HOLIDAYS = new Set([
 const CHRISTMAS_NYE_DATES = new Set(["12-24", "12-25", "12-26", "12-31"]);
 
 const DEFAULT_CONFIG = {
-  baseFare: 3.5,
-  perMile: 1.8,
+  baseFare: 2.0,
+  perMileFirstTier: 2.0,
+  perMileAfterTier: 1.8,
+  tierThresholdMiles: 20,
   perMinute: 0.2,
-  minimumFare: 15.0,
+  minimumFare: 10.0,
   platformCommission: 0.15,
   nightPremium: 0.25,
   nightStartHour: 23,
@@ -229,17 +231,20 @@ export class PricingService {
     const supplements: { label: string; amount: number }[] = [];
 
     // Base components
+    // Base components
     const baseFare = cfg.baseFare;
-    const distanceCharge = round2(input.distanceMiles * cfg.perMile);
+    const { charge: distanceCharge, breakdownLine: distanceBreakdownLine } =
+      calculateDistanceCharge(
+        input.distanceMiles,
+        cfg.perMileFirstTier,
+        cfg.perMileAfterTier,
+        cfg.tierThresholdMiles
+      );
     const timeCharge = round2(input.durationMinutes * cfg.perMinute);
     const subtotal = round2(baseFare + distanceCharge + timeCharge);
 
     breakdown.push(`Base fare: £${baseFare.toFixed(2)}`);
-    breakdown.push(
-      `Distance (${input.distanceMiles.toFixed(1)} mi × £${
-        cfg.perMile
-      }/mi): £${distanceCharge.toFixed(2)}`
-    );
+    breakdown.push(distanceBreakdownLine);
     breakdown.push(
       `Time (${input.durationMinutes} min × £${
         cfg.perMinute
@@ -474,6 +479,36 @@ function round2(n: number): number {
 }
 function pct(d: number): string {
   return `${Math.round(d * 100)}%`;
+}
+
+function calculateDistanceCharge(
+  miles: number,
+  firstTierRate: number,
+  afterTierRate: number,
+  thresholdMiles: number
+): { charge: number; breakdownLine: string } {
+  if (miles <= thresholdMiles) {
+    const charge = round2(miles * firstTierRate);
+    return {
+      charge,
+      breakdownLine: `Distance (${miles.toFixed(
+        1
+      )} mi × £${firstTierRate}/mi): £${charge.toFixed(2)}`,
+    };
+  }
+  const firstMiles = thresholdMiles;
+  const remainingMiles = round2(miles - thresholdMiles);
+  const charge = round2(
+    firstMiles * firstTierRate + remainingMiles * afterTierRate
+  );
+  return {
+    charge,
+    breakdownLine: `Distance (${firstMiles.toFixed(
+      1
+    )} mi × £${firstTierRate} + ${remainingMiles.toFixed(
+      1
+    )} mi × £${afterTierRate}): £${charge.toFixed(2)}`,
+  };
 }
 function addSupplement(
   s: { label: string; amount: number }[],
