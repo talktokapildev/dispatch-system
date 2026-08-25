@@ -8,6 +8,8 @@
 // DELETE /api/v1/admin/driver-applications/:id/permanent    — hard delete (requires name confirmation)
 
 import { FastifyInstance } from "fastify";
+// Add near the top with the other imports:
+import { getFaceCroppedUrl } from "../../utils/cloudinaryFaceCrop";
 
 async function sendSms(fastify: FastifyInstance, to: string, body: string) {
   try {
@@ -124,7 +126,10 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       });
       if (!application)
         return reply.status(404).send({ error: "Application not found" });
-      return reply.status(200).send({ application });
+
+      const suggestedPhotoUrl = getFaceCroppedUrl(application.docPcoBadge);
+
+      return reply.status(200).send({ application, suggestedPhotoUrl });
     }
   );
 

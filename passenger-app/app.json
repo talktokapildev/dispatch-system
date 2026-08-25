@@ -3,7 +3,7 @@
     "name": "OrangeRide",
     "newArchEnabled": false,
     "slug": "orangeride-passenger",
-    "version": "1.0.7",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.passenger",
-      "buildNumber": "3",
+      "buildNumber": "7",
       "entitlements": {
         "com.apple.developer.in-app-payments": [
           "merchant.com.orangeride.passenger"
@@ -42,7 +42,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.passenger",
-      "versionCode": 13,
+      "versionCode": 15,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -63,6 +63,7 @@
       ],
       "expo-secure-store",
       "expo-notifications",
+      "@react-native-community/datetimepicker",
       [
         "@stripe/stripe-react-native",
         {

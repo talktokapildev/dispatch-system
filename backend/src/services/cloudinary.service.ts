@@ -34,7 +34,8 @@ export type CloudinaryFolder =
   | "driver-applications/insurance"
   | "driver-applications/mot"
   | "driver-applications/dbs-check"
-  | "driver-applications/v5c-logbook";
+  | "driver-applications/v5c-logbook"
+  | "drivers/profile-photos";
 
 export interface CloudinaryUploadResult {
   url: string;

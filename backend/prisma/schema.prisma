@@ -255,6 +255,7 @@ model Driver {
   pcoLicenseExpiry     DateTime
   drivingLicenseNumber String
   status               DriverStatus @default(OFFLINE)
+  photoUrl             String?      
   currentLatitude      Float?
   currentLongitude     Float?
   currentBearing       Float?
