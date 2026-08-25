@@ -9,7 +9,8 @@ import {
 import { RedisKeys } from "../plugins/redis";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
-import { NotificationService } from "../services/notification.service"; // ← NEW
+import { NotificationService } from "../services/notification.service";
+import { uploadToCloudinary } from "../services/cloudinary.service";
 import { SocketEvent } from "../types";
 
 const locationSchema = z.object({
@@ -1242,6 +1243,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
   );
 
   // ─── Driver: upload document ───
+  // ─── Driver: upload document ───
   fastify.post(
     "/drivers/documents",
     { preHandler: [fastify.authenticateDriver] },
@@ -1256,16 +1258,34 @@ export async function driverRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "Driver not found" });
 
       let type: string | null = null;
-      let fileUrl: string = `uploads/placeholder_${Date.now()}.jpg`;
+      let fileUrl: string | null = null;
 
       for await (const part of request.parts()) {
         if (part.type === "field" && part.fieldname === "type") {
           type = part.value as string;
         } else if (part.type === "file") {
-          await part.toBuffer();
-          fileUrl = `uploads/${driver.id}/${
-            part.filename ?? type
-          }_${Date.now()}.jpg`;
+          const buffer = await part.toBuffer();
+          const base64DataUri = `data:${part.mimetype};base64,${buffer.toString(
+            "base64"
+          )}`;
+
+          try {
+            const uploadResult = await uploadToCloudinary(
+              base64DataUri,
+              "drivers/documents",
+              driver.id
+            );
+            fileUrl = uploadResult.url;
+          } catch (err: any) {
+            fastify.log.error(
+              { err },
+              "Cloudinary upload failed for driver document"
+            );
+            return reply.status(500).send({
+              success: false,
+              error: "Document upload failed. Please try again.",
+            });
+          }
         }
       }
 
@@ -1273,6 +1293,11 @@ export async function driverRoutes(fastify: FastifyInstance) {
         return reply
           .status(400)
           .send({ success: false, error: "Document type is required" });
+
+      if (!fileUrl)
+        return reply
+          .status(400)
+          .send({ success: false, error: "A document file is required" });
 
       if (!Object.values(DocumentType).includes(type as DocumentType))
         return reply
