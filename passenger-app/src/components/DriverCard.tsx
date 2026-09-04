@@ -2,6 +2,7 @@ import React from "react";
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   StyleSheet,
   Linking,
@@ -16,6 +17,7 @@ interface DriverCardProps {
     phone?: string;
     pcoBadgeNumber?: string;
     rating?: number;
+    photoUrl?: string;
     vehicle?: {
       make?: string;
       model?: string;
@@ -46,7 +48,15 @@ export default function DriverCard({ driver }: DriverCardProps) {
       {/* Avatar + name */}
       <View style={s.row}>
         <View style={s.avatar}>
-          <Text style={s.avatarText}>{initials}</Text>
+          {driver.photoUrl ? (
+            <Image
+              source={{ uri: driver.photoUrl }}
+              style={s.avatarImage}
+              accessibilityLabel={`${driver.firstName ?? "Driver"}'s photo`}
+            />
+          ) : (
+            <Text style={s.avatarText}>{initials}</Text>
+          )}
         </View>
         <View style={s.info}>
           <Text style={s.name}>
@@ -114,6 +124,12 @@ const styles = (
       borderColor: C.brand + "40",
       alignItems: "center",
       justifyContent: "center",
+      overflow: "hidden",
+    },
+    avatarImage: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
     },
     avatarText: { color: C.brand, fontWeight: "800", fontSize: FontSize.lg },
     info: { flex: 1 },
