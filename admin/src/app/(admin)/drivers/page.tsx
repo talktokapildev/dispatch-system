@@ -89,8 +89,8 @@ export default function DriversPage() {
 
   const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
   const [zoom, setZoom] = useState(0.7); // Cloudinary z_ crop tightness
-  const [offsetX, setOffsetX] = useState(0); // Cloudinary x_ (relative, -0.3..0.3)
-  const [offsetY, setOffsetY] = useState(0); // Cloudinary y_ (relative, -0.3..0.3)
+  const [offsetX, setOffsetX] = useState(0); // Cloudinary x_ (pixels, -100..100)
+  const [offsetY, setOffsetY] = useState(0); // Cloudinary y_ (pixels, -100..100)
   const [replacingPhoto, setReplacingPhoto] = useState(false);
   const [uploadMode, setUploadMode] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
@@ -108,8 +108,9 @@ export default function DriversPage() {
   // Builds the crop transform fresh from the raw badge URL, rather than
   // editing the backend's fixed suggestion — gives us full control over
   // rotation, zoom, and recentring without fighting a baked-in transform.
-  // x_/y_ with fl_relative shift the crop centre relative to the detected
-  // face position, as a fraction of the crop dimensions.
+  // x_/y_ are plain pixel offsets from the g_face-detected centre —
+  // Cloudinary rejects fl_relative in combination with g_face+c_thumb (400),
+  // confirmed by direct testing, so we don't use it.
   function buildPhotoUrl(
     badgeUrl: string,
     deg: number,
@@ -122,10 +123,7 @@ export default function DriversPage() {
     if (idx === -1) return badgeUrl;
     const insertAt = idx + marker.length;
     const rotationSeg = deg ? `a_${deg}/` : "";
-    const offsetSeg =
-      x !== 0 || y !== 0
-        ? `,x_${x.toFixed(2)},y_${y.toFixed(2)},fl_relative`
-        : "";
+    const offsetSeg = x !== 0 || y !== 0 ? `,x_${x},y_${y}` : "";
     const cropSeg = `w_400,h_400,c_thumb,g_face,z_${z}${offsetSeg}/`;
     return (
       badgeUrl.slice(0, insertAt) +
@@ -1108,16 +1106,18 @@ export default function DriversPage() {
                         <span>Horizontal position</span>
                         <span>
                           {offsetX > 0 ? "+" : ""}
-                          {offsetX.toFixed(2)}
+                          {offsetX}px
                         </span>
                       </label>
                       <input
                         type="range"
-                        min={-0.3}
-                        max={0.3}
-                        step={0.02}
+                        min={-100}
+                        max={100}
+                        step={5}
                         value={offsetX}
-                        onChange={(e) => setOffsetX(parseFloat(e.target.value))}
+                        onChange={(e) =>
+                          setOffsetX(parseInt(e.target.value, 10))
+                        }
                         className="w-full accent-brand-500"
                       />
                     </div>
@@ -1127,16 +1127,18 @@ export default function DriversPage() {
                         <span>Vertical position</span>
                         <span>
                           {offsetY > 0 ? "+" : ""}
-                          {offsetY.toFixed(2)}
+                          {offsetY}px
                         </span>
                       </label>
                       <input
                         type="range"
-                        min={-0.3}
-                        max={0.3}
-                        step={0.02}
+                        min={-100}
+                        max={100}
+                        step={5}
                         value={offsetY}
-                        onChange={(e) => setOffsetY(parseFloat(e.target.value))}
+                        onChange={(e) =>
+                          setOffsetY(parseInt(e.target.value, 10))
+                        }
                         className="w-full accent-brand-500"
                       />
                     </div>
