@@ -11,6 +11,9 @@ import {
   Trash2,
   FileText,
   ExternalLink,
+  RotateCw,
+  RotateCcw,
+  CheckCircle,
 } from "lucide-react";
 import {
   DriverBadge,
@@ -19,6 +22,9 @@ import {
   Spinner,
   Modal,
 } from "@/components/ui";
+
+import { useEffect } from "react";
+import toast from "react-hot-toast";
 
 const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE", "ARCHIVED"];
 const VEHICLE_CLASSES = ["STANDARD", "EXECUTIVE", "MPV", "MINIBUS"];
@@ -80,6 +86,23 @@ export default function DriversPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
 
+  const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
+  const [replacingPhoto, setReplacingPhoto] = useState(false);
+
+  useEffect(() => {
+    setRotation(0);
+    setReplacingPhoto(false);
+  }, [selected?.id]);
+
+  function withRotation(url: string, deg: number) {
+    if (!deg) return url;
+    const marker = "/upload/";
+    const idx = url.indexOf(marker);
+    if (idx === -1) return url;
+    const insertAt = idx + marker.length;
+    return url.slice(0, insertAt) + `a_${deg}/` + url.slice(insertAt);
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ["drivers", status],
     queryFn: () =>
@@ -97,6 +120,29 @@ export default function DriversPage() {
       api
         .get("/admin/drivers/documents/expiring", { params: { days: 60 } })
         .then((r) => r.data.data),
+  });
+
+  const { data: suggestedPhoto, isLoading: suggestedLoading } = useQuery({
+    queryKey: ["suggested-photo", selected?.id],
+    queryFn: () =>
+      api
+        .get(`/admin/drivers/${selected.id}/suggested-photo`)
+        .then((r) => r.data),
+    enabled: !!selected?.id && !selected?.photoUrl,
+    retry: false,
+  });
+
+  const confirmPhoto = useMutation({
+    mutationFn: (photoUrl: string) =>
+      api.patch(`/admin/drivers/${selected.id}/photo`, { photoUrl }),
+    onSuccess: (_res, photoUrl) => {
+      toast.success("Profile photo updated");
+      setSelected((s: any) => (s ? { ...s, photoUrl } : s));
+      setReplacingPhoto(false);
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error ?? "Failed to save photo"),
   });
 
   // ── Fetch documents for the selected driver ──────────────────────────────
@@ -869,6 +915,108 @@ export default function DriversPage() {
                 <p className="text-xs text-[var(--text)] font-medium">
                   {selected.totalJobs}
                 </p>
+              </div>
+            </div>
+
+            {/* Profile Photo */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">
+                  Profile Photo
+                </p>
+                {selected.photoUrl && !replacingPhoto && (
+                  <span className="text-[10px] text-green-400 font-medium">
+                    ✓ Live on passenger app
+                  </span>
+                )}
+              </div>
+              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]">
+                {selected.photoUrl && !replacingPhoto ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={selected.photoUrl}
+                      alt="Driver profile"
+                      className="w-16 h-16 rounded-full object-cover border border-[var(--border)]"
+                    />
+                    <button
+                      onClick={() => setReplacingPhoto(true)}
+                      className="text-[11px] text-brand-400 hover:text-brand-300"
+                    >
+                      Replace photo
+                    </button>
+                  </div>
+                ) : suggestedLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Spinner size={16} />
+                  </div>
+                ) : suggestedPhoto?.suggestedPhotoUrl ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={withRotation(
+                          suggestedPhoto.suggestedPhotoUrl,
+                          rotation
+                        )}
+                        alt="Suggested crop"
+                        className="w-24 h-24 rounded-full object-cover border border-[var(--border)]"
+                      />
+                      <div className="flex-1 space-y-2">
+                        <p className="text-[11px] text-slate-400">
+                          Auto-cropped from PCO badge — review before
+                          publishing.
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setRotation((r) => (r + 270) % 360)}
+                            className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
+                            title="Rotate left"
+                          >
+                            <RotateCcw size={13} />
+                          </button>
+                          <button
+                            onClick={() => setRotation((r) => (r + 90) % 360)}
+                            className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
+                            title="Rotate right"
+                          >
+                            <RotateCw size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() =>
+                        confirmPhoto.mutate(
+                          withRotation(
+                            suggestedPhoto.suggestedPhotoUrl,
+                            rotation
+                          )
+                        )
+                      }
+                      disabled={confirmPhoto.isPending}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-xs font-medium transition-all disabled:opacity-50"
+                    >
+                      {confirmPhoto.isPending ? (
+                        <Spinner size={13} />
+                      ) : (
+                        <CheckCircle size={13} />
+                      )}
+                      Confirm & Publish to Passenger App
+                    </button>
+                    {replacingPhoto && (
+                      <button
+                        onClick={() => setReplacingPhoto(false)}
+                        className="w-full text-[11px] text-slate-500 hover:text-slate-300"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    No approved PCO badge on file — approve one in Documents to
+                    generate a suggested photo.
+                  </p>
+                )}
               </div>
             </div>
 
