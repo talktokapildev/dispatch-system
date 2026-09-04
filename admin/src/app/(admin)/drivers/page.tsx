@@ -24,7 +24,7 @@ import {
   Modal,
 } from "@/components/ui";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 
 const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE", "ARCHIVED"];
@@ -87,50 +87,153 @@ export default function DriversPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
 
+  // ── Profile photo cropper state ────────────────────────────────────────
+  // We build the final crop entirely client-side (canvas) rather than via
+  // Cloudinary URL params — Cloudinary silently ignores x_/y_ offsets when
+  // combined with g_face+c_thumb on this plan (confirmed by direct testing:
+  // it serves the raw, untransformed image instead of erroring), so
+  // server-side repositioning isn't reliable. The exported canvas image is
+  // uploaded through the same base64 `image` path used for manual uploads.
+  const PREVIEW_SIZE = 240; // on-screen cropper canvas, px
+  const OUTPUT_SIZE = 400; // exported photo size, px
+
   const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
-  const [zoom, setZoom] = useState(0.7); // Cloudinary z_ crop tightness
-  const [offsetX, setOffsetX] = useState(0); // Cloudinary x_ (pixels, -100..100)
-  const [offsetY, setOffsetY] = useState(0); // Cloudinary y_ (pixels, -100..100)
+  const [cropZoom, setCropZoom] = useState(1.2); // multiplier on top of "cover" scale
+  const [pan, setPan] = useState({ x: 0, y: 0 }); // px, in PREVIEW_SIZE space
+  const [imgLoaded, setImgLoaded] = useState(false);
   const [replacingPhoto, setReplacingPhoto] = useState(false);
   const [uploadMode, setUploadMode] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
 
+  const cropImgRef = useRef<HTMLImageElement | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragStateRef = useRef<{
+    dragging: boolean;
+    startX: number;
+    startY: number;
+    panStartX: number;
+    panStartY: number;
+  }>({ dragging: false, startX: 0, startY: 0, panStartX: 0, panStartY: 0 });
+
   useEffect(() => {
     setRotation(0);
-    setZoom(0.7);
-    setOffsetX(0);
-    setOffsetY(0);
+    setCropZoom(1.2);
+    setPan({ x: 0, y: 0 });
+    setImgLoaded(false);
+    cropImgRef.current = null;
     setReplacingPhoto(false);
     setUploadMode(false);
     setUploadPreview(null);
   }, [selected?.id]);
 
-  // Builds the crop transform fresh from the raw badge URL, rather than
-  // editing the backend's fixed suggestion — gives us full control over
-  // rotation, zoom, and recentring without fighting a baked-in transform.
-  // x_/y_ are plain pixel offsets from the g_face-detected centre —
-  // Cloudinary rejects fl_relative in combination with g_face+c_thumb (400),
-  // confirmed by direct testing, so we don't use it.
-  function buildPhotoUrl(
-    badgeUrl: string,
-    deg: number,
-    z: number,
-    x: number,
-    y: number
+  function computeBaseScale(
+    canvasSize: number,
+    naturalW: number,
+    naturalH: number,
+    deg: number
   ) {
-    const marker = "/upload/";
-    const idx = badgeUrl.indexOf(marker);
-    if (idx === -1) return badgeUrl;
-    const insertAt = idx + marker.length;
-    const rotationSeg = deg ? `a_${deg}/` : "";
-    const offsetSeg = x !== 0 || y !== 0 ? `,x_${x},y_${y}` : "";
-    const cropSeg = `w_400,h_400,c_thumb,g_face,z_${z}${offsetSeg}/`;
-    return (
-      badgeUrl.slice(0, insertAt) +
-      rotationSeg +
-      cropSeg +
-      badgeUrl.slice(insertAt)
+    const swapped = deg === 90 || deg === 270;
+    const w = swapped ? naturalH : naturalW;
+    const h = swapped ? naturalW : naturalH;
+    return Math.max(canvasSize / w, canvasSize / h);
+  }
+
+  function drawFrame(
+    ctx: CanvasRenderingContext2D,
+    canvasSize: number,
+    img: HTMLImageElement,
+    deg: number,
+    zoomMultiplier: number,
+    panPx: { x: number; y: number },
+    panSpaceSize: number
+  ) {
+    const baseScale = computeBaseScale(
+      canvasSize,
+      img.naturalWidth,
+      img.naturalHeight,
+      deg
     );
+    const scale = baseScale * zoomMultiplier;
+    const panRatio = canvasSize / panSpaceSize;
+
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    ctx.save();
+    // Circular clip, fixed to canvas — independent of image transform below
+    ctx.beginPath();
+    ctx.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.translate(
+      canvasSize / 2 + panPx.x * panRatio,
+      canvasSize / 2 + panPx.y * panRatio
+    );
+    ctx.rotate((deg * Math.PI) / 180);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    ctx.restore();
+  }
+
+  // Redraw the live preview whenever any crop param changes
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    const img = cropImgRef.current;
+    if (!canvas || !img || !imgLoaded) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    drawFrame(ctx, PREVIEW_SIZE, img, rotation, cropZoom, pan, PREVIEW_SIZE);
+  }, [rotation, cropZoom, pan, imgLoaded]);
+
+  // Load the raw badge image into an offscreen Image element once we have
+  // a suggested-photo URL and no manual upload is in progress.
+  function loadCropImage(badgeUrl: string) {
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // required so the canvas isn't "tainted"
+    img.onload = () => {
+      cropImgRef.current = img;
+      setImgLoaded(true);
+    };
+    img.onerror = () => {
+      toast.error(
+        "Couldn't load the badge image for cropping — try uploading manually instead."
+      );
+    };
+    img.src = badgeUrl;
+  }
+
+  function exportCroppedPhoto(): string | null {
+    const img = cropImgRef.current;
+    if (!img) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = OUTPUT_SIZE;
+    canvas.height = OUTPUT_SIZE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    drawFrame(ctx, OUTPUT_SIZE, img, rotation, cropZoom, pan, PREVIEW_SIZE);
+    return canvas.toDataURL("image/jpeg", 0.9);
+  }
+
+  function onDragStart(clientX: number, clientY: number) {
+    dragStateRef.current = {
+      dragging: true,
+      startX: clientX,
+      startY: clientY,
+      panStartX: pan.x,
+      panStartY: pan.y,
+    };
+  }
+
+  function onDragMove(clientX: number, clientY: number) {
+    if (!dragStateRef.current.dragging) return;
+    const dx = clientX - dragStateRef.current.startX;
+    const dy = clientY - dragStateRef.current.startY;
+    setPan({
+      x: dragStateRef.current.panStartX + dx,
+      y: dragStateRef.current.panStartY + dy,
+    });
+  }
+
+  function onDragEnd() {
+    dragStateRef.current.dragging = false;
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -170,12 +273,19 @@ export default function DriversPage() {
     retry: false,
   });
 
+  // Once the suggested badge URL arrives, load it into the cropper
+  useEffect(() => {
+    if (suggestedPhoto?.badgeUrl && !uploadMode) {
+      loadCropImage(suggestedPhoto.badgeUrl);
+    }
+  }, [suggestedPhoto?.badgeUrl, uploadMode]);
+
   const savePhoto = useMutation({
     mutationFn: (payload: { photoUrl?: string; image?: string }) =>
       api.patch(`/admin/drivers/${selected.id}/photo`, payload),
-    onSuccess: (res, payload) => {
+    onSuccess: (res) => {
       toast.success("Profile photo updated");
-      const finalUrl = res?.data?.photoUrl ?? payload.photoUrl;
+      const finalUrl = res?.data?.photoUrl;
       setSelected((s: any) => (s ? { ...s, photoUrl: finalUrl } : s));
       setReplacingPhoto(false);
       setUploadMode(false);
@@ -1049,125 +1159,99 @@ export default function DriversPage() {
                   </div>
                 ) : suggestedPhoto?.badgeUrl ? (
                   <div className="space-y-3">
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={buildPhotoUrl(
-                          suggestedPhoto.badgeUrl,
-                          rotation,
-                          zoom,
-                          offsetX,
-                          offsetY
-                        )}
-                        alt="Suggested crop"
-                        className="w-24 h-24 rounded-full object-cover border border-[var(--border)]"
-                      />
-                      <div className="flex-1 space-y-2">
-                        <p className="text-[11px] text-slate-400">
-                          Auto-cropped from PCO badge — review before
-                          publishing.
-                        </p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setRotation((r) => (r + 270) % 360)}
-                            className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
-                            title="Rotate left"
-                          >
-                            <RotateCcw size={13} />
-                          </button>
-                          <button
-                            onClick={() => setRotation((r) => (r + 90) % 360)}
-                            className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
-                            title="Rotate right"
-                          >
-                            <RotateCw size={13} />
-                          </button>
+                    <p className="text-[11px] text-slate-400">
+                      Auto-cropped from PCO badge — drag to reposition, then
+                      review before publishing.
+                    </p>
+
+                    <div className="flex justify-center">
+                      {!imgLoaded ? (
+                        <div
+                          style={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE }}
+                          className="flex items-center justify-center rounded-full bg-slate-800/50"
+                        >
+                          <Spinner size={18} />
                         </div>
-                      </div>
+                      ) : (
+                        <canvas
+                          ref={previewCanvasRef}
+                          width={PREVIEW_SIZE}
+                          height={PREVIEW_SIZE}
+                          className="rounded-full border border-[var(--border)] cursor-grab active:cursor-grabbing touch-none"
+                          onMouseDown={(e) => onDragStart(e.clientX, e.clientY)}
+                          onMouseMove={(e) => onDragMove(e.clientX, e.clientY)}
+                          onMouseUp={onDragEnd}
+                          onMouseLeave={onDragEnd}
+                          onTouchStart={(e) =>
+                            onDragStart(
+                              e.touches[0].clientX,
+                              e.touches[0].clientY
+                            )
+                          }
+                          onTouchMove={(e) =>
+                            onDragMove(
+                              e.touches[0].clientX,
+                              e.touches[0].clientY
+                            )
+                          }
+                          onTouchEnd={onDragEnd}
+                        />
+                      )}
                     </div>
 
-                    <div>
-                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
-                        <span>Crop tightness</span>
-                        <span>{zoom.toFixed(1)}x</span>
-                      </label>
-                      <input
-                        type="range"
-                        min={0.3}
-                        max={1.2}
-                        step={0.1}
-                        value={zoom}
-                        onChange={(e) => setZoom(parseFloat(e.target.value))}
-                        className="w-full accent-brand-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
-                        <span>Horizontal position</span>
-                        <span>
-                          {offsetX > 0 ? "+" : ""}
-                          {offsetX}px
-                        </span>
-                      </label>
-                      <input
-                        type="range"
-                        min={-100}
-                        max={100}
-                        step={5}
-                        value={offsetX}
-                        onChange={(e) =>
-                          setOffsetX(parseInt(e.target.value, 10))
-                        }
-                        className="w-full accent-brand-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
-                        <span>Vertical position</span>
-                        <span>
-                          {offsetY > 0 ? "+" : ""}
-                          {offsetY}px
-                        </span>
-                      </label>
-                      <input
-                        type="range"
-                        min={-100}
-                        max={100}
-                        step={5}
-                        value={offsetY}
-                        onChange={(e) =>
-                          setOffsetY(parseInt(e.target.value, 10))
-                        }
-                        className="w-full accent-brand-500"
-                      />
-                    </div>
-
-                    {(offsetX !== 0 || offsetY !== 0) && (
+                    <div className="flex justify-center gap-2">
                       <button
-                        onClick={() => {
-                          setOffsetX(0);
-                          setOffsetY(0);
-                        }}
-                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                        onClick={() => setRotation((r) => (r + 270) % 360)}
+                        className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
+                        title="Rotate left"
                       >
-                        Reset position
+                        <RotateCcw size={13} />
                       </button>
-                    )}
+                      <button
+                        onClick={() => setRotation((r) => (r + 90) % 360)}
+                        className="p-1.5 rounded border border-[var(--border)] text-slate-400 hover:text-white transition-colors"
+                        title="Rotate right"
+                      >
+                        <RotateCw size={13} />
+                      </button>
+                      {(pan.x !== 0 || pan.y !== 0) && (
+                        <button
+                          onClick={() => setPan({ x: 0, y: 0 })}
+                          className="px-2 text-[11px] text-slate-500 hover:text-slate-300"
+                        >
+                          Recentre
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
+                        <span>Zoom</span>
+                        <span>{cropZoom.toFixed(1)}x</span>
+                      </label>
+                      <input
+                        type="range"
+                        min={1}
+                        max={3}
+                        step={0.1}
+                        value={cropZoom}
+                        onChange={(e) =>
+                          setCropZoom(parseFloat(e.target.value))
+                        }
+                        className="w-full accent-brand-500"
+                      />
+                    </div>
 
                     <button
-                      onClick={() =>
-                        savePhoto.mutate({
-                          photoUrl: buildPhotoUrl(
-                            suggestedPhoto.badgeUrl,
-                            rotation,
-                            zoom,
-                            offsetX,
-                            offsetY
-                          ),
-                        })
-                      }
-                      disabled={savePhoto.isPending}
+                      onClick={() => {
+                        const dataUrl = exportCroppedPhoto();
+                        if (dataUrl) savePhoto.mutate({ image: dataUrl });
+                        else
+                          toast.error(
+                            "Couldn't process the photo — try again."
+                          );
+                      }}
+                      disabled={savePhoto.isPending || !imgLoaded}
                       className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-xs font-medium transition-all disabled:opacity-50"
                     >
                       {savePhoto.isPending ? (
