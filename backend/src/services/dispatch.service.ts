@@ -10,6 +10,7 @@ import { Server as SocketServer } from "socket.io";
 import { RedisKeys, RedisTTL } from "../plugins/redis";
 import { MapsService } from "./maps.service";
 import { NotificationService } from "./notification.service";
+import { PricingService } from "./pricing.service";
 import { SocketEvent, JobOfferPayload } from "../types";
 import {
   DRIVER_ACCEPT_TIMEOUT_MS,
@@ -32,7 +33,7 @@ const REQUIRED_DISPATCH_DOCS: DocumentType[] = [
 
 export class DispatchService {
   private notifications: NotificationService;
-
+  private pricing: PricingService;
   constructor(
     private prisma: PrismaClient,
     private redis: Redis,
@@ -40,6 +41,7 @@ export class DispatchService {
     private maps: MapsService
   ) {
     this.notifications = new NotificationService(prisma);
+    this.pricing = new PricingService(prisma, redis);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -406,14 +408,15 @@ export class DispatchService {
           );
           fare = completedBooking.estimatedFare;
         }
-
         // ── Surcharge-aware commission ──────────────────────────────────
         // Airport/zone supplements pass through 100% to the driver (auto-debited).
-        // Platform 15% commission applies to base fare only, not surcharge.
+        // Platform commission (rate set in Settings → Pricing) applies to
+        // base fare only, not surcharge.
         //
-        // Example — Crawley → Gatwick (£21.53, £8 surcharge):
+        // Example at 15% — Crawley → Gatwick (£21.53, £8 surcharge):
         //   platformFee = (21.53 - 8) × 0.15 = £2.03
-        //   driverNet   = 21.53 - 2.03        = £19.50  ✓
+        //   driverNet   = 21.53 - 2.03        = £19.50
+        // Actual commission rate is read live below.
         let surchargeAmount = 0;
         try {
           const zones = await (this.prisma as any).surchargeZone.findMany({
@@ -451,7 +454,13 @@ export class DispatchService {
         }
 
         const baseFare = Math.max(0, r2(fare - surchargeAmount));
-        const platformFee = r2(baseFare * 0.15);
+        // Read the live, admin-configured commission rate rather than a
+        // hardcoded value — this previously stayed at 15% even after the
+        // rate was changed to 10% in Settings → Pricing, silently
+        // overcharging every driver's commission.
+        const pricingConfig = await this.pricing.getConfig();
+        const commissionRate = pricingConfig.platformCommission ?? 0.15;
+        const platformFee = r2(baseFare * commissionRate);
         const net = r2(fare - platformFee);
         await this.prisma.driverEarning.upsert({
           where: { bookingId },
