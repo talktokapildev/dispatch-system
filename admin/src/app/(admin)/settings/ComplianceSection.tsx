@@ -5,14 +5,27 @@ import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 
+interface GeneralSettings {
+  companyName: string;
+  licenceNumber: string;
+  contactEmail: string;
+  contactPhone: string;
+  businessAddress: string;
+}
+
 export function ComplianceSection() {
   const { data: staff } = useQuery({
     queryKey: ["staff"],
     queryFn: () => api.get("/admin/staff").then((r) => r.data.data),
   });
 
-  // Find operator (System Admin / first ADMIN user)
-  // Prefer ADMIN role — that's the operator (Kapil). Fall back to first staff if needed.
+  // Read the same settings General writes — single source of truth
+  const { data: settings } = useQuery<GeneralSettings>({
+    queryKey: ["system-settings"],
+    queryFn: () =>
+      api.get("/settings").then((r) => r.data.data as GeneralSettings),
+  });
+
   const operator =
     (staff ?? []).find((s: any) => s.roles?.includes("ADMIN")) ??
     (staff ?? []).find((s: any) => s.roles?.includes("DISPATCHER")) ??
@@ -20,7 +33,6 @@ export function ComplianceSection() {
 
   const dbs = operator?.adminProfile;
   const dbsCheckDate = dbs?.dbsCheckDate ? new Date(dbs.dbsCheckDate) : null;
-  // DBS typically renewed annually — show expiry as 1 year from check date
   const dbsExpiry = dbsCheckDate
     ? new Date(
         dbsCheckDate.getFullYear() + 1,
@@ -34,7 +46,6 @@ export function ComplianceSection() {
   const isCritical = daysUntilExpiry !== null && daysUntilExpiry <= 30;
   const isWarning =
     daysUntilExpiry !== null && daysUntilExpiry > 30 && daysUntilExpiry <= 60;
-  const isOk = daysUntilExpiry !== null && daysUntilExpiry > 60;
 
   return (
     <>
@@ -169,15 +180,25 @@ export function ComplianceSection() {
 
         <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
           These settings appear on all passenger receipts and are legally
-          required under TfL Operator Licence II786.
+          required under TfL Operator Licence {settings?.licenceNumber ?? "…"}.
+          Edit them in{" "}
+          <a
+            href="/settings?tab=general"
+            className="underline hover:text-blue-200"
+          >
+            General Settings
+          </a>
+          .
         </div>
+
+        {/* Read-only reflection of General settings — General is the single source of truth */}
         {[
-          { label: "Operator Licence Number", value: "II786" },
-          { label: "Operator Name (as licensed)", value: "ORANGERIDE" },
+          { label: "Operator Licence Number", value: settings?.licenceNumber },
           {
-            label: "Registered Address",
-            value: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+            label: "Operator Name (as licensed)",
+            value: settings?.companyName,
           },
+          { label: "Registered Address", value: settings?.businessAddress },
         ].map(({ label, value }) => (
           <div key={label}>
             <label
@@ -186,9 +207,15 @@ export function ComplianceSection() {
             >
               {label}
             </label>
-            <input defaultValue={value} className="input max-w-md" />
+            <input
+              value={value ?? ""}
+              readOnly
+              className="input max-w-md opacity-70 cursor-not-allowed"
+            />
           </div>
         ))}
+
+        {/* Checkboxes below are still static/decorative — flag separately if they need wiring too */}
         <div className="space-y-3 pt-2">
           {[
             {
