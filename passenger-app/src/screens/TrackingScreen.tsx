@@ -621,6 +621,7 @@ export default function TrackingScreen({ route, navigation }: any) {
                 phone: driver.user?.phone,
                 pcoBadgeNumber: driver.pcoBadgeNumber,
                 rating: driver.rating,
+                photoUrl: driver.photoUrl,
                 vehicle: driver.vehicle,
               }}
             />
