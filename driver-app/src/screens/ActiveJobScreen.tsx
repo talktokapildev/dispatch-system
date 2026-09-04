@@ -58,6 +58,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(!preloadedBooking);
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [teslaEligible, setTeslaEligible] = useState(false);
 
   const { location, locationRef, getInitialLocation } = useLocationTracking(
     8_000,
@@ -117,6 +118,19 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     if (booking && locationRef.current)
       fetchRoute(locationRef.current, booking);
   }, [booking?.status]);
+
+  useEffect(() => {
+    api
+      .get("/driver/tesla/status")
+      .then(({ data }) => {
+        setTeslaEligible(
+          !!data.connected &&
+            !!data.integration?.enabled &&
+            !!data.integration?.vehicleId
+        );
+      })
+      .catch(() => setTeslaEligible(false));
+  }, []);
 
   // Track last coords used for route fetch — avoid refetching on tiny movements
   const lastRouteFetchRef = useRef<{
@@ -389,14 +403,34 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       if (hasApple) options.push({ label: "Apple Maps", url: appleUrl });
       options.push({ label: "Google Maps (browser)", url: webUrl });
 
-      Alert.alert("Open with", undefined, [
-        ...options.map((o) => ({
-          text: o.label,
+      const buttons: {
+        text: string;
+        onPress?: () => any;
+        style?: "default" | "cancel" | "destructive";
+      }[] = options.map((o) => ({
+        text: o.label,
+        onPress: () =>
+          Linking.openURL(o.url).catch(() => Linking.openURL(webUrl)),
+      }));
+
+      // Only offered when the driver's Tesla is connected, the auto-send
+      // toggle is on, and a vehicle is selected — matches the same
+      // conditions TeslaSettingsScreen relies on for automatic sends.
+      if (teslaEligible) {
+        buttons.push({
+          text: "🚗 Send to Tesla",
           onPress: () =>
-            Linking.openURL(o.url).catch(() => Linking.openURL(webUrl)),
-        })),
-        { text: "Cancel", style: "cancel" as const },
-      ]);
+            sendToTesla(
+              lat,
+              lng,
+              toPickup ? booking.pickupAddress : booking.dropoffAddress
+            ),
+        });
+      }
+
+      buttons.push({ text: "Cancel", style: "cancel" as const });
+
+      Alert.alert("Open with", undefined, buttons);
     };
 
     buildOptions().catch(() => Linking.openURL(webUrl));
