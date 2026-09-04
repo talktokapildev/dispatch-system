@@ -89,6 +89,8 @@ export default function DriversPage() {
 
   const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
   const [zoom, setZoom] = useState(0.7); // Cloudinary z_ crop tightness
+  const [offsetX, setOffsetX] = useState(0); // Cloudinary x_ (relative, -0.3..0.3)
+  const [offsetY, setOffsetY] = useState(0); // Cloudinary y_ (relative, -0.3..0.3)
   const [replacingPhoto, setReplacingPhoto] = useState(false);
   const [uploadMode, setUploadMode] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
@@ -96,6 +98,8 @@ export default function DriversPage() {
   useEffect(() => {
     setRotation(0);
     setZoom(0.7);
+    setOffsetX(0);
+    setOffsetY(0);
     setReplacingPhoto(false);
     setUploadMode(false);
     setUploadPreview(null);
@@ -103,14 +107,26 @@ export default function DriversPage() {
 
   // Builds the crop transform fresh from the raw badge URL, rather than
   // editing the backend's fixed suggestion — gives us full control over
-  // rotation + zoom without fighting the baked-in transform string.
-  function buildPhotoUrl(badgeUrl: string, deg: number, z: number) {
+  // rotation, zoom, and recentring without fighting a baked-in transform.
+  // x_/y_ with fl_relative shift the crop centre relative to the detected
+  // face position, as a fraction of the crop dimensions.
+  function buildPhotoUrl(
+    badgeUrl: string,
+    deg: number,
+    z: number,
+    x: number,
+    y: number
+  ) {
     const marker = "/upload/";
     const idx = badgeUrl.indexOf(marker);
     if (idx === -1) return badgeUrl;
     const insertAt = idx + marker.length;
     const rotationSeg = deg ? `a_${deg}/` : "";
-    const cropSeg = `w_400,h_400,c_thumb,g_face,z_${z}/`;
+    const offsetSeg =
+      x !== 0 || y !== 0
+        ? `,x_${x.toFixed(2)},y_${y.toFixed(2)},fl_relative`
+        : "";
+    const cropSeg = `w_400,h_400,c_thumb,g_face,z_${z}${offsetSeg}/`;
     return (
       badgeUrl.slice(0, insertAt) +
       rotationSeg +
@@ -1040,7 +1056,9 @@ export default function DriversPage() {
                         src={buildPhotoUrl(
                           suggestedPhoto.badgeUrl,
                           rotation,
-                          zoom
+                          zoom,
+                          offsetX,
+                          offsetY
                         )}
                         alt="Suggested crop"
                         className="w-24 h-24 rounded-full object-cover border border-[var(--border)]"
@@ -1085,13 +1103,65 @@ export default function DriversPage() {
                       />
                     </div>
 
+                    <div>
+                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
+                        <span>Horizontal position</span>
+                        <span>
+                          {offsetX > 0 ? "+" : ""}
+                          {offsetX.toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={-0.3}
+                        max={0.3}
+                        step={0.02}
+                        value={offsetX}
+                        onChange={(e) => setOffsetX(parseFloat(e.target.value))}
+                        className="w-full accent-brand-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
+                        <span>Vertical position</span>
+                        <span>
+                          {offsetY > 0 ? "+" : ""}
+                          {offsetY.toFixed(2)}
+                        </span>
+                      </label>
+                      <input
+                        type="range"
+                        min={-0.3}
+                        max={0.3}
+                        step={0.02}
+                        value={offsetY}
+                        onChange={(e) => setOffsetY(parseFloat(e.target.value))}
+                        className="w-full accent-brand-500"
+                      />
+                    </div>
+
+                    {(offsetX !== 0 || offsetY !== 0) && (
+                      <button
+                        onClick={() => {
+                          setOffsetX(0);
+                          setOffsetY(0);
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-slate-300"
+                      >
+                        Reset position
+                      </button>
+                    )}
+
                     <button
                       onClick={() =>
                         savePhoto.mutate({
                           photoUrl: buildPhotoUrl(
                             suggestedPhoto.badgeUrl,
                             rotation,
-                            zoom
+                            zoom,
+                            offsetX,
+                            offsetY
                           ),
                         })
                       }
