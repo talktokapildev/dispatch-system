@@ -76,7 +76,9 @@ export default function JobCompleteScreen({ route, navigation }: any) {
   };
 
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
-  const driverEarning = fare * 0.85;
+  const commissionRate = booking?.commissionRate ?? 0.15;
+  const platformFee = booking?.platformFee ?? fare * commissionRate;
+  const driverEarning = booking?.driverEarning ?? fare - platformFee;
   const s = styles(Colors);
 
   return (
@@ -104,9 +106,11 @@ export default function JobCompleteScreen({ route, navigation }: any) {
             <Text style={s.rowValue}>£{fare.toFixed(2)}</Text>
           </View>
           <View style={s.row}>
-            <Text style={s.rowLabel}>Platform Fee (15%)</Text>
+            <Text style={s.rowLabel}>
+              Platform Fee ({Math.round(commissionRate * 100)}%)
+            </Text>
             <Text style={[s.rowValue, { color: Colors.muted }]}>
-              -£{(fare * 0.15).toFixed(2)}
+              -£{platformFee.toFixed(2)}
             </Text>
           </View>
           <View style={[s.row, s.totalRow]}>

@@ -10,6 +10,7 @@ import { RedisKeys } from "../plugins/redis";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
 import { NotificationService } from "../services/notification.service";
+import { PricingService } from "../services/pricing.service";
 import { uploadToCloudinary } from "../services/cloudinary.service";
 import { SocketEvent } from "../types";
 
@@ -454,6 +455,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
         fastify.io,
         maps
       );
+      const pricing = new PricingService(fastify.prisma, fastify.redis);
       await dispatch.updateBookingStatus(
         bookingId,
         driver.id,
@@ -513,8 +515,22 @@ export async function driverRoutes(fastify: FastifyInstance) {
           }
         }
       }
+      let completionData: Record<string, any> | undefined;
+      if (status === "COMPLETED") {
+        const finalBooking = await fastify.prisma.booking.findUnique({
+          where: { id: bookingId },
+          select: { actualFare: true, driverEarning: true, platformFee: true },
+        });
+        const { platformCommission } = await pricing.getConfig();
+        completionData = {
+          actualFare: finalBooking?.actualFare,
+          driverEarning: finalBooking?.driverEarning,
+          platformFee: finalBooking?.platformFee,
+          commissionRate: platformCommission,
+        };
+      }
 
-      return reply.send({ success: true });
+      return reply.send({ success: true, data: completionData });
     }
   );
 

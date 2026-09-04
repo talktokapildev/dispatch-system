@@ -271,10 +271,15 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         body.actualDuration = durationMins;
       }
 
-      await api.patch(`/drivers/jobs/${bookingId}/status`, body);
+      const { data: statusRes } = await api.patch(
+        `/drivers/jobs/${bookingId}/status`,
+        body
+      );
       if (status === "COMPLETED") {
         // replace() keeps [Main] below so JobComplete can popToTop() cleanly
-        navigation.replace("JobComplete", { booking });
+        navigation.replace("JobComplete", {
+          booking: { ...booking, ...statusRes.data },
+        });
       } else {
         const { data } = await api.get(`/bookings/${bookingId}`);
         const bookingData = data.data;
