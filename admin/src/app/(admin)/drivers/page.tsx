@@ -14,6 +14,7 @@ import {
   RotateCw,
   RotateCcw,
   CheckCircle,
+  Upload,
 } from "lucide-react";
 import {
   DriverBadge,
@@ -87,20 +88,43 @@ export default function DriversPage() {
   const [formError, setFormError] = useState("");
 
   const [rotation, setRotation] = useState(0); // 0 | 90 | 180 | 270
+  const [zoom, setZoom] = useState(0.7); // Cloudinary z_ crop tightness
   const [replacingPhoto, setReplacingPhoto] = useState(false);
+  const [uploadMode, setUploadMode] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
 
   useEffect(() => {
     setRotation(0);
+    setZoom(0.7);
     setReplacingPhoto(false);
+    setUploadMode(false);
+    setUploadPreview(null);
   }, [selected?.id]);
 
-  function withRotation(url: string, deg: number) {
-    if (!deg) return url;
+  // Builds the crop transform fresh from the raw badge URL, rather than
+  // editing the backend's fixed suggestion — gives us full control over
+  // rotation + zoom without fighting the baked-in transform string.
+  function buildPhotoUrl(badgeUrl: string, deg: number, z: number) {
     const marker = "/upload/";
-    const idx = url.indexOf(marker);
-    if (idx === -1) return url;
+    const idx = badgeUrl.indexOf(marker);
+    if (idx === -1) return badgeUrl;
     const insertAt = idx + marker.length;
-    return url.slice(0, insertAt) + `a_${deg}/` + url.slice(insertAt);
+    const rotationSeg = deg ? `a_${deg}/` : "";
+    const cropSeg = `w_400,h_400,c_thumb,g_face,z_${z}/`;
+    return (
+      badgeUrl.slice(0, insertAt) +
+      rotationSeg +
+      cropSeg +
+      badgeUrl.slice(insertAt)
+    );
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setUploadPreview(reader.result as string);
+    reader.readAsDataURL(file);
   }
 
   const { data, isLoading } = useQuery({
@@ -132,13 +156,16 @@ export default function DriversPage() {
     retry: false,
   });
 
-  const confirmPhoto = useMutation({
-    mutationFn: (photoUrl: string) =>
-      api.patch(`/admin/drivers/${selected.id}/photo`, { photoUrl }),
-    onSuccess: (_res, photoUrl) => {
+  const savePhoto = useMutation({
+    mutationFn: (payload: { photoUrl?: string; image?: string }) =>
+      api.patch(`/admin/drivers/${selected.id}/photo`, payload),
+    onSuccess: (res, payload) => {
       toast.success("Profile photo updated");
-      setSelected((s: any) => (s ? { ...s, photoUrl } : s));
+      const finalUrl = res?.data?.photoUrl ?? payload.photoUrl;
+      setSelected((s: any) => (s ? { ...s, photoUrl: finalUrl } : s));
       setReplacingPhoto(false);
+      setUploadMode(false);
+      setUploadPreview(null);
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
     },
     onError: (err: any) =>
@@ -945,17 +972,75 @@ export default function DriversPage() {
                       Replace photo
                     </button>
                   </div>
+                ) : uploadMode ? (
+                  <div className="space-y-3">
+                    {uploadPreview ? (
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={uploadPreview}
+                          alt="Upload preview"
+                          className="w-24 h-24 rounded-full object-cover border border-[var(--border)]"
+                        />
+                        <button
+                          onClick={() => setUploadPreview(null)}
+                          className="text-[11px] text-slate-500 hover:text-slate-300"
+                        >
+                          Choose a different file
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 py-6 cursor-pointer hover:border-brand-500/50 transition-colors">
+                        <Upload size={18} className="text-slate-500" />
+                        <span className="text-[11px] text-slate-400">
+                          Click to choose a photo
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleFileSelect}
+                        />
+                      </label>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setUploadMode(false);
+                          setUploadPreview(null);
+                        }}
+                        className="flex-1 text-[11px] text-slate-500 hover:text-slate-300 py-2"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() =>
+                          uploadPreview &&
+                          savePhoto.mutate({ image: uploadPreview })
+                        }
+                        disabled={!uploadPreview || savePhoto.isPending}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-xs font-medium transition-all disabled:opacity-50"
+                      >
+                        {savePhoto.isPending ? (
+                          <Spinner size={13} />
+                        ) : (
+                          <CheckCircle size={13} />
+                        )}
+                        Confirm & Publish
+                      </button>
+                    </div>
+                  </div>
                 ) : suggestedLoading ? (
                   <div className="flex justify-center py-4">
                     <Spinner size={16} />
                   </div>
-                ) : suggestedPhoto?.suggestedPhotoUrl ? (
+                ) : suggestedPhoto?.badgeUrl ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-4">
                       <img
-                        src={withRotation(
-                          suggestedPhoto.suggestedPhotoUrl,
-                          rotation
+                        src={buildPhotoUrl(
+                          suggestedPhoto.badgeUrl,
+                          rotation,
+                          zoom
                         )}
                         alt="Suggested crop"
                         className="w-24 h-24 rounded-full object-cover border border-[var(--border)]"
@@ -983,25 +1068,51 @@ export default function DriversPage() {
                         </div>
                       </div>
                     </div>
+
+                    <div>
+                      <label className="text-[10px] text-slate-500 flex justify-between mb-1">
+                        <span>Crop tightness</span>
+                        <span>{zoom.toFixed(1)}x</span>
+                      </label>
+                      <input
+                        type="range"
+                        min={0.3}
+                        max={1.2}
+                        step={0.1}
+                        value={zoom}
+                        onChange={(e) => setZoom(parseFloat(e.target.value))}
+                        className="w-full accent-brand-500"
+                      />
+                    </div>
+
                     <button
                       onClick={() =>
-                        confirmPhoto.mutate(
-                          withRotation(
-                            suggestedPhoto.suggestedPhotoUrl,
-                            rotation
-                          )
-                        )
+                        savePhoto.mutate({
+                          photoUrl: buildPhotoUrl(
+                            suggestedPhoto.badgeUrl,
+                            rotation,
+                            zoom
+                          ),
+                        })
                       }
-                      disabled={confirmPhoto.isPending}
+                      disabled={savePhoto.isPending}
                       className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-xs font-medium transition-all disabled:opacity-50"
                     >
-                      {confirmPhoto.isPending ? (
+                      {savePhoto.isPending ? (
                         <Spinner size={13} />
                       ) : (
                         <CheckCircle size={13} />
                       )}
                       Confirm & Publish to Passenger App
                     </button>
+
+                    <button
+                      onClick={() => setUploadMode(true)}
+                      className="w-full flex items-center justify-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-300 py-1"
+                    >
+                      <Upload size={11} /> Or upload a different photo instead
+                    </button>
+
                     {replacingPhoto && (
                       <button
                         onClick={() => setReplacingPhoto(false)}
@@ -1012,10 +1123,17 @@ export default function DriversPage() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">
-                    No approved PCO badge on file — approve one in Documents to
-                    generate a suggested photo.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-500">
+                      No approved PCO badge on file yet.
+                    </p>
+                    <button
+                      onClick={() => setUploadMode(true)}
+                      className="flex items-center gap-1.5 text-[11px] text-brand-400 hover:text-brand-300"
+                    >
+                      <Upload size={11} /> Upload a photo manually
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
