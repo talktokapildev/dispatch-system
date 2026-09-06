@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   Alert,
   ActivityIndicator,
   Linking,
@@ -24,20 +25,32 @@ export default function ProfileScreen({ navigation }: any) {
   const [deleting, setDeleting] = useState(false);
   const [wallet, setWallet] = useState<{
     promoBalance: number;
+    realBalance: number;
     totalBalance: number;
     welcomeBonusPending: boolean;
     welcomeBonusIssued: boolean;
   } | null>(null);
   const [walletLoading, setWalletLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const { settings } = useOperatorSettings();
 
-  useEffect(() => {
-    api
+  // ── Fetch wallet — used on mount AND on pull-to-refresh ────────────────────
+  const fetchWallet = useCallback(() => {
+    return api
       .get("/passengers/wallet")
       .then(({ data }) => setWallet(data.data))
-      .catch(() => setWallet(null))
-      .finally(() => setWalletLoading(false));
+      .catch(() => setWallet(null));
   }, []);
+
+  useEffect(() => {
+    fetchWallet().finally(() => setWalletLoading(false));
+  }, [fetchWallet]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchWallet();
+    setRefreshing(false);
+  }, [fetchWallet]);
 
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
@@ -110,7 +123,17 @@ export default function ProfileScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={s.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.brand}
+            colors={[Colors.brand]}
+          />
+        }
+      >
         {/* Avatar */}
         <View style={s.header}>
           <View style={s.avatar}>
@@ -151,6 +174,23 @@ export default function ProfileScreen({ navigation }: any) {
                   ]}
                 >
                   £{wallet.promoBalance.toFixed(2)}
+                </Text>
+              </View>
+              <View style={s.infoRow}>
+                <Text style={s.infoLabel}>
+                  {wallet.realBalance < 0 ? "You owe" : "Real balance"}
+                </Text>
+                <Text
+                  style={[
+                    s.infoValue,
+                    {
+                      color:
+                        wallet.realBalance < 0 ? Colors.danger : Colors.success,
+                      fontWeight: "800",
+                    },
+                  ]}
+                >
+                  £{Math.abs(wallet.realBalance).toFixed(2)}
                 </Text>
               </View>
               <View style={[s.infoRow, { borderBottomWidth: 0 }]}>
