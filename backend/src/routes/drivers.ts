@@ -1497,4 +1497,105 @@ export async function driverRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true });
     }
   );
+
+  // ─── PATCH /drivers/jobs/:bookingId/cash-collected ──────────────────────
+  // Driver confirms actual cash collected after a completed CASH trip.
+  // Settles the wallet debit via WalletService.settleCashTrip and records
+  // any over/under as a CASH_ADJUSTMENT. actualCashCollected is claimed
+  // atomically first (idempotency guard) — if the wallet settlement then
+  // fails, the claim is released so a retry is possible.
+  fastify.patch(
+    "/drivers/jobs/:bookingId/cash-collected",
+    { preHandler: [fastify.authenticateDriver] },
+    async (request, reply) => {
+      const { userId } = request.user;
+      const { bookingId } = request.params as { bookingId: string };
+      const { amountCollected } = request.body as { amountCollected: number };
+
+      if (typeof amountCollected !== "number" || amountCollected < 0) {
+        return reply.status(400).send({
+          success: false,
+          error: "amountCollected must be a non-negative number",
+        });
+      }
+
+      const driver = await fastify.prisma.driver.findUnique({
+        where: { userId },
+      });
+      if (!driver)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Driver not found" });
+
+      const booking = await fastify.prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
+      if (!booking)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Booking not found" });
+      if (booking.driverId !== driver.id)
+        return reply
+          .status(403)
+          .send({ success: false, error: "Access denied" });
+      if (booking.status !== "COMPLETED")
+        return reply
+          .status(400)
+          .send({ success: false, error: "Booking not completed" });
+      if (booking.paymentMethod !== "CASH")
+        return reply
+          .status(400)
+          .send({ success: false, error: "Not a cash booking" });
+      if (!booking.passengerId)
+        return reply
+          .status(400)
+          .send({ success: false, error: "No passenger on booking" });
+
+      // Atomic claim — only succeeds if nobody has settled this booking yet.
+      const claimed = await fastify.prisma.booking.updateMany({
+        where: { id: bookingId, actualCashCollected: null },
+        data: { actualCashCollected: amountCollected },
+      });
+      if (claimed.count === 0) {
+        return reply.status(409).send({
+          success: false,
+          error: "Cash collection already recorded for this booking",
+        });
+      }
+
+      const fare = booking.actualFare ?? booking.estimatedFare;
+
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        const result = await walletService.settleCashTrip(
+          booking.passengerId,
+          bookingId,
+          fare,
+          amountCollected
+        );
+
+        fastify.log.info(
+          `[Wallet] Cash settled for booking ${booking.reference}: collected £${amountCollected}, expected £${result.expectedCollection}, variance £${result.variance}`
+        );
+
+        return reply.send({ success: true, data: result });
+      } catch (err: any) {
+        // Settlement failed after we claimed the slot — release it so a
+        // retry (or admin correction) is possible instead of it being
+        // permanently locked out.
+        await fastify.prisma.booking
+          .update({
+            where: { id: bookingId },
+            data: { actualCashCollected: null },
+          })
+          .catch(() => {});
+        fastify.log.error({ err }, "[Wallet] settleCashTrip failed");
+        return reply.status(500).send({
+          success: false,
+          error: "Failed to settle cash collection",
+        });
+      }
+    }
+  );
 }

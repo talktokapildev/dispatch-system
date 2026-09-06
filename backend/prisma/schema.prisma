@@ -85,6 +85,7 @@ enum WalletTxType {
   REFUND_CANCEL
   REFUND_ADMIN
   EXPIRY
+  CASH_ADJUSTMENT
 }
 
 enum PromoTarget {
@@ -454,6 +455,10 @@ model Booking {
   tipAmount           Float?
   tipPaymentIntentId  String?
   cashReceived        Float?
+
+   // Wallet Phase 1: cash settlement
+  suggestedCashCollection Float?
+  actualCashCollected     Float?
 
   // Payment
   paymentMethod         PaymentMethod @default(CARD)
@@ -911,6 +916,7 @@ model WalletTransaction {
   walletId        String
   type            WalletTxType
   amount          Float
+  remainingAmount Float?
   balanceAfter    Float
   bookingId       String?
   promoCampaignId String?

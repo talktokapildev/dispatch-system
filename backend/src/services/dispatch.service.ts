@@ -473,6 +473,33 @@ export class DispatchService {
             netAmount: net,
           },
         });
+        // ── Wallet: suggested cash collection ────────────────────────────
+        // CASH bookings only, with a real passenger, excluding corporate/
+        // care home (wallet never touches those). Read-only — no wallet
+        // writes happen here; the driver's confirmed amount triggers the
+        // actual debit later via settleCashTrip.
+        let suggestedCashCollection: number | undefined;
+        if (
+          completedBooking.paymentMethod === "CASH" &&
+          completedBooking.passengerId &&
+          !completedBooking.corporateAccountId &&
+          !completedBooking.careHomeId
+        ) {
+          try {
+            const { WalletService } = await import(
+              "../services/wallet.service"
+            );
+            const walletService = new WalletService(this.prisma);
+            const suggestion = await walletService.getSuggestedCashCollection(
+              completedBooking.passengerId,
+              fare
+            );
+            suggestedCashCollection = suggestion.amountToCollect;
+          } catch (err) {
+            console.error("[Wallet] getSuggestedCashCollection failed:", err);
+          }
+        }
+
         // Store on booking too
         await this.prisma.booking.update({
           where: { id: bookingId },
@@ -482,9 +509,24 @@ export class DispatchService {
             platformFee,
             ...(actualDistance !== undefined && { actualDistance }),
             ...(actualDuration !== undefined && { actualDuration }),
+            ...(suggestedCashCollection !== undefined && {
+              suggestedCashCollection,
+            }),
           },
         });
       }
+      //   // Store on booking too
+      //   await this.prisma.booking.update({
+      //     where: { id: bookingId },
+      //     data: {
+      //       actualFare: fare,
+      //       driverEarning: net,
+      //       platformFee,
+      //       ...(actualDistance !== undefined && { actualDistance }),
+      //       ...(actualDuration !== undefined && { actualDuration }),
+      //     },
+      //   });
+      // }
 
       const STRIPE_PAYMENT_METHODS = ["CARD", "APPLE_PAY", "GOOGLE_PAY"];
 
