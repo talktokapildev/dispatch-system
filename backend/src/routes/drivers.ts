@@ -519,7 +519,12 @@ export async function driverRoutes(fastify: FastifyInstance) {
       if (status === "COMPLETED") {
         const finalBooking = await fastify.prisma.booking.findUnique({
           where: { id: bookingId },
-          select: { actualFare: true, driverEarning: true, platformFee: true },
+          select: {
+            actualFare: true,
+            driverEarning: true,
+            platformFee: true,
+            suggestedCashCollection: true,
+          },
         });
         const { platformCommission } = await pricing.getConfig();
         completionData = {
@@ -527,6 +532,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
           driverEarning: finalBooking?.driverEarning,
           platformFee: finalBooking?.platformFee,
           commissionRate: platformCommission,
+          suggestedCashCollection: finalBooking?.suggestedCashCollection,
         };
       }
 

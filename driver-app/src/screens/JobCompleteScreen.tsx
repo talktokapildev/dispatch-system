@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Animated,
   ActivityIndicator,
   Alert,
@@ -27,6 +28,29 @@ export default function JobCompleteScreen({ route, navigation }: any) {
   >("idle");
 
   const isCash = (booking?.paymentMethod ?? "CASH") === "CASH";
+
+  // ── Wallet cash-settlement state ──────────────────────────────────────────
+  // suggestedCashCollection is only populated by the backend for CASH
+  // bookings with a real passenger, excluding corporate/care home — so its
+  // presence (not just isCash) is what gates this whole section.
+  const hasWalletSuggestion =
+    isCash &&
+    booking?.suggestedCashCollection !== undefined &&
+    booking?.suggestedCashCollection !== null;
+  const suggestedCash: number = hasWalletSuggestion
+    ? booking.suggestedCashCollection
+    : 0;
+
+  const [cashInput, setCashInput] = useState(
+    hasWalletSuggestion ? suggestedCash.toFixed(2) : ""
+  );
+  const [cashSettleState, setCashSettleState] = useState<
+    "idle" | "submitting" | "confirmed" | "error"
+  >("idle");
+  const [settlementResult, setSettlementResult] = useState<{
+    expectedCollection: number;
+    variance: number;
+  } | null>(null);
 
   useEffect(() => {
     Animated.parallel([
@@ -75,11 +99,68 @@ export default function JobCompleteScreen({ route, navigation }: any) {
     }
   };
 
+  // ── Submit the actual settlement to the backend ───────────────────────────
+  const submitCashCollection = async (amount: number) => {
+    setCashSettleState("submitting");
+    try {
+      const res = await api.patch(
+        `/drivers/jobs/${booking.id}/cash-collected`,
+        {
+          amountCollected: amount,
+        }
+      );
+      setSettlementResult(res.data?.data ?? null);
+      setCashSettleState("confirmed");
+    } catch (err: any) {
+      setCashSettleState("idle");
+      Alert.alert(
+        "Error",
+        err.response?.data?.error ?? "Could not confirm cash collection"
+      );
+    }
+  };
+
+  // ── Validate + soft-warn on mismatch before submitting ────────────────────
+  const handleConfirmCash = () => {
+    const amount = parseFloat(cashInput);
+    if (isNaN(amount) || amount < 0) {
+      Alert.alert("Invalid amount", "Please enter a valid amount collected.");
+      return;
+    }
+
+    // Soft warning — not a hard block. Threshold is whichever is larger:
+    // 20% of the suggested amount, or £5 flat.
+    const threshold = Math.max(suggestedCash * 0.2, 5);
+    const diff = Math.abs(amount - suggestedCash);
+
+    if (diff > threshold) {
+      Alert.alert(
+        "Amount doesn't match",
+        `You entered £${amount.toFixed(2)}, but £${suggestedCash.toFixed(
+          2
+        )} was suggested. Continue with £${amount.toFixed(2)}?`,
+        [
+          { text: "Go back", style: "cancel" },
+          {
+            text: "Confirm anyway",
+            onPress: () => submitCashCollection(amount),
+          },
+        ]
+      );
+      return;
+    }
+
+    submitCashCollection(amount);
+  };
+
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const commissionRate = booking?.commissionRate ?? 0.15;
   const platformFee = booking?.platformFee ?? fare * commissionRate;
   const driverEarning = booking?.driverEarning ?? fare - platformFee;
   const s = styles(Colors);
+
+  // Cash section only makes sense while the driver hasn't routed to card
+  const showCashSection = hasWalletSuggestion && cardPaymentState === "idle";
 
   return (
     <SafeAreaView style={s.container}>
@@ -124,6 +205,84 @@ export default function JobCompleteScreen({ route, navigation }: any) {
           <Text style={s.refLabel}>Reference</Text>
           <Text style={s.refValue}>{booking?.reference}</Text>
         </View>
+
+        {/* ── Wallet cash-collection section — CASH bookings with a real
+             passenger, non-corporate/care-home only ──────────────────────── */}
+        {showCashSection && cashSettleState !== "confirmed" && (
+          <View style={s.cashCard}>
+            {suggestedCash === 0 ? (
+              <>
+                <Text style={s.cashNoneTitle}>
+                  No cash needed — fully covered by wallet
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    s.cashConfirmBtn,
+                    cashSettleState === "submitting" &&
+                      s.cashConfirmBtnDisabled,
+                  ]}
+                  disabled={cashSettleState === "submitting"}
+                  onPress={() => submitCashCollection(0)}
+                >
+                  {cashSettleState === "submitting" ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <Text style={s.cashConfirmBtnText}>
+                      Confirm — No Cash Collected
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={s.cashLabel}>
+                  Amount to collect: £{suggestedCash.toFixed(2)}
+                </Text>
+                <TextInput
+                  style={s.cashInput}
+                  value={cashInput}
+                  onChangeText={setCashInput}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={Colors.muted}
+                  editable={cashSettleState !== "submitting"}
+                />
+                <TouchableOpacity
+                  style={[
+                    s.cashConfirmBtn,
+                    cashSettleState === "submitting" &&
+                      s.cashConfirmBtnDisabled,
+                  ]}
+                  disabled={cashSettleState === "submitting"}
+                  onPress={handleConfirmCash}
+                >
+                  {cashSettleState === "submitting" ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <Text style={s.cashConfirmBtnText}>
+                      Confirm Cash Collected
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {showCashSection && cashSettleState === "confirmed" && (
+          <View style={s.cashConfirmedCard}>
+            <Text style={s.cashConfirmedText}>
+              ✅ Cash collection confirmed
+              {settlementResult && settlementResult.variance !== 0
+                ? settlementResult.variance > 0
+                  ? ` (£${settlementResult.variance.toFixed(2)} over)`
+                  : ` (£${Math.abs(settlementResult.variance).toFixed(
+                      2
+                    )} under)`
+                : ""}
+            </Text>
+          </View>
+        )}
 
         {/* Card payment section — CASH bookings only */}
         {isCash && (
@@ -246,6 +405,72 @@ const styles = (
       color: C.brand,
       fontWeight: "700",
       fontFamily: "monospace",
+    },
+    cashCard: {
+      width: "100%",
+      backgroundColor: C.card,
+      borderRadius: Radius.lg,
+      borderWidth: 1,
+      borderColor: C.border,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+    },
+    cashLabel: {
+      fontSize: FontSize.md,
+      color: C.white,
+      fontWeight: "700",
+      marginBottom: Spacing.sm,
+      textAlign: "center",
+    },
+    cashNoneTitle: {
+      fontSize: FontSize.md,
+      color: C.success,
+      fontWeight: "700",
+      marginBottom: Spacing.md,
+      textAlign: "center",
+    },
+    cashInput: {
+      width: "100%",
+      backgroundColor: C.bg,
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.border,
+      padding: Spacing.md,
+      fontSize: FontSize.xl,
+      fontWeight: "700",
+      color: C.white,
+      textAlign: "center",
+      marginBottom: Spacing.md,
+    },
+    cashConfirmBtn: {
+      width: "100%",
+      backgroundColor: C.brand,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cashConfirmBtnDisabled: { opacity: 0.6 },
+    cashConfirmBtnText: {
+      color: "#000",
+      fontWeight: "800",
+      fontSize: FontSize.sm,
+    },
+    cashConfirmedCard: {
+      width: "100%",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: C.success + "40",
+      backgroundColor: C.success + "08",
+      padding: Spacing.md,
+      marginBottom: Spacing.md,
+    },
+    cashConfirmedText: {
+      fontSize: FontSize.sm,
+      color: C.success,
+      fontWeight: "700",
     },
     cardPayBtn: {
       width: "100%",
