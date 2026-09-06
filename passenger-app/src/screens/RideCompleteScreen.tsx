@@ -324,6 +324,15 @@ export default function RideCompleteScreen({ route, navigation }: any) {
 
   const fare = booking?.actualFare ?? booking?.estimatedFare ?? 0;
   const paymentMethod = booking?.paymentMethod ?? "CASH";
+  // Wallet-adjusted cash amount — only populated by the backend for CASH
+  // bookings with a real passenger, excluding corporate/care home. When
+  // present, this (not the full fare) is what the passenger actually owes
+  // in cash — the driver's screen shows this same number.
+  const hasWalletSuggestion =
+    paymentMethod === "CASH" &&
+    booking?.suggestedCashCollection !== undefined &&
+    booking?.suggestedCashCollection !== null;
+  const cashDue = hasWalletSuggestion ? booking.suggestedCashCollection : fare;
   const s = styles(Colors);
 
   return (
@@ -382,8 +391,15 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                   Pay by Cash
                 </Text>
                 <Text style={s.paymentText}>
-                  Please pay £{fare.toFixed(2)} to your driver.
+                  {hasWalletSuggestion && cashDue === 0
+                    ? "Fully covered by your wallet — no cash needed."
+                    : `Please pay £${cashDue.toFixed(2)} to your driver.`}
                 </Text>
+                {hasWalletSuggestion && cashDue < fare && cashDue > 0 && (
+                  <Text style={[s.paymentText, { marginTop: 4 }]}>
+                    £{(fare - cashDue).toFixed(2)} covered by your wallet.
+                  </Text>
+                )}
               </View>
             </View>
 

@@ -151,9 +151,14 @@ export default function TrackingScreen({ route, navigation }: any) {
       if (data.status === "COMPLETED") {
         if (!isNavigatingAway.current) {
           isNavigatingAway.current = true;
-          navigation.replace("RideComplete", {
-            booking: booking,
-          });
+          try {
+            const res = await api.get(`/passengers/bookings/${bookingId}`);
+            navigation.replace("RideComplete", { booking: res.data.data });
+          } catch {
+            // Fall back to local state if the fetch fails — better than
+            // crashing navigation, even though it may show estimatedFare.
+            navigation.replace("RideComplete", { booking });
+          }
         }
       }
       if (data.status === "DRIVER_CANCELLED") {
@@ -301,7 +306,7 @@ export default function TrackingScreen({ route, navigation }: any) {
         if (!isNavigatingAway.current) {
           isNavigatingAway.current = true;
           navigation.replace("RideComplete", {
-            booking: booking,
+            booking: b,
           });
         }
       }
