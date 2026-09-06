@@ -4,7 +4,10 @@ import { Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { StripeProvider } from "@stripe/stripe-react-native";
@@ -41,6 +44,13 @@ function EmojiIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
 
 function MainTabs() {
   const { Colors } = useTheme();
+  // Bottom safe-area inset varies a lot across Android devices (3-button nav,
+  // gesture pill, OEM overlays) — a fixed tabBarStyle height clips the tab
+  // bar behind the system nav bar on devices where this inset exceeds what
+  // we hardcoded. Compute it live instead.
+  const insets = useSafeAreaInsets();
+  const BASE_TAB_BAR_CONTENT_HEIGHT = 54; // icon + label, excluding safe area
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -49,8 +59,8 @@ function MainTabs() {
           backgroundColor: Colors.card,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          paddingBottom: 4,
-          height: 58,
+          paddingBottom: Math.max(insets.bottom, 4),
+          height: BASE_TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, 4),
         },
         tabBarActiveTintColor: Colors.brand,
         tabBarInactiveTintColor: Colors.muted,
