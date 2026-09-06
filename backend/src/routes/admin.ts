@@ -1159,4 +1159,85 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
     }
   );
+
+  // ─── GET /admin/passengers/:id/wallet — current balance for admin view ────
+  fastify.get(
+    "/admin/passengers/:id/wallet",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const user = request.user;
+      if (
+        !user.roles.some((r: string) => ["ADMIN", "DISPATCHER"].includes(r))
+      ) {
+        return reply.status(403).send({ success: false, error: "Forbidden" });
+      }
+
+      const { id: passengerId } = request.params as { id: string };
+
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        const balance = await walletService.getBalance(passengerId);
+        return reply.send({ success: true, data: balance });
+      } catch (err) {
+        fastify.log.error(
+          { err },
+          "[Wallet] admin passenger wallet fetch failed"
+        );
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to fetch wallet" });
+      }
+    }
+  );
+
+  // ─── POST /admin/wallet/adjust — manual balance correction ────────────────
+  const adjustWalletSchema = z.object({
+    passengerId: z.string(),
+    amount: z.coerce.number().refine((n) => n !== 0, "Amount cannot be zero"),
+    balanceType: z.enum(["promo", "real"]),
+    note: z.string().min(3, "A note is required for manual adjustments"),
+  });
+
+  fastify.post(
+    "/admin/wallet/adjust",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const user = request.user;
+      if (
+        !user.roles.some((r: string) => ["ADMIN", "DISPATCHER"].includes(r))
+      ) {
+        return reply.status(403).send({ success: false, error: "Forbidden" });
+      }
+
+      let body;
+      try {
+        body = adjustWalletSchema.parse(request.body);
+      } catch (err: any) {
+        return reply.status(400).send({
+          success: false,
+          error: err.errors?.[0]?.message ?? "Invalid request",
+        });
+      }
+
+      try {
+        const { WalletService } = await import("../services/wallet.service");
+        const walletService = new WalletService(fastify.prisma);
+        await walletService.adminAdjustBalance(
+          body.passengerId,
+          body.amount,
+          body.balanceType,
+          body.note,
+          user.userId
+        );
+        const balance = await walletService.getBalance(body.passengerId);
+        return reply.send({ success: true, data: balance });
+      } catch (err) {
+        fastify.log.error({ err }, "[Wallet] admin adjustment failed");
+        return reply
+          .status(500)
+          .send({ success: false, error: "Failed to adjust wallet" });
+      }
+    }
+  );
 }
