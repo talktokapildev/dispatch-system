@@ -44,6 +44,12 @@ const CANCELLABLE_STATUSES = [
   "DRIVER_ARRIVED",
 ];
 
+// ── Dev-only tools flag ─────────────────────────────────────────────────────
+// True only in development and preview EAS builds (see eas.json) — never in
+// production or android-apk. Lets us simulate trip distance for fare/wallet
+// testing without physically driving.
+const DEV_TOOLS_ENABLED = process.env.EXPO_PUBLIC_DEV_TOOLS === "true";
+
 export default function ActiveJobScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { sendToTesla } = useTeslaNavigation();
@@ -76,6 +82,22 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     latitude: number;
     longitude: number;
   } | null>(null);
+
+  // ── Dev-only: mirrors tripDistanceMilesRef for display purposes only.
+  // The ref itself remains the single source of truth read at completion —
+  // this state exists purely so the driver can see the accumulated value
+  // on screen while testing.
+  const [devSimulatedMiles, setDevSimulatedMiles] = useState(0);
+
+  const addSimulatedMiles = (miles: number) => {
+    tripDistanceMilesRef.current += miles;
+    setDevSimulatedMiles(tripDistanceMilesRef.current);
+  };
+
+  const resetSimulatedMiles = () => {
+    tripDistanceMilesRef.current = 0;
+    setDevSimulatedMiles(0);
+  };
 
   // Shows an alert immediately if app is active, or waits until foregrounded.
   // Prevents the iOS native nav bar artifact that appears when an Alert fires
@@ -144,6 +166,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     if (lastTripLocationRef.current) {
       const d = haversineMiles(lastTripLocationRef.current, location);
       tripDistanceMilesRef.current += d;
+      setDevSimulatedMiles(tripDistanceMilesRef.current);
     }
     lastTripLocationRef.current = location;
   }, [location]);
@@ -271,6 +294,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         tripStartedAtRef.current = new Date();
         tripDistanceMilesRef.current = 0;
         lastTripLocationRef.current = locationRef.current;
+        setDevSimulatedMiles(0);
       }
 
       // Build completion payload with actual distance/duration if available
@@ -460,6 +484,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const mapStage =
     booking.status === "IN_PROGRESS" ? "to_dropoff" : "to_pickup";
   const canCancel = CANCELLABLE_STATUSES.includes(booking.status);
+  const showDevTools = DEV_TOOLS_ENABLED && booking.status === "IN_PROGRESS";
   const s = styles(Colors);
 
   return (
@@ -489,6 +514,43 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         <View style={s.mapLoading}>
           <ActivityIndicator color={Colors.brand} size="small" />
           <Text style={s.mapLoadingText}>Loading route…</Text>
+        </View>
+      )}
+
+      {/* ── DEV ONLY: simulate trip distance for fare testing ────────────── */}
+      {showDevTools && (
+        <View style={s.devPanel} pointerEvents="box-none">
+          <View style={s.devPanelInner}>
+            <Text style={s.devPanelTitle}>
+              🛠 DEV — Simulated: {devSimulatedMiles.toFixed(1)} mi
+            </Text>
+            <View style={s.devPanelRow}>
+              <TouchableOpacity
+                style={s.devBtn}
+                onPress={() => addSimulatedMiles(1)}
+              >
+                <Text style={s.devBtnText}>+1 mi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.devBtn}
+                onPress={() => addSimulatedMiles(5)}
+              >
+                <Text style={s.devBtnText}>+5 mi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.devBtn}
+                onPress={() => addSimulatedMiles(10)}
+              >
+                <Text style={s.devBtnText}>+10 mi</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.devBtn, s.devBtnReset]}
+                onPress={resetSimulatedMiles}
+              >
+                <Text style={s.devBtnText}>Reset</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 
@@ -687,6 +749,39 @@ const styles = (
       borderColor: C.border,
     },
     mapLoadingText: { fontSize: FontSize.sm, color: C.text },
+    devPanel: {
+      position: "absolute",
+      top: 60,
+      left: Spacing.md,
+      right: Spacing.md,
+      alignItems: "center",
+    },
+    devPanelInner: {
+      backgroundColor: "#000000dd",
+      borderRadius: Radius.md,
+      borderWidth: 1,
+      borderColor: "#f59e0b80",
+      paddingVertical: Spacing.sm,
+      paddingHorizontal: Spacing.md,
+    },
+    devPanelTitle: {
+      color: "#f59e0b",
+      fontSize: FontSize.xs,
+      fontWeight: "700",
+      textAlign: "center",
+      marginBottom: Spacing.xs,
+    },
+    devPanelRow: { flexDirection: "row", gap: Spacing.xs },
+    devBtn: {
+      backgroundColor: "#f59e0b20",
+      borderWidth: 1,
+      borderColor: "#f59e0b",
+      borderRadius: Radius.sm,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+    devBtnReset: { backgroundColor: "#ffffff10", borderColor: "#ffffff40" },
+    devBtnText: { color: "#f59e0b", fontSize: FontSize.xs, fontWeight: "700" },
     sheet: {
       position: "absolute",
       bottom: 0,

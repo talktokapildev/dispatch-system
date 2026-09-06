@@ -8,11 +8,11 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": { "simulator": false },
-      "env": { "APP_ENV": "development" }
+      "env": { "APP_ENV": "development", "EXPO_PUBLIC_DEV_TOOLS": "true" }
     },
     "preview": {
       "distribution": "internal",
-      "env": { "APP_ENV": "production" }
+      "env": { "APP_ENV": "production", "EXPO_PUBLIC_DEV_TOOLS": "true" }
     },
     "production": {
       "autoIncrement": true,
