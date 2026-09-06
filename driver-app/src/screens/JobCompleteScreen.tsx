@@ -168,177 +168,179 @@ export default function JobCompleteScreen({ route, navigation }: any) {
   const showCashSection = hasWalletSuggestion && cardPaymentState === "idle";
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <SafeAreaView style={s.container}>
-        <View style={s.inner}>
-          <Animated.View
-            style={[
-              s.checkCircle,
-              { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
-            ]}
-          >
-            <Text style={s.checkIcon}>✓</Text>
-          </Animated.View>
-          <Text style={s.title}>Trip Complete!</Text>
-          <Text style={s.subtitle}>
-            {isCash
-              ? "Collect cash from passenger or request card payment."
-              : "Your payment is being processed."}
-          </Text>
+    <>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView style={s.container}>
+          <View style={s.inner}>
+            <Animated.View
+              style={[
+                s.checkCircle,
+                { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
+              ]}
+            >
+              <Text style={s.checkIcon}>✓</Text>
+            </Animated.View>
+            <Text style={s.title}>Trip Complete!</Text>
+            <Text style={s.subtitle}>
+              {isCash
+                ? "Collect cash from passenger or request card payment."
+                : "Your payment is being processed."}
+            </Text>
 
-          {/* Earnings breakdown */}
-          <View style={s.card}>
-            <View style={s.row}>
-              <Text style={s.rowLabel}>Trip Fare</Text>
-              <Text style={s.rowValue}>£{fare.toFixed(2)}</Text>
+            {/* Earnings breakdown */}
+            <View style={s.card}>
+              <View style={s.row}>
+                <Text style={s.rowLabel}>Trip Fare</Text>
+                <Text style={s.rowValue}>£{fare.toFixed(2)}</Text>
+              </View>
+              <View style={s.row}>
+                <Text style={s.rowLabel}>
+                  Platform Fee ({Math.round(commissionRate * 100)}%)
+                </Text>
+                <Text style={[s.rowValue, { color: Colors.muted }]}>
+                  -£{platformFee.toFixed(2)}
+                </Text>
+              </View>
+              <View style={[s.row, s.totalRow]}>
+                <Text style={s.totalLabel}>Your Earnings</Text>
+                <Text style={s.totalValue}>£{driverEarning.toFixed(2)}</Text>
+              </View>
             </View>
-            <View style={s.row}>
-              <Text style={s.rowLabel}>
-                Platform Fee ({Math.round(commissionRate * 100)}%)
-              </Text>
-              <Text style={[s.rowValue, { color: Colors.muted }]}>
-                -£{platformFee.toFixed(2)}
-              </Text>
-            </View>
-            <View style={[s.row, s.totalRow]}>
-              <Text style={s.totalLabel}>Your Earnings</Text>
-              <Text style={s.totalValue}>£{driverEarning.toFixed(2)}</Text>
-            </View>
-          </View>
 
-          {/* Reference */}
-          <View style={s.refCard}>
-            <Text style={s.refLabel}>Reference</Text>
-            <Text style={s.refValue}>{booking?.reference}</Text>
-          </View>
+            {/* Reference */}
+            <View style={s.refCard}>
+              <Text style={s.refLabel}>Reference</Text>
+              <Text style={s.refValue}>{booking?.reference}</Text>
+            </View>
 
-          {/* ── Wallet cash-collection section — CASH bookings with a real
+            {/* ── Wallet cash-collection section — CASH bookings with a real
              passenger, non-corporate/care-home only ──────────────────────── */}
-          {showCashSection && cashSettleState !== "confirmed" && (
-            <View style={s.cashCard}>
-              {suggestedCash === 0 ? (
-                <>
-                  <Text style={s.cashNoneTitle}>
-                    No cash needed — fully covered by wallet
-                  </Text>
+            {showCashSection && cashSettleState !== "confirmed" && (
+              <View style={s.cashCard}>
+                {suggestedCash === 0 ? (
+                  <>
+                    <Text style={s.cashNoneTitle}>
+                      No cash needed — fully covered by wallet
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        s.cashConfirmBtn,
+                        cashSettleState === "submitting" &&
+                          s.cashConfirmBtnDisabled,
+                      ]}
+                      disabled={cashSettleState === "submitting"}
+                      onPress={() => submitCashCollection(0)}
+                    >
+                      {cashSettleState === "submitting" ? (
+                        <ActivityIndicator color="#000" size="small" />
+                      ) : (
+                        <Text style={s.cashConfirmBtnText}>
+                          Confirm — No Cash Collected
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={s.cashLabel}>
+                      Amount to collect: £{suggestedCash.toFixed(2)}
+                    </Text>
+                    <TextInput
+                      style={s.cashInput}
+                      value={cashInput}
+                      onChangeText={setCashInput}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={Colors.muted}
+                      editable={cashSettleState !== "submitting"}
+                      inputAccessoryViewID={
+                        Platform.OS === "ios"
+                          ? CASH_INPUT_ACCESSORY_ID
+                          : undefined
+                      }
+                    />
+                    <TouchableOpacity
+                      style={[
+                        s.cashConfirmBtn,
+                        cashSettleState === "submitting" &&
+                          s.cashConfirmBtnDisabled,
+                      ]}
+                      disabled={cashSettleState === "submitting"}
+                      onPress={handleConfirmCash}
+                    >
+                      {cashSettleState === "submitting" ? (
+                        <ActivityIndicator color="#000" size="small" />
+                      ) : (
+                        <Text style={s.cashConfirmBtnText}>
+                          Confirm Cash Collected
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
+
+            {showCashSection && cashSettleState === "confirmed" && (
+              <View style={s.cashConfirmedCard}>
+                <Text style={s.cashConfirmedText}>
+                  ✅ Cash collection confirmed
+                  {settlementResult && settlementResult.variance !== 0
+                    ? settlementResult.variance > 0
+                      ? ` (£${settlementResult.variance.toFixed(2)} over)`
+                      : ` (£${Math.abs(settlementResult.variance).toFixed(
+                          2
+                        )} under)`
+                    : ""}
+                </Text>
+              </View>
+            )}
+
+            {/* Card payment section — CASH bookings only */}
+            {isCash && (
+              <>
+                {cardPaymentState === "idle" && (
                   <TouchableOpacity
-                    style={[
-                      s.cashConfirmBtn,
-                      cashSettleState === "submitting" &&
-                        s.cashConfirmBtnDisabled,
-                    ]}
-                    disabled={cashSettleState === "submitting"}
-                    onPress={() => submitCashCollection(0)}
+                    style={s.cardPayBtn}
+                    onPress={handleRequestCardPayment}
                   >
-                    {cashSettleState === "submitting" ? (
-                      <ActivityIndicator color="#000" size="small" />
-                    ) : (
-                      <Text style={s.cashConfirmBtnText}>
-                        Confirm — No Cash Collected
-                      </Text>
-                    )}
+                    <Text style={s.cardPayBtnText}>
+                      💳 Passenger paying by card
+                    </Text>
                   </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={s.cashLabel}>
-                    Amount to collect: £{suggestedCash.toFixed(2)}
-                  </Text>
-                  <TextInput
-                    style={s.cashInput}
-                    value={cashInput}
-                    onChangeText={setCashInput}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={Colors.muted}
-                    editable={cashSettleState !== "submitting"}
-                    inputAccessoryViewID={
-                      Platform.OS === "ios"
-                        ? CASH_INPUT_ACCESSORY_ID
-                        : undefined
-                    }
-                  />
-                  <TouchableOpacity
-                    style={[
-                      s.cashConfirmBtn,
-                      cashSettleState === "submitting" &&
-                        s.cashConfirmBtnDisabled,
-                    ]}
-                    disabled={cashSettleState === "submitting"}
-                    onPress={handleConfirmCash}
-                  >
-                    {cashSettleState === "submitting" ? (
-                      <ActivityIndicator color="#000" size="small" />
-                    ) : (
-                      <Text style={s.cashConfirmBtnText}>
-                        Confirm Cash Collected
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
-          )}
+                )}
 
-          {showCashSection && cashSettleState === "confirmed" && (
-            <View style={s.cashConfirmedCard}>
-              <Text style={s.cashConfirmedText}>
-                ✅ Cash collection confirmed
-                {settlementResult && settlementResult.variance !== 0
-                  ? settlementResult.variance > 0
-                    ? ` (£${settlementResult.variance.toFixed(2)} over)`
-                    : ` (£${Math.abs(settlementResult.variance).toFixed(
-                        2
-                      )} under)`
-                  : ""}
-              </Text>
-            </View>
-          )}
+                {cardPaymentState === "waiting" && (
+                  <View style={s.cardPayWaiting}>
+                    <ActivityIndicator color={Colors.brand} size="small" />
+                    <Text style={s.cardPayWaitingText}>
+                      Waiting for passenger to pay...
+                    </Text>
+                  </View>
+                )}
 
-          {/* Card payment section — CASH bookings only */}
-          {isCash && (
-            <>
-              {cardPaymentState === "idle" && (
-                <TouchableOpacity
-                  style={s.cardPayBtn}
-                  onPress={handleRequestCardPayment}
-                >
-                  <Text style={s.cardPayBtnText}>
-                    💳 Passenger paying by card
-                  </Text>
-                </TouchableOpacity>
-              )}
+                {cardPaymentState === "confirmed" && (
+                  <View style={s.cardPayConfirmed}>
+                    <Text style={s.cardPayConfirmedText}>
+                      ✅ Card payment confirmed
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
 
-              {cardPaymentState === "waiting" && (
-                <View style={s.cardPayWaiting}>
-                  <ActivityIndicator color={Colors.brand} size="small" />
-                  <Text style={s.cardPayWaitingText}>
-                    Waiting for passenger to pay...
-                  </Text>
-                </View>
-              )}
-
-              {cardPaymentState === "confirmed" && (
-                <View style={s.cardPayConfirmed}>
-                  <Text style={s.cardPayConfirmedText}>
-                    ✅ Card payment confirmed
-                  </Text>
-                </View>
-              )}
-            </>
-          )}
-
-          <TouchableOpacity
-            style={s.doneBtn}
-            onPress={() =>
-              // popToTop() cleanly unwinds [Main, JobComplete] → [Main]
-              navigation.reset({ index: 0, routes: [{ name: "Main" }] })
-            }
-          >
-            <Text style={s.doneBtnText}>Back to Dashboard</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+            <TouchableOpacity
+              style={s.doneBtn}
+              onPress={() =>
+                // popToTop() cleanly unwinds [Main, JobComplete] → [Main]
+                navigation.reset({ index: 0, routes: [{ name: "Main" }] })
+              }
+            >
+              <Text style={s.doneBtnText}>Back to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
       {Platform.OS === "ios" && (
         <InputAccessoryView nativeID={CASH_INPUT_ACCESSORY_ID}>
           <View style={s.keyboardAccessory}>
@@ -351,7 +353,7 @@ export default function JobCompleteScreen({ route, navigation }: any) {
           </View>
         </InputAccessoryView>
       )}
-    </TouchableWithoutFeedback>
+    </>
   );
 }
 
