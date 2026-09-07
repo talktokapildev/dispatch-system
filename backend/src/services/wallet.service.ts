@@ -52,7 +52,7 @@ export class WalletService {
     const lots = await this.prisma.walletTransaction.findMany({
       where: {
         walletId,
-        type: "CREDIT_PROMO",
+        type: { in: ["CREDIT_PROMO", "REFUND_ADMIN"] },
         remainingAmount: { gt: 0 },
       },
       select: {
