@@ -176,7 +176,12 @@ export default function ProfileScreen({ navigation }: any) {
                   £{wallet.promoBalance.toFixed(2)}
                 </Text>
               </View>
-              <View style={s.infoRow}>
+              <View
+                style={[
+                  s.infoRow,
+                  wallet.welcomeBonusIssued && { borderBottomWidth: 0 },
+                ]}
+              >
                 <Text style={s.infoLabel}>
                   {wallet.realBalance < 0 ? "You owe" : "Real balance"}
                 </Text>
@@ -193,16 +198,16 @@ export default function ProfileScreen({ navigation }: any) {
                   £{Math.abs(wallet.realBalance).toFixed(2)}
                 </Text>
               </View>
-              <View style={[s.infoRow, { borderBottomWidth: 0 }]}>
-                <Text style={s.infoLabel}>Status</Text>
-                <Text style={[s.infoValue, { color: Colors.success }]}>
-                  {wallet.welcomeBonusIssued
-                    ? "Welcome bonus applied ✓"
-                    : wallet.welcomeBonusPending
-                    ? "Complete first trip to unlock £25"
-                    : "Active"}
-                </Text>
-              </View>
+              {!wallet.welcomeBonusIssued && (
+                <View style={[s.infoRow, { borderBottomWidth: 0 }]}>
+                  <Text style={s.infoLabel}>Status</Text>
+                  <Text style={[s.infoValue, { color: Colors.success }]}>
+                    {wallet.welcomeBonusPending
+                      ? "Complete first trip to unlock £25"
+                      : "Active"}
+                  </Text>
+                </View>
+              )}
             </>
           ) : (
             <Text style={s.infoBody}>Unable to load wallet</Text>
