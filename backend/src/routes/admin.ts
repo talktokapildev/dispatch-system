@@ -1240,4 +1240,50 @@ export async function adminRoutes(fastify: FastifyInstance) {
       }
     }
   );
+  // ─── GET /admin/feedback — passenger star ratings + optional comments ─────
+  fastify.get(
+    "/admin/feedback",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { page = "1", limit = "30" } = request.query as {
+        page?: string;
+        limit?: string;
+      };
+      const take = parseInt(limit, 10);
+      const skip = (parseInt(page, 10) - 1) * take;
+
+      const where = { rating: { not: null } };
+
+      const [items, total] = await Promise.all([
+        fastify.prisma.booking.findMany({
+          where,
+          select: {
+            id: true,
+            reference: true,
+            rating: true,
+            feedback: true,
+            completedAt: true,
+            passenger: {
+              include: {
+                user: {
+                  select: { firstName: true, lastName: true, phone: true },
+                },
+              },
+            },
+            driver: {
+              include: {
+                user: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+          orderBy: { completedAt: "desc" },
+          take,
+          skip,
+        }),
+        fastify.prisma.booking.count({ where }),
+      ]);
+
+      return reply.send({ success: true, data: { items, total } });
+    }
+  );
 }

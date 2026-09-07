@@ -450,7 +450,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       // Store rating on booking
       await fastify.prisma.booking.update({
         where: { id },
-        data: { rating: body.rating },
+        data: { rating: body.rating, feedback: body.comment },
       });
 
       // Recalculate driver's average rating

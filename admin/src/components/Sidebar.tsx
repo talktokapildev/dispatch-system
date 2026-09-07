@@ -21,6 +21,7 @@ import {
   X,
   UserCheck,
   ShieldCheck,
+  Star,
 } from "lucide-react";
 import { useAuthStore, api } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -53,6 +54,7 @@ const nav: NavItem[] = [
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/staff", label: "Staff Register", icon: ClipboardList },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
+  { href: "/feedback", label: "Feedback", icon: Star },
   {
     href: "/compliance",
     label: "Compliance",
