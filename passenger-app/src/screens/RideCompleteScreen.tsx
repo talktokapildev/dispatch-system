@@ -49,6 +49,9 @@ export default function RideCompleteScreen({ route, navigation }: any) {
   const [submitting, setSubmitting] = useState(false);
   const [rated, setRated] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   // Complaint state
   const [complaintVisible, setComplaintVisible] = useState(false);
@@ -139,6 +142,22 @@ export default function RideCompleteScreen({ route, navigation }: any) {
       setRated(true);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitFeedback = async () => {
+    if (!feedbackText.trim()) return;
+    setFeedbackSubmitting(true);
+    try {
+      await api.post(`/passengers/bookings/${booking.id}/rate`, {
+        rating,
+        comment: feedbackText.trim(),
+      });
+      setFeedbackSent(true);
+    } catch {
+      Alert.alert("Error", "Could not send your feedback. Please try again.");
+    } finally {
+      setFeedbackSubmitting(false);
     }
   };
 
@@ -521,45 +540,77 @@ export default function RideCompleteScreen({ route, navigation }: any) {
                 style={{ marginTop: 8 }}
               />
             )}
-            <TouchableOpacity onPress={() => setRated(true)} style={s.skipBtn}>
-              <Text style={s.skipText}>Skip</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           rating > 0 && (
             <View style={s.ratedCard}>
               <Text style={s.ratedText}>Thanks for your {rating}★ rating!</Text>
+              {!feedbackSent ? (
+                <View style={s.feedbackBox}>
+                  <TextInput
+                    style={s.feedbackInput}
+                    placeholder="Tell us more (optional)"
+                    placeholderTextColor={Colors.muted}
+                    value={feedbackText}
+                    onChangeText={setFeedbackText}
+                    multiline
+                    maxLength={500}
+                    editable={!feedbackSubmitting}
+                  />
+                  {feedbackText.trim().length > 0 && (
+                    <TouchableOpacity
+                      style={[
+                        s.feedbackSendBtn,
+                        feedbackSubmitting && { opacity: 0.6 },
+                      ]}
+                      onPress={submitFeedback}
+                      disabled={feedbackSubmitting}
+                    >
+                      {feedbackSubmitting ? (
+                        <ActivityIndicator color="#000" size="small" />
+                      ) : (
+                        <Text style={s.feedbackSendBtnText}>Send</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
+                <Text style={s.feedbackSentText}>
+                  ✓ Thanks for the feedback!
+                </Text>
+              )}
             </View>
           )
         )}
 
-        {/* Report an Issue — TfL Condition 7 */}
-        {!complaintSubmitted ? (
-          <TouchableOpacity
-            style={s.reportBtn}
-            onPress={() => setComplaintVisible(true)}
-          >
-            <Text style={s.reportBtnText}>⚠ Report an Issue</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={s.reportedCard}>
-            <Text style={s.reportedText}>✓ Complaint submitted</Text>
-          </View>
-        )}
+        {/* Report an Issue (TfL Condition 7) + Lost Property (TfL Condition 9) — one row */}
+        <View style={s.reportRow}>
+          {!complaintSubmitted ? (
+            <TouchableOpacity
+              style={[s.reportBtn, s.reportBtnHalf]}
+              onPress={() => setComplaintVisible(true)}
+            >
+              <Text style={s.reportBtnText}>⚠ Report Issue</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[s.reportedCard, s.reportBtnHalf]}>
+              <Text style={s.reportedText}>✓ Reported</Text>
+            </View>
+          )}
 
-        {/* Lost Property — TfL Condition 9 */}
-        {!lostSubmitted ? (
-          <TouchableOpacity
-            style={s.reportBtn}
-            onPress={() => setLostPropertyVisible(true)}
-          >
-            <Text style={s.reportBtnText}>🎒 Report Lost Property</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={s.reportedCard}>
-            <Text style={s.reportedText}>✓ Lost property reported</Text>
-          </View>
-        )}
+          {!lostSubmitted ? (
+            <TouchableOpacity
+              style={[s.reportBtn, s.reportBtnHalf]}
+              onPress={() => setLostPropertyVisible(true)}
+            >
+              <Text style={s.reportBtnText}>🎒 Lost Property</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[s.reportedCard, s.reportBtnHalf]}>
+              <Text style={s.reportedText}>✓ Reported</Text>
+            </View>
+          )}
+        </View>
 
         {/* TfL Condition 14 — operating centre contact */}
         <TouchableOpacity
@@ -1043,8 +1094,37 @@ const styles = (
     starFilled: { color: "#f59e0b" },
     skipBtn: { marginTop: Spacing.sm },
     skipText: { fontSize: FontSize.sm, color: C.muted },
-    ratedCard: { marginBottom: Spacing.md },
+    ratedCard: { marginBottom: Spacing.md, width: "100%" },
     ratedText: { fontSize: FontSize.md, color: C.success, fontWeight: "600" },
+    feedbackBox: { width: "100%", marginTop: Spacing.sm },
+    feedbackInput: {
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.card,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      fontSize: FontSize.sm,
+      color: C.white,
+      minHeight: 70,
+      textAlignVertical: "top",
+      marginBottom: Spacing.sm,
+    },
+    feedbackSendBtn: {
+      backgroundColor: C.brand,
+      borderRadius: Radius.md,
+      paddingVertical: Spacing.sm,
+      alignItems: "center",
+    },
+    feedbackSendBtnText: {
+      color: "#000",
+      fontWeight: "700",
+      fontSize: FontSize.sm,
+    },
+    feedbackSentText: {
+      fontSize: FontSize.xs,
+      color: C.success,
+      marginTop: Spacing.xs,
+    },
     reportBtn: {
       width: "100%",
       borderRadius: Radius.md,
@@ -1053,6 +1133,16 @@ const styles = (
       padding: Spacing.md,
       alignItems: "center",
       marginBottom: Spacing.sm,
+    },
+    reportRow: {
+      flexDirection: "row",
+      gap: Spacing.sm,
+      width: "100%",
+      marginBottom: Spacing.sm,
+    },
+    reportBtnHalf: {
+      flex: 1,
+      marginBottom: 0,
     },
     reportBtnText: { fontSize: FontSize.sm, color: C.muted, fontWeight: "500" },
     reportedCard: {
