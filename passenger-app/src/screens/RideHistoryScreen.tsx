@@ -21,6 +21,8 @@ import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback } from "react";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 
 const STATUS_COLORS: Record<string, string> = {
   COMPLETED: "#22c55e",
@@ -75,6 +77,9 @@ export default function RideHistoryScreen({ navigation }: any) {
   const [lostSubmitting, setLostSubmitting] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [receiptGeneratingId, setReceiptGeneratingId] = useState<string | null>(
+    null
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -182,6 +187,137 @@ export default function RideHistoryScreen({ navigation }: any) {
       );
     } finally {
       setLostSubmitting(false);
+    }
+  };
+  const generateReceipt = async (item: any) => {
+    setReceiptGeneratingId(item.id);
+    try {
+      // Fetch fresh, complete booking detail rather than trusting the list
+      // item — this is a document someone may submit for reimbursement, so
+      // it should reflect the authoritative record, not a possibly-partial
+      // list-view snapshot.
+      const { data } = await api.get(`/passengers/bookings/${item.id}`);
+      const b = data.data ?? item;
+
+      const fare = b.actualFare ?? b.estimatedFare ?? 0;
+      const isCash = b.paymentMethod === "CASH";
+      const cashCollected = b.actualCashCollected;
+      const walletCovered =
+        isCash && cashCollected !== null && cashCollected !== undefined
+          ? Math.max(0, fare - cashCollected)
+          : 0;
+
+      const dateStr = format(
+        new Date(b.completedAt ?? b.createdAt),
+        "dd MMMM yyyy 'at' HH:mm"
+      );
+
+      const driverLine = b.driver?.user?.firstName
+        ? `<tr><td class="label">Driver</td><td class="value">${
+            b.driver.user.firstName
+          } ${b.driver.user.lastName ?? ""}</td></tr>`
+        : "";
+      const vehicleLine = b.driver?.vehicle?.licensePlate
+        ? `<tr><td class="label">Vehicle</td><td class="value">${
+            b.driver.vehicle.make ?? ""
+          } ${b.driver.vehicle.model ?? ""} (${
+            b.driver.vehicle.licensePlate
+          })</td></tr>`
+        : "";
+
+      const fareRows =
+        walletCovered > 0
+          ? `
+          <tr><td class="label">Trip Fare</td><td class="value">£${fare.toFixed(
+            2
+          )}</td></tr>
+          <tr><td class="label">Paid via OrangeRide wallet</td><td class="value">-£${walletCovered.toFixed(
+            2
+          )}</td></tr>
+          <tr class="total"><td class="label">Paid in cash</td><td class="value">£${(
+            cashCollected ?? fare
+          ).toFixed(2)}</td></tr>
+        `
+          : `
+          <tr class="total"><td class="label">Total Charged</td><td class="value">£${fare.toFixed(
+            2
+          )}</td></tr>
+        `;
+
+      const html = `
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 32px; color: #1a1a1a; }
+              .header { text-align: center; margin-bottom: 24px; }
+              .brand { font-size: 22px; font-weight: 800; }
+              .brand .orange { color: #f59e0b; }
+              .brand .green { color: #2d5a1b; }
+              .licence { font-size: 11px; color: #666; margin-top: 4px; }
+              .receipt-title { font-size: 14px; font-weight: 700; margin: 24px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+              td { padding: 6px 0; font-size: 13px; }
+              .label { color: #666; }
+              .value { text-align: right; font-weight: 600; }
+              .total td { border-top: 1px solid #ddd; padding-top: 10px; font-size: 15px; }
+              .total .value { color: #f59e0b; font-weight: 800; }
+              .footer { margin-top: 32px; font-size: 10px; color: #999; text-align: center; line-height: 1.6; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="brand"><span class="orange">Orange</span><span class="green">Ride</span></div>
+              <div class="licence">TfL Private Hire Operator Licence: II786</div>
+            </div>
+
+            <div class="receipt-title">Receipt — ${b.reference}</div>
+
+            <table>
+              <tr><td class="label">Date</td><td class="value">${dateStr}</td></tr>
+              <tr><td class="label">Passenger</td><td class="value">${
+                b.passenger?.user?.firstName ?? ""
+              } ${b.passenger?.user?.lastName ?? ""}</td></tr>
+              ${driverLine}
+              ${vehicleLine}
+              <tr><td class="label">Pickup</td><td class="value">${
+                b.pickupAddress ?? ""
+              }</td></tr>
+              <tr><td class="label">Dropoff</td><td class="value">${
+                b.dropoffAddress ?? ""
+              }</td></tr>
+            </table>
+
+            <table>
+              ${fareRows}
+            </table>
+
+            <div class="footer">
+              OrangeRide is not VAT registered. This receipt is not a VAT invoice.<br/>
+              Questions about this receipt? Contact admin@orangeride.co.uk
+            </div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: `Receipt — ${b.reference}`,
+        });
+      } else {
+        Alert.alert("Receipt generated", `Saved to: ${uri}`);
+      }
+    } catch (err: any) {
+      Alert.alert(
+        "Error",
+        "Could not generate receipt. Please try again or email admin@orangeride.co.uk with your booking reference."
+      );
+    } finally {
+      setReceiptGeneratingId(null);
     }
   };
 
@@ -392,6 +528,21 @@ export default function RideHistoryScreen({ navigation }: any) {
                       </Text>
                     </TouchableOpacity>
                   )}
+
+                  <View style={s.actionDivider} />
+                  <TouchableOpacity
+                    style={s.actionBtn}
+                    disabled={receiptGeneratingId === item.id}
+                    onPress={() => generateReceipt(item)}
+                  >
+                    {receiptGeneratingId === item.id ? (
+                      <ActivityIndicator size="small" color={Colors.brand} />
+                    ) : (
+                      <Text style={[s.actionBtnText, { color: Colors.muted }]}>
+                        🧾 Receipt
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               )}
 
