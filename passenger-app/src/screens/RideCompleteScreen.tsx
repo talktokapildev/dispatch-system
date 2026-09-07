@@ -52,6 +52,7 @@ export default function RideCompleteScreen({ route, navigation }: any) {
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [moreExpanded, setMoreExpanded] = useState(false);
 
   // Complaint state
   const [complaintVisible, setComplaintVisible] = useState(false);
@@ -515,114 +516,134 @@ export default function RideCompleteScreen({ route, navigation }: any) {
           </View>
         )}
 
-        {/* Star rating */}
-        {!rated ? (
-          <View style={s.ratingSection}>
-            <Text style={s.ratingTitle}>Rate your driver</Text>
-            <View style={s.stars}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => submitRating(star)}
-                  disabled={submitting}
-                  style={s.starBtn}
-                >
-                  <Text style={[s.star, rating >= star && s.starFilled]}>
-                    ★
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            {submitting && (
-              <ActivityIndicator
-                color={Colors.brand}
-                size="small"
-                style={{ marginTop: 8 }}
-              />
-            )}
-          </View>
-        ) : (
-          rating > 0 && (
-            <View style={s.ratedCard}>
-              <Text style={s.ratedText}>Thanks for your {rating}★ rating!</Text>
-              {!feedbackSent ? (
-                <View style={s.feedbackBox}>
-                  <TextInput
-                    style={s.feedbackInput}
-                    placeholder="Tell us more (optional)"
-                    placeholderTextColor={Colors.muted}
-                    value={feedbackText}
-                    onChangeText={setFeedbackText}
-                    multiline
-                    maxLength={500}
-                    editable={!feedbackSubmitting}
-                  />
-                  {feedbackText.trim().length > 0 && (
-                    <TouchableOpacity
-                      style={[
-                        s.feedbackSendBtn,
-                        feedbackSubmitting && { opacity: 0.6 },
-                      ]}
-                      onPress={submitFeedback}
-                      disabled={feedbackSubmitting}
-                    >
-                      {feedbackSubmitting ? (
-                        <ActivityIndicator color="#000" size="small" />
-                      ) : (
-                        <Text style={s.feedbackSendBtnText}>Send</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ) : (
-                <Text style={s.feedbackSentText}>
-                  ✓ Thanks for the feedback!
-                </Text>
-              )}
-            </View>
-          )
-        )}
-
-        {/* Report an Issue (TfL Condition 7) + Lost Property (TfL Condition 9) — one row */}
-        <View style={s.reportRow}>
-          {!complaintSubmitted ? (
-            <TouchableOpacity
-              style={[s.reportBtn, s.reportBtnHalf]}
-              onPress={() => setComplaintVisible(true)}
-            >
-              <Text style={s.reportBtnText}>⚠ Report Issue</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={[s.reportedCard, s.reportBtnHalf]}>
-              <Text style={s.reportedText}>✓ Reported</Text>
-            </View>
-          )}
-
-          {!lostSubmitted ? (
-            <TouchableOpacity
-              style={[s.reportBtn, s.reportBtnHalf]}
-              onPress={() => setLostPropertyVisible(true)}
-            >
-              <Text style={s.reportBtnText}>🎒 Lost Property</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={[s.reportedCard, s.reportBtnHalf]}>
-              <Text style={s.reportedText}>✓ Reported</Text>
-            </View>
-          )}
-        </View>
-
-        {/* TfL Condition 14 — operating centre contact */}
+        {/* ── Rate, report, contact — collapsed by default so payment stays the focus ── */}
         <TouchableOpacity
-          style={s.contactBtn}
-          onPress={() =>
-            Linking.openURL(`tel:${settings.contactPhone.replace(/\s/g, "")}`)
-          }
+          style={s.moreToggle}
+          onPress={() => setMoreExpanded((v) => !v)}
+          activeOpacity={0.7}
         >
-          <Text style={s.contactBtnText}>
-            📞 Contact OrangeRide {settings.contactPhone}
+          <Text style={s.moreToggleText}>
+            {moreExpanded ? "▾" : "▸"} Rate your trip, report an issue, or
+            contact us
           </Text>
         </TouchableOpacity>
+
+        {moreExpanded && (
+          <View style={s.moreSection}>
+            {/* Star rating */}
+            {!rated ? (
+              <View style={s.ratingSection}>
+                <Text style={s.ratingTitle}>Rate your driver</Text>
+                <View style={s.stars}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <TouchableOpacity
+                      key={star}
+                      onPress={() => submitRating(star)}
+                      disabled={submitting}
+                      style={s.starBtn}
+                    >
+                      <Text style={[s.star, rating >= star && s.starFilled]}>
+                        ★
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {submitting && (
+                  <ActivityIndicator
+                    color={Colors.brand}
+                    size="small"
+                    style={{ marginTop: 8 }}
+                  />
+                )}
+              </View>
+            ) : (
+              rating > 0 && (
+                <View style={s.ratedCard}>
+                  <Text style={s.ratedText}>
+                    Thanks for your {rating}★ rating!
+                  </Text>
+                  {!feedbackSent ? (
+                    <View style={s.feedbackBox}>
+                      <TextInput
+                        style={s.feedbackInput}
+                        placeholder="Tell us more (optional)"
+                        placeholderTextColor={Colors.muted}
+                        value={feedbackText}
+                        onChangeText={setFeedbackText}
+                        multiline
+                        maxLength={500}
+                        editable={!feedbackSubmitting}
+                      />
+                      {feedbackText.trim().length > 0 && (
+                        <TouchableOpacity
+                          style={[
+                            s.feedbackSendBtn,
+                            feedbackSubmitting && { opacity: 0.6 },
+                          ]}
+                          onPress={submitFeedback}
+                          disabled={feedbackSubmitting}
+                        >
+                          {feedbackSubmitting ? (
+                            <ActivityIndicator color="#000" size="small" />
+                          ) : (
+                            <Text style={s.feedbackSendBtnText}>Send</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={s.feedbackSentText}>
+                      ✓ Thanks for the feedback!
+                    </Text>
+                  )}
+                </View>
+              )
+            )}
+
+            {/* Report an Issue (TfL Condition 7) + Lost Property (TfL Condition 9) */}
+            <View style={s.reportRow}>
+              {!complaintSubmitted ? (
+                <TouchableOpacity
+                  style={[s.reportBtn, s.reportBtnHalf]}
+                  onPress={() => setComplaintVisible(true)}
+                >
+                  <Text style={s.reportBtnText}>⚠ Report Issue</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[s.reportedCard, s.reportBtnHalf]}>
+                  <Text style={s.reportedText}>✓ Reported</Text>
+                </View>
+              )}
+
+              {!lostSubmitted ? (
+                <TouchableOpacity
+                  style={[s.reportBtn, s.reportBtnHalf]}
+                  onPress={() => setLostPropertyVisible(true)}
+                >
+                  <Text style={s.reportBtnText}>🎒 Lost Property</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[s.reportedCard, s.reportBtnHalf]}>
+                  <Text style={s.reportedText}>✓ Reported</Text>
+                </View>
+              )}
+            </View>
+
+            {/* TfL Condition 14 — operating centre contact */}
+            <TouchableOpacity
+              style={s.contactBtn}
+              onPress={() =>
+                Linking.openURL(
+                  `tel:${settings.contactPhone.replace(/\s/g, "")}`
+                )
+              }
+            >
+              <Text style={s.contactBtnText}>
+                📞 Contact OrangeRide {settings.contactPhone}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity
           style={s.doneBtn}
@@ -1263,5 +1284,19 @@ const styles = (
       fontSize: FontSize.sm,
       color: C.brand,
       fontWeight: "600",
+    },
+    moreToggle: {
+      width: "100%",
+      paddingVertical: Spacing.md,
+      alignItems: "center",
+      marginBottom: Spacing.sm,
+    },
+    moreToggleText: {
+      fontSize: FontSize.sm,
+      color: C.muted,
+      fontWeight: "600",
+    },
+    moreSection: {
+      width: "100%",
     },
   });
