@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import toast from "react-hot-toast";
 import { NewBookingModal } from "@/components/NewBookingModal";
+import { BookingTripDetails } from "@/components/BookingTripDetails";
 
 const STATUSES = [
   "",
@@ -392,6 +393,8 @@ export default function BookingsPage() {
                 <p className="text-slate-500">{selected.dropoffAddress}</p>
               </div>
             </div>
+
+            <BookingTripDetails booking={selected} />
 
             {selected.flightNumber && (
               <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
