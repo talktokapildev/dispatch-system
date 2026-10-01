@@ -17,6 +17,10 @@ import {
   releaseClaimLock,
 } from "../utils/scheduledBookingLock";
 import { SocketEvent } from "../types";
+import {
+  resolveDispatcher,
+  getDriverPhvLicenceNumber,
+} from "../utils/bookingRecord";
 
 // TODO: move these two into ../config alongside DRIVER_ACCEPT_TIMEOUT_MS etc.
 const SCHEDULED_BOOKING_MIN_LEAD_HOURS = 2;
@@ -133,6 +137,15 @@ export class ScheduledBookingService {
         };
       }
 
+      const dispatchedBy = await resolveDispatcher(
+        this.prisma,
+        booking.dispatchedBy
+      );
+      const driverPhvLicenceNumber = await getDriverPhvLicenceNumber(
+        this.prisma,
+        driverId
+      );
+
       const updateResult = await this.prisma.booking.updateMany({
         where: { id: bookingId, status: BookingStatus.SCHEDULED_OPEN },
         data: {
@@ -140,6 +153,8 @@ export class ScheduledBookingService {
           status: BookingStatus.DRIVER_ASSIGNED,
           claimedAt: new Date(),
           dispatchedAt: new Date(),
+          driverPhvLicenceNumber,
+          ...(dispatchedBy && { dispatchedBy }),
         },
       });
 
@@ -214,6 +229,8 @@ export class ScheduledBookingService {
           status: BookingStatus.SCHEDULED_OPEN,
           claimedAt: null,
           dispatchedAt: null,
+          dispatchedBy: null,
+          driverPhvLicenceNumber: null,
         },
       }),
       this.prisma.bookingStatusHistory.create({
