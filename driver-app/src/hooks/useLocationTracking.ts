@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { api } from "../lib/api";
+import { addPoints, TracePoint } from "../lib/tripTrace";
 
 const LOCATION_TASK = "background-location-task";
 
@@ -16,23 +17,44 @@ interface UseLocationTrackingResult {
   getInitialLocation: () => Promise<Coords | null>;
 }
 
-// Define the background task OUTSIDE the component (module level)
+function toTracePoint(loc: Location.LocationObject): TracePoint {
+  return {
+    latitude: loc.coords.latitude,
+    longitude: loc.coords.longitude,
+    timestamp: loc.timestamp,
+    accuracy: loc.coords.accuracy,
+  };
+}
+
+// Define the background task OUTSIDE the component (module level).
+// iOS can deliver locations in batches — feed ALL of them to the trip trace
+// (so distance/route keep accumulating while backgrounded), and post the
+// latest one to the server for Live Dispatch.
 TaskManager.defineTask(LOCATION_TASK, async ({ data, error }: any) => {
   if (error) return;
-  const [loc] = (data as any).locations;
+  const locations: Location.LocationObject[] = (data as any)?.locations ?? [];
+  if (!locations.length) return;
+
+  try {
+    await addPoints(locations.map(toTracePoint));
+  } catch {}
+
+  const latest = locations.reduce((a, b) =>
+    b.timestamp > a.timestamp ? b : a
+  );
   try {
     await api.post("/drivers/location", {
-      latitude: loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      bearing: Math.max(0, loc.coords.heading ?? 0),
-      speed: loc.coords.speed ?? 0,
+      latitude: latest.coords.latitude,
+      longitude: latest.coords.longitude,
+      bearing: Math.max(0, latest.coords.heading ?? 0),
+      speed: latest.coords.speed ?? 0,
     });
   } catch {}
 });
 
 export function useLocationTracking(
   pollInterval = 8_000,
-  enabled = false // ← NEW: only start tracking when driver is online
+  enabled = false // only start tracking when driver is online
 ): UseLocationTrackingResult {
   const [location, setLocation] = useState<Coords | null>(null);
   const locationRef = useRef<Coords | null>(null);
@@ -99,7 +121,7 @@ export function useLocationTracking(
   // Previously this ran unconditionally on mount, which caused Android to
   // prompt for location permission before the disclosure was shown → rejected.
   useEffect(() => {
-    if (!enabled) return; // ← do nothing until driver goes online
+    if (!enabled) return; // do nothing until driver goes online
 
     let active = true;
 
@@ -115,6 +137,10 @@ export function useLocationTracking(
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
         });
+        // Also feed the trip trace (no-op when no trip is active). The
+        // background task reports the same movement in the foreground;
+        // tripTrace de-duplicates by timestamp and distance.
+        addPoints([toTracePoint(loc)]).catch(() => {});
       }
     ).then((sub) => {
       if (!active) {
@@ -129,14 +155,28 @@ export function useLocationTracking(
       active = false;
       watchRef.current?.remove();
       watchRef.current = null;
-      // Stop background task when driver goes offline
+      // NOTE: the background task is deliberately NOT stopped here. This
+      // cleanup also runs when any screen using this hook unmounts (e.g.
+      // leaving ActiveJobScreen after a trip), which used to switch off
+      // background tracking while the driver was still online.
+    };
+  }, [enabled]);
+
+  // Stop the background task only on a real online → offline transition.
+  // Not on mount with enabled=false: HomeScreen's status can start as
+  // OFFLINE while it loads, and stopping then would kill tracking for a
+  // driver who is actually online.
+  const wasEnabledRef = useRef(enabled);
+  useEffect(() => {
+    if (wasEnabledRef.current && !enabled) {
       TaskManager.isTaskRegisteredAsync(LOCATION_TASK).then(
         (registered: any) => {
           if (registered) Location.stopLocationUpdatesAsync(LOCATION_TASK);
         }
       );
-    };
-  }, [enabled]); // ← re-runs when driver toggles online/offline
+    }
+    wasEnabledRef.current = enabled;
+  }, [enabled]);
 
   return { location, locationRef, getInitialLocation };
 }

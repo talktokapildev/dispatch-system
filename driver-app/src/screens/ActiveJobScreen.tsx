@@ -17,6 +17,16 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { isHeadingToPickup } from "../lib/mapUtils";
+import {
+  startTrip,
+  resumeTrip,
+  addPoints,
+  getSnapshot,
+  clearTrip,
+  isTracking,
+  devAddMiles,
+  devResetMiles,
+} from "../lib/tripTrace";
 import { useLocationTracking } from "../hooks/useLocationTracking";
 import { useJobRoute } from "../hooks/useJobRoute";
 import { useBottomSheet } from "../hooks/useBottomSheet";
@@ -76,26 +86,22 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const cancellationHandled = useRef(false);
 
   // ── Distance accumulator for dynamic fare ──────────────────────────────
-  const tripDistanceMilesRef = useRef<number>(0);
-  const tripStartedAtRef = useRef<Date | null>(null);
-  const lastTripLocationRef = useRef<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
+  // const tripDistanceMilesRef = useRef<number>(0);
+  // const tripStartedAtRef = useRef<Date | null>(null);
+  // const lastTripLocationRef = useRef<{
+  //   latitude: number;
+  //   longitude: number;
+  // } | null>(null);
 
-  // ── Dev-only: mirrors tripDistanceMilesRef for display purposes only.
-  // The ref itself remains the single source of truth read at completion —
-  // this state exists purely so the driver can see the accumulated value
-  // on screen while testing.
+  // Dev-only: shows the trip distance from lib/tripTrace while testing.
   const [devSimulatedMiles, setDevSimulatedMiles] = useState(0);
 
   const addSimulatedMiles = (miles: number) => {
-    tripDistanceMilesRef.current += miles;
-    setDevSimulatedMiles(tripDistanceMilesRef.current);
+    setDevSimulatedMiles(devAddMiles(miles));
   };
 
   const resetSimulatedMiles = () => {
-    tripDistanceMilesRef.current = 0;
+    devResetMiles();
     setDevSimulatedMiles(0);
   };
 
@@ -160,15 +166,11 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     longitude: number;
   } | null>(null);
 
-  // ── Accumulate trip distance during IN_PROGRESS ─────────────────────────
+  // ── Trip distance is accumulated in lib/tripTrace (fed by the location
+  // hook, foreground + background). This only refreshes the dev display.
   useEffect(() => {
-    if (!location || booking?.status !== "IN_PROGRESS") return;
-    if (lastTripLocationRef.current) {
-      const d = haversineMiles(lastTripLocationRef.current, location);
-      tripDistanceMilesRef.current += d;
-      setDevSimulatedMiles(tripDistanceMilesRef.current);
-    }
-    lastTripLocationRef.current = location;
+    if (booking?.status !== "IN_PROGRESS") return;
+    setDevSimulatedMiles(getSnapshot()?.distanceMiles ?? 0);
   }, [location]);
 
   useEffect(() => {
@@ -198,6 +200,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         !cancellationHandled.current
       ) {
         cancellationHandled.current = true;
+        clearTrip();
         showWhenActive(
           "Booking Cancelled",
           "The passenger has cancelled this booking.",
@@ -235,6 +238,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         ) {
           cancellationHandled.current = true;
           clearInterval(pollTimer);
+          clearTrip();
           showWhenActive(
             "Booking Cancelled",
             "The passenger has cancelled this booking.",
@@ -265,6 +269,12 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       const { data } = await api.get(`/bookings/${bookingId}`);
       const bookingData = data.data;
       setBooking(bookingData);
+      // Resume the saved trip trace after an app restart, or clear a stale one
+      if (bookingData.status === "IN_PROGRESS") {
+        resumeTrip(bookingData.id, bookingData.tripStartedAt);
+      } else if (isTracking(bookingData.id)) {
+        clearTrip();
+      }
       if (coords) fetchRoute(coords, bookingData);
     } catch {
       // If fetch fails, fall back to preloaded data for route only
@@ -291,22 +301,21 @@ export default function ActiveJobScreen({ route, navigation }: any) {
     try {
       // Record trip start time and reset accumulator when trip begins
       if (status === "IN_PROGRESS") {
-        tripStartedAtRef.current = new Date();
-        tripDistanceMilesRef.current = 0;
-        lastTripLocationRef.current = locationRef.current;
+        await startTrip(bookingId, locationRef.current);
         setDevSimulatedMiles(0);
       }
 
       // Build completion payload with actual distance/duration if available
       const body: Record<string, any> = { status };
-      if (status === "COMPLETED" && tripStartedAtRef.current) {
-        const durationMins = Math.round(
-          (Date.now() - tripStartedAtRef.current.getTime()) / 60000
-        );
-        body.actualDistance = parseFloat(
-          tripDistanceMilesRef.current.toFixed(2)
-        );
-        body.actualDuration = durationMins;
+      if (status === "COMPLETED") {
+        // Add the final position so the route reaches the dropoff
+        if (locationRef.current) await addPoints([{ ...locationRef.current }]);
+        const trace = getSnapshot();
+        if (trace && trace.bookingId === bookingId) {
+          body.actualDistance = parseFloat(trace.distanceMiles.toFixed(2));
+          body.actualDuration = trace.durationMinutes;
+          if (trace.encodedRoute) body.actualRoutePolyline = trace.encodedRoute;
+        }
       }
 
       const { data: statusRes } = await api.patch(
@@ -314,6 +323,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         body
       );
       if (status === "COMPLETED") {
+        await clearTrip();
         // replace() keeps [Main] below so JobComplete can popToTop() cleanly
         navigation.replace("JobComplete", {
           booking: { ...booking, ...statusRes.data },
@@ -390,6 +400,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
       // re-dispatch the same job to us after we're freed as available.
       blockBookingDispatch(bookingId);
       await api.post(`/drivers/jobs/${bookingId}/cancel`, { reason });
+      await clearTrip();
       navigation.reset({ index: 0, routes: [{ name: "Main" }] }); // navigate home immediately — no secondary alert
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.error ?? "Failed to cancel job");
@@ -714,20 +725,20 @@ export default function ActiveJobScreen({ route, navigation }: any) {
 }
 
 // ── Haversine distance in miles between two coordinates ──────────────────
-function haversineMiles(
-  a: { latitude: number; longitude: number },
-  b: { latitude: number; longitude: number }
-): number {
-  const R = 3958.8; // Earth radius in miles
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((a.latitude * Math.PI) / 180) *
-      Math.cos((b.latitude * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
+// function haversineMiles(
+//   a: { latitude: number; longitude: number },
+//   b: { latitude: number; longitude: number }
+// ): number {
+//   const R = 3958.8; // Earth radius in miles
+//   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
+//   const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
+//   const x =
+//     Math.sin(dLat / 2) ** 2 +
+//     Math.cos((a.latitude * Math.PI) / 180) *
+//       Math.cos((b.latitude * Math.PI) / 180) *
+//       Math.sin(dLng / 2) ** 2;
+//   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+// }
 
 const styles = (
   C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["Colors"]
