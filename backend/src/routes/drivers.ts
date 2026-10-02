@@ -13,6 +13,7 @@ import { NotificationService } from "../services/notification.service";
 import { PricingService } from "../services/pricing.service";
 import { uploadToCloudinary } from "../services/cloudinary.service";
 import { SocketEvent } from "../types";
+import { isValidEncodedPolyline } from "../utils/polyline";
 
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -421,11 +422,13 @@ export async function driverRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticateDriver] },
     async (request, reply) => {
       const { bookingId } = request.params as { bookingId: string };
-      const { status, actualDistance, actualDuration } = request.body as {
-        status: BookingStatus;
-        actualDistance?: number;
-        actualDuration?: number;
-      };
+      const { status, actualDistance, actualDuration, actualRoutePolyline } =
+        request.body as {
+          status: BookingStatus;
+          actualDistance?: number;
+          actualDuration?: number;
+          actualRoutePolyline?: string;
+        };
       const { userId } = request.user;
 
       const driver = await fastify.prisma.driver.findUnique({
@@ -463,6 +466,25 @@ export async function driverRoutes(fastify: FastifyInstance) {
         actualDistance,
         actualDuration
       );
+
+      // Store the driver's GPS trace for the admin route map.
+      // Best-effort: the trip is already completed, so never fail the request over this.
+      if (
+        status === "COMPLETED" &&
+        isValidEncodedPolyline(actualRoutePolyline)
+      ) {
+        try {
+          await fastify.prisma.booking.update({
+            where: { id: bookingId },
+            data: { actualRoutePolyline },
+          });
+        } catch (err) {
+          request.log.warn(
+            { err, bookingId },
+            "Failed to store actual route polyline"
+          );
+        }
+      }
 
       // Also emit directly to passenger room for instant update
       if (

@@ -116,3 +116,14 @@ export function fitPolyline(encoded: string, maxLength: number): string {
   }
   return result;
 }
+
+// Validates a driver-submitted encoded polyline before storing it.
+// Encoded polylines only use ASCII 63–126; cap length to reject junk.
+export function isValidEncodedPolyline(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 200_000 &&
+    /^[\x3F-\x7E]+$/.test(value)
+  );
+}
