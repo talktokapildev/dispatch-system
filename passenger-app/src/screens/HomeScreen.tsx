@@ -171,9 +171,15 @@ export default function HomeScreen({ navigation }: any) {
   const autoNavigatedRef = useRef<Set<string>>(new Set());
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
-  // Extra room when the airport pickup section is showing (it scrolls if taller).
+  // Extra room when the airport pickup section is showing, capped so the map
+  // always keeps ~40% of the screen (the sheet content scrolls if taller).
+  // Without the cap the map's fit padding exceeds the visible area and iOS
+  // zooms out to world view.
   const SHEET_NORMAL =
-    (estimate ? 370 : 300) + (airport ? 190 : 0) + insets.bottom;
+    Math.min(
+      (estimate ? 370 : 300) + (airport ? 190 : 0),
+      Math.round(SCREEN_HEIGHT * 0.58)
+    ) + insets.bottom;
   const SHEET_EXPANDED = SCREEN_HEIGHT - insets.top - 20;
 
   const sheetHeight = sheetAnim.interpolate({

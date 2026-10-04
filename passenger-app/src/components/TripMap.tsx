@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, forwardRef } from "react";
+import React, { useRef, useEffect, forwardRef, useState } from "react";
 import { StyleSheet, View, ViewStyle, Text } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { useTheme } from "../lib/ThemeContext";
@@ -47,6 +47,8 @@ const TripMap = forwardRef<MapView, TripMapProps>(
     const localRef = useRef<MapView>(null);
     const mapRef = (ref as React.RefObject<MapView>) ?? localRef;
     const hasRoute = !!routeCoords && routeCoords.length > 1;
+    // Measured map height — used to keep fit padding within what the map can show.
+    const [mapHeight, setMapHeight] = useState(0);
 
     useEffect(() => {
       const coords: LatLng[] = [];
@@ -75,14 +77,19 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       // (e.g. only pickup set, or nothing set yet)
       if (coords.length < 2) return;
 
+      // Cap padding so at least ~160pt of map remains for the route. If the
+      // requested padding exceeds the map's height (e.g. a tall booking sheet),
+      // Google Maps zooms out to world view instead of fitting the route.
+      const top = 100;
+      const requestedBottom = bottomPadding + 80;
+      const bottom =
+        mapHeight > 0
+          ? Math.min(requestedBottom, Math.max(80, mapHeight - top - 160))
+          : requestedBottom;
+
       setTimeout(() => {
         mapRef.current?.fitToCoordinates(coords, {
-          edgePadding: {
-            top: 100,
-            right: 80,
-            bottom: bottomPadding + 80,
-            left: 80,
-          },
+          edgePadding: { top, right: 80, bottom, left: 80 },
           animated: true,
         });
       }, 500);
@@ -96,6 +103,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       driverLocation?.latitude,
       driverLocation?.longitude,
       bottomPadding,
+      mapHeight,
     ]);
 
     const darkMapStyle = [
@@ -143,6 +151,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
         showsTraffic={false}
         showsBuildings={false}
         moveOnMarkerPress={false}
+        onLayout={(e) => setMapHeight(e.nativeEvent.layout.height)}
       >
         <Polyline
           coordinates={hasRoute ? routeCoords! : HIDDEN_COORDS}
