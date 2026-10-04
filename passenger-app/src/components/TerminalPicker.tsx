@@ -12,7 +12,8 @@ type Props = {
   meetingPoints: MeetingPoint[];
   selectedId: string | null;
   onSelect: (mp: MeetingPoint) => void;
-  title?: string;
+  title?: string | null; // null hides the title
+  compact?: boolean; // one-line meeting point instead of the full directions box
 };
 
 export default function TerminalPicker({
@@ -20,6 +21,7 @@ export default function TerminalPicker({
   selectedId,
   onSelect,
   title = "Which terminal?",
+  compact = false,
 }: Props) {
   const { Colors } = useTheme();
   const s = styles(Colors);
@@ -27,7 +29,7 @@ export default function TerminalPicker({
 
   return (
     <View>
-      <Text style={s.title}>{title}</Text>
+      {title ? <Text style={s.title}>{title}</Text> : null}
       <View style={s.chipRow}>
         {meetingPoints.map((mp) => {
           const active = mp.id === selectedId;
@@ -46,7 +48,13 @@ export default function TerminalPicker({
         })}
       </View>
 
-      {selected && (
+      {selected && compact && (
+        <Text style={s.meetLine} numberOfLines={1}>
+          📍 Meet at <Text style={s.meetLineName}>{selected.name}</Text>
+        </Text>
+      )}
+
+      {selected && !compact && (
         <View style={s.meetBox}>
           <Text style={s.meetLabel}>Meet your driver</Text>
           <Text style={s.meetName}>{selected.name}</Text>
@@ -95,6 +103,8 @@ const styles = (
       fontWeight: "700",
       marginTop: 2,
     },
+    meetLine: { fontSize: FontSize.xs, color: C.muted, marginTop: Spacing.sm },
+    meetLineName: { color: C.white, fontWeight: "700" },
     meetInstructions: {
       fontSize: FontSize.xs,
       color: C.muted,

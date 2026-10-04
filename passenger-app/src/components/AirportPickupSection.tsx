@@ -288,11 +288,15 @@ export default function AirportPickupSection({
   if (bookingMode === "ASAP" || skipFlight) {
     return (
       <View style={s.box}>
-        <Text style={s.airportTag}>✈ {airport.airportName} pickup</Text>
+        <Text style={s.airportTag}>
+          ✈ {airport.airportName} pickup · which terminal?
+        </Text>
         <TerminalPicker
           meetingPoints={airport.meetingPoints}
           selectedId={meetingPoint?.id ?? null}
           onSelect={selectMeetingPoint}
+          title={null}
+          compact
         />
         {bookingMode === "SCHEDULED" && (
           <TouchableOpacity
@@ -442,6 +446,7 @@ export default function AirportPickupSection({
         title={
           f.terminal ? "Arriving at" : "Which terminal are you arriving at?"
         }
+        compact
       />
 
       <Text style={[s.title, { marginTop: Spacing.md }]}>Luggage</Text>

@@ -18,6 +18,7 @@ interface TripMapProps {
   stage?: "booking" | "tracking";
   bottomPadding?: number;
   driverName?: string;
+  onMapPress?: () => void; // e.g. HomeScreen collapses its sheet to show the route
 }
 
 const HIDDEN_COORDS = [
@@ -40,6 +41,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
       stage = "booking",
       bottomPadding = 0,
       driverName,
+      onMapPress,
     },
     ref
   ) => {
@@ -152,6 +154,7 @@ const TripMap = forwardRef<MapView, TripMapProps>(
         showsBuildings={false}
         moveOnMarkerPress={false}
         onLayout={(e) => setMapHeight(e.nativeEvent.layout.height)}
+        onPress={onMapPress}
       >
         <Polyline
           coordinates={hasRoute ? routeCoords! : HIDDEN_COORDS}
