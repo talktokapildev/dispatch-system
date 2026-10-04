@@ -34,6 +34,8 @@ import { scheduledBookingRoutes } from "./routes/scheduledBooking.routes";
 import { adminBookingTripRoutes } from "./routes/admin/booking-trip";
 import { flightRoutes } from "./routes/flights";
 
+import { Prisma } from "@prisma/client";
+
 // How long a PENDING booking can sit before being auto-cancelled (30 minutes)
 const STALE_BOOKING_THRESHOLD_MS = 30 * 60 * 1000;
 // How often to run the cleanup job (every 5 minutes)
@@ -195,6 +197,29 @@ async function startStaleBiookingCleanup(
     } catch (err) {
       //fastify.log.error("[Cleanup] Stale booking cleanup error:", err);
       fastify.log.error({ err }, "[Cleanup] Stale booking cleanup error");
+    }
+
+    // ── Flight data retention (AeroDataBox: max 7 days) ──────────────────
+    // Provider data on bookings is a snapshot; delete it once it's 6 days old.
+    // Passenger-owned fields (flightNumber, terminal, luggageType,
+    // meetingPointId) and the pickup time are ours and are kept.
+    try {
+      const cutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+      const cleared = await fastify.prisma.booking.updateMany({
+        where: { flightSnapshotFetchedAt: { lt: cutoff } },
+        data: {
+          flightSnapshot: Prisma.DbNull,
+          flightSnapshotFetchedAt: null,
+          flightArrivalTime: null,
+        },
+      });
+      if (cleared.count > 0) {
+        fastify.log.info(
+          `[Cleanup] Cleared expired flight data on ${cleared.count} booking(s)`
+        );
+      }
+    } catch (err) {
+      fastify.log.error({ err }, "[Cleanup] Flight data retention error");
     }
   };
 
