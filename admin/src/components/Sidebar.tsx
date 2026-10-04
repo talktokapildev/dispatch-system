@@ -22,6 +22,7 @@ import {
   UserCheck,
   ShieldCheck,
   Star,
+  PlaneLanding,
 } from "lucide-react";
 import { useAuthStore, api } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -62,6 +63,7 @@ const nav: NavItem[] = [
     badgeKey: "compliance",
   },
   { href: "/surcharge-zones", label: "Surcharge Zones", icon: MapPin },
+  { href: "/airport-pickups", label: "Airport Pickups", icon: PlaneLanding },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

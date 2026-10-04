@@ -26,6 +26,7 @@ import careHomeRoutes from "./routes/carehome";
 import { driverApplicationRoutes } from "./routes/driver-applications";
 import { adminDriverApplicationRoutes } from "./routes/admin/driver-applications";
 import { adminDriverPhotoRoutes } from "./routes/admin/driver-photo.routes";
+import { adminAirportPickupRoutes } from "./routes/admin/airport-pickups";
 import { settingsRoutes } from "./routes/settings";
 import { complianceRoutes } from "./routes/compliance";
 import { teslaRoutes } from "./routes/tesla";
@@ -84,6 +85,7 @@ async function buildServer() {
   fastify.register(driverApplicationRoutes, { prefix });
   fastify.register(adminDriverApplicationRoutes, { prefix });
   fastify.register(adminDriverPhotoRoutes, { prefix });
+  fastify.register(adminAirportPickupRoutes, { prefix });
   fastify.register(adminBookingTripRoutes, { prefix });
   fastify.register(settingsRoutes, { prefix });
   fastify.register(complianceRoutes, { prefix });
