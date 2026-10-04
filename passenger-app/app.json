@@ -27,14 +27,12 @@
         "NSLocationAlwaysUsageDescription": "OrangeRide needs your location to track your ride.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "OrangeRide uses your camera for profile photos and document verification if required.",
-        "NSPhotoLibraryUsageDescription": "OrangeRide uses your photo library for profile photos and document verification if required."
+        "NSPhotoLibraryUsageDescription": "OrangeRide uses your photo library for profile photos and document verification if required.",
+        "UIBackgroundModes": ["remote-notification"]
       },
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
-      },
-      "backgroundModes": [
-        "remote-notification"
-      ]
+      }
     },
     "android": {
       "adaptiveIcon": {
