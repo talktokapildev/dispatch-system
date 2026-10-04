@@ -472,6 +472,13 @@ model Booking {
   flightArrivalTime DateTime?
   terminal          String?
 
+  // Airport pickups (flight capture)
+  meetingPointId          String?
+  meetingPoint            AirportMeetingPoint? @relation(fields: [meetingPointId], references: [id])
+  luggageType             String? // "HAND" | "CHECKED"
+  flightSnapshot          Json? // AeroDataBox data: refreshed/cleared by daily job (6-day max age)
+  flightSnapshotFetchedAt DateTime?
+
   // Misc
   passengerCount     Int     @default(1)
   notes              String?
@@ -521,6 +528,7 @@ model Booking {
   @@index([reference])
   @@index([dispatchedBy])
   @@index([status, scheduledAt]) // job board queries: open jobs sorted by pickup time
+  @@index([flightSnapshotFetchedAt])
 }
 
 model BookingStatusHistory {
@@ -684,6 +692,7 @@ model SurchargeZone {
   isActive     Boolean  @default(true)
   notes        String?
   polygon      Json?
+  airportIata  String? // marks the zone that defines an airport's pickup area, e.g. "LGW"
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -946,4 +955,20 @@ model PromoCampaign {
   createdAt       DateTime    @default(now())
 
   transactions WalletTransaction[]
+}
+
+model AirportMeetingPoint {
+  id           String    @id @default(uuid())
+  airportIata  String // e.g. "LGW"
+  terminal     String // "NORTH" | "SOUTH"
+  name         String // e.g. "Car Park 6, Level 4"
+  instructions String
+  latitude     Float
+  longitude    Float
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  bookings     Booking[]
+
+  @@unique([airportIata, terminal])
 }
