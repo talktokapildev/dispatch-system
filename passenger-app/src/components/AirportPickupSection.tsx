@@ -51,6 +51,7 @@ type Props = {
   onUsePickup: (place: Place) => void;
   onScheduledAtChange: (date: Date | null) => void;
   onChange: (state: AirportBookingState | null) => void;
+  onCheckingChange?: (checking: boolean) => void; // HomeScreen disables Book while checking
 };
 
 const MIN_LEAD_MS = 2 * 60 * 60 * 1000; // must match backend ScheduledBookingService
@@ -61,6 +62,7 @@ export default function AirportPickupSection({
   onUsePickup,
   onScheduledAtChange,
   onChange,
+  onCheckingChange,
 }: Props) {
   const { Colors } = useTheme();
   const s = styles(Colors);
@@ -110,6 +112,7 @@ export default function AirportPickupSection({
       airportRef.current = null;
       setAirport(null);
       resetAll();
+      onCheckingChange?.(false);
       return;
     }
     // Passenger typed a different pickup → forget the previous terminal choice.
@@ -118,6 +121,7 @@ export default function AirportPickupSection({
       appliedAddress.current = null;
     }
     let cancelled = false;
+    onCheckingChange?.(true);
     api
       .get("/flights/airport-pickup", {
         params: { lat: pickup.latitude, lng: pickup.longitude },
@@ -129,11 +133,13 @@ export default function AirportPickupSection({
         if (!next || (prevIata && prevIata !== next.airportIata)) resetAll();
         airportRef.current = next;
         setAirport(next);
+        onCheckingChange?.(false);
       })
       .catch(() => {
         if (cancelled) return;
         airportRef.current = null;
         setAirport(null);
+        onCheckingChange?.(false);
       });
     return () => {
       cancelled = true;

@@ -165,6 +165,8 @@ export default function HomeScreen({ navigation }: any) {
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   // Airport pickup (meeting point + flight), managed by AirportPickupSection
   const [airport, setAirport] = useState<AirportBookingState | null>(null);
+  // True while the section is asking the backend whether the pickup is at an airport.
+  const [airportChecking, setAirportChecking] = useState(false);
   const [showIosPicker, setShowIosPicker] = useState(false);
   const [iosTempDate, setIosTempDate] = useState<Date>(
     new Date(Date.now() + MIN_LEAD_MS)
@@ -514,7 +516,9 @@ export default function HomeScreen({ navigation }: any) {
     !pickup ||
     !dropoff ||
     (bookingMode === "SCHEDULED" && !scheduledAt) ||
-    (airport !== null && !airport.ready);
+    (airport !== null && !airport.ready) ||
+    airportChecking || // don't allow booking before we know if it's an airport pickup
+    estimating; // don't book with a stale fare while it's being recalculated
   const bookLabel =
     bookingMode === "SCHEDULED"
       ? estimate
@@ -628,200 +632,203 @@ export default function HomeScreen({ navigation }: any) {
               <Text style={s.bookBtnText}>{bookLabel}</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <>
-            <ScrollView
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={s.scrollContent}
-            >
-              <Text style={s.greeting} numberOfLines={1} ellipsizeMode="tail">
-                {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
-              </Text>
+        ) : null}
 
-              {/* When: Now vs Schedule — compact pill + inline date/time chip,
+        {/* Normal content stays MOUNTED while peeking (only hidden), so the
+            airport section keeps its terminal/flight choices. */}
+        <View style={{ flex: 1, display: peek ? "none" : "flex" }}>
+          <ScrollView
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.scrollContent}
+          >
+            <Text style={s.greeting} numberOfLines={1} ellipsizeMode="tail">
+              {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
+            </Text>
+
+            {/* When: Now vs Schedule — compact pill + inline date/time chip,
               merged into a single row to save vertical space */}
-              <View style={s.scheduleRow}>
-                <View style={s.modePill}>
-                  <TouchableOpacity
+            <View style={s.scheduleRow}>
+              <View style={s.modePill}>
+                <TouchableOpacity
+                  style={[
+                    s.modePillBtn,
+                    bookingMode === "ASAP" && s.modePillBtnActive,
+                  ]}
+                  onPress={() => setBookingMode("ASAP")}
+                >
+                  <Text
                     style={[
-                      s.modePillBtn,
-                      bookingMode === "ASAP" && s.modePillBtnActive,
+                      s.modePillText,
+                      bookingMode === "ASAP" && s.modePillTextActive,
                     ]}
-                    onPress={() => setBookingMode("ASAP")}
                   >
-                    <Text
-                      style={[
-                        s.modePillText,
-                        bookingMode === "ASAP" && s.modePillTextActive,
-                      ]}
-                    >
-                      Now
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                    Now
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    s.modePillBtn,
+                    bookingMode === "SCHEDULED" && s.modePillBtnActive,
+                  ]}
+                  onPress={() => setBookingMode("SCHEDULED")}
+                >
+                  <Text
                     style={[
-                      s.modePillBtn,
-                      bookingMode === "SCHEDULED" && s.modePillBtnActive,
+                      s.modePillText,
+                      bookingMode === "SCHEDULED" && s.modePillTextActive,
                     ]}
-                    onPress={() => setBookingMode("SCHEDULED")}
                   >
-                    <Text
-                      style={[
-                        s.modePillText,
-                        bookingMode === "SCHEDULED" && s.modePillTextActive,
-                      ]}
-                    >
-                      Schedule
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {bookingMode === "SCHEDULED" && !airport?.flight && (
-                  <TouchableOpacity
-                    style={s.scheduleChip}
-                    onPress={openSchedulePicker}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={s.scheduleChipText} numberOfLines={1}>
-                      {scheduledAt
-                        ? `📅 ${scheduledAt.toLocaleDateString("en-GB", {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                          })} · ${scheduledAt.toLocaleTimeString("en-GB", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}`
-                        : "📅 Pick time"}
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                    Schedule
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              {/* Android: sequential native date then time dialogs — these are
-              native OS popups, zero layout footprint, no change needed */}
-              {androidStage && (
-                <DateTimePicker
-                  value={
-                    androidStage === "date"
-                      ? androidTempDate ?? new Date(Date.now() + MIN_LEAD_MS)
-                      : androidTempDate ?? new Date()
-                  }
-                  mode={androidStage}
-                  is24Hour
-                  minimumDate={androidStage === "date" ? new Date() : undefined}
-                  onChange={onAndroidPickerChange}
-                />
+              {bookingMode === "SCHEDULED" && !airport?.flight && (
+                <TouchableOpacity
+                  style={s.scheduleChip}
+                  onPress={openSchedulePicker}
+                  activeOpacity={0.8}
+                >
+                  <Text style={s.scheduleChipText} numberOfLines={1}>
+                    {scheduledAt
+                      ? `📅 ${scheduledAt.toLocaleDateString("en-GB", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                        })} · ${scheduledAt.toLocaleTimeString("en-GB", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : "📅 Pick time"}
+                  </Text>
+                </TouchableOpacity>
               )}
-
-              <AddressPicker
-                label="Pickup"
-                icon="🟢"
-                placeholder="Enter pickup address"
-                value={pickup?.address ?? ""}
-                onSelect={(r) => {
-                  setPickup(r);
-                  Keyboard.dismiss();
-                  // Animate map to the selected pickup address.
-                  // If dropoff is also set, fitToCoordinates in TripMap will
-                  // take over and show the full route — this handles the
-                  // single-pickup case where the address may be off-screen.
-                  if (!dropoff) {
-                    const delta = 0.02;
-                    mapRef.current?.animateToRegion(
-                      {
-                        latitude: visibleCentreLat(
-                          r.latitude,
-                          delta,
-                          SHEET_NORMAL
-                        ),
-                        longitude: r.longitude,
-                        latitudeDelta: delta,
-                        longitudeDelta: delta,
-                      },
-                      500
-                    );
-                  }
-                }}
-                onClear={() => setPickup(null)}
-              />
-
-              <TouchableOpacity
-                style={s.myLocBtn}
-                onPress={useMyLocationAsPickup}
-              >
-                <Text style={s.myLocText}>📍 Use my current location</Text>
-              </TouchableOpacity>
-
-              {/* Airport pickups: terminal / flight / pickup time (only shows at airports) */}
-              <AirportPickupSection
-                pickup={pickup}
-                bookingMode={bookingMode}
-                onUsePickup={setPickup}
-                onScheduledAtChange={setScheduledAt}
-                onChange={setAirport}
-              />
-
-              <AddressPicker
-                label="Dropoff"
-                icon="🔴"
-                placeholder="Enter dropoff address"
-                value={dropoff?.address ?? ""}
-                onSelect={(r) => {
-                  setDropoff(r);
-                  Keyboard.dismiss();
-                }}
-                onClear={() => setDropoff(null)}
-              />
-            </ScrollView>
-
-            <View style={s.bottomFixed}>
-              {estimating && (
-                <View style={s.estimateRow}>
-                  <ActivityIndicator size="small" color={Colors.brand} />
-                  <Text style={s.estimateLoading}>Calculating fare…</Text>
-                </View>
-              )}
-
-              {estimate && !estimating && (
-                <View style={s.estimateCard}>
-                  <View style={s.estimateStat}>
-                    <Text style={s.estimateValue}>
-                      £{estimate.estimatedFare.toFixed(2)}
-                    </Text>
-                    <Text style={s.estimateLabel}>Fare estimate</Text>
-                  </View>
-                  <View style={s.estimateDivider} />
-                  <View style={s.estimateStat}>
-                    <Text style={s.estimateValue}>
-                      {toMiles(estimate.distanceKm)} mi
-                    </Text>
-                    <Text style={s.estimateLabel}>Distance</Text>
-                  </View>
-                  <View style={s.estimateDivider} />
-                  <View style={s.estimateStat}>
-                    <Text style={s.estimateValue}>
-                      ~{estimate.durationMins} min
-                    </Text>
-                    <Text style={s.estimateLabel}>Duration</Text>
-                  </View>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[s.bookBtn, bookDisabled && s.bookBtnDisabled]}
-                onPress={proceedToConfirm}
-                activeOpacity={0.85}
-                disabled={bookDisabled}
-              >
-                <Text style={s.bookBtnText}>{bookLabel}</Text>
-              </TouchableOpacity>
-
-              <View style={{ height: insets.bottom > 0 ? 0 : Spacing.md }} />
             </View>
-          </>
-        )}
+
+            {/* Android: sequential native date then time dialogs — these are
+              native OS popups, zero layout footprint, no change needed */}
+            {androidStage && (
+              <DateTimePicker
+                value={
+                  androidStage === "date"
+                    ? androidTempDate ?? new Date(Date.now() + MIN_LEAD_MS)
+                    : androidTempDate ?? new Date()
+                }
+                mode={androidStage}
+                is24Hour
+                minimumDate={androidStage === "date" ? new Date() : undefined}
+                onChange={onAndroidPickerChange}
+              />
+            )}
+
+            <AddressPicker
+              label="Pickup"
+              icon="🟢"
+              placeholder="Enter pickup address"
+              value={pickup?.address ?? ""}
+              onSelect={(r) => {
+                setPickup(r);
+                Keyboard.dismiss();
+                // Animate map to the selected pickup address.
+                // If dropoff is also set, fitToCoordinates in TripMap will
+                // take over and show the full route — this handles the
+                // single-pickup case where the address may be off-screen.
+                if (!dropoff) {
+                  const delta = 0.02;
+                  mapRef.current?.animateToRegion(
+                    {
+                      latitude: visibleCentreLat(
+                        r.latitude,
+                        delta,
+                        SHEET_NORMAL
+                      ),
+                      longitude: r.longitude,
+                      latitudeDelta: delta,
+                      longitudeDelta: delta,
+                    },
+                    500
+                  );
+                }
+              }}
+              onClear={() => setPickup(null)}
+            />
+
+            <TouchableOpacity
+              style={s.myLocBtn}
+              onPress={useMyLocationAsPickup}
+            >
+              <Text style={s.myLocText}>📍 Use my current location</Text>
+            </TouchableOpacity>
+
+            {/* Airport pickups: terminal / flight / pickup time (only shows at airports) */}
+            <AirportPickupSection
+              pickup={pickup}
+              bookingMode={bookingMode}
+              onUsePickup={setPickup}
+              onScheduledAtChange={setScheduledAt}
+              onChange={setAirport}
+              onCheckingChange={setAirportChecking}
+            />
+
+            <AddressPicker
+              label="Dropoff"
+              icon="🔴"
+              placeholder="Enter dropoff address"
+              value={dropoff?.address ?? ""}
+              onSelect={(r) => {
+                setDropoff(r);
+                Keyboard.dismiss();
+              }}
+              onClear={() => setDropoff(null)}
+            />
+          </ScrollView>
+
+          <View style={s.bottomFixed}>
+            {estimating && (
+              <View style={s.estimateRow}>
+                <ActivityIndicator size="small" color={Colors.brand} />
+                <Text style={s.estimateLoading}>Calculating fare…</Text>
+              </View>
+            )}
+
+            {estimate && !estimating && (
+              <View style={s.estimateCard}>
+                <View style={s.estimateStat}>
+                  <Text style={s.estimateValue}>
+                    £{estimate.estimatedFare.toFixed(2)}
+                  </Text>
+                  <Text style={s.estimateLabel}>Fare estimate</Text>
+                </View>
+                <View style={s.estimateDivider} />
+                <View style={s.estimateStat}>
+                  <Text style={s.estimateValue}>
+                    {toMiles(estimate.distanceKm)} mi
+                  </Text>
+                  <Text style={s.estimateLabel}>Distance</Text>
+                </View>
+                <View style={s.estimateDivider} />
+                <View style={s.estimateStat}>
+                  <Text style={s.estimateValue}>
+                    ~{estimate.durationMins} min
+                  </Text>
+                  <Text style={s.estimateLabel}>Duration</Text>
+                </View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[s.bookBtn, bookDisabled && s.bookBtnDisabled]}
+              onPress={proceedToConfirm}
+              activeOpacity={0.85}
+              disabled={bookDisabled}
+            >
+              <Text style={s.bookBtnText}>{bookLabel}</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: insets.bottom > 0 ? 0 : Spacing.md }} />
+          </View>
+        </View>
       </Animated.View>
 
       {/* iOS date/time picker — a real Modal, not inline, so the main sheet
