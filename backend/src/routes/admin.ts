@@ -642,6 +642,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           passenger: { include: { user: true } },
           driver: { include: { user: true, vehicle: true } },
           dispatchedByUser: dispatcherInclude,
+          meetingPoint: { select: { name: true, terminal: true } },
         },
       });
       if (!booking)

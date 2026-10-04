@@ -347,6 +347,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
                 adminProfile: { select: { id: true } },
               },
             },
+            meetingPoint: { select: { name: true, terminal: true } },
           },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),

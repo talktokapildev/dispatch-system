@@ -15,6 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { NewBookingModal } from "@/components/NewBookingModal";
 import { BookingTripDetails } from "@/components/BookingTripDetails";
+import { BookingFlightDetails } from "@/components/BookingFlightDetails";
 
 const STATUSES = [
   "",
@@ -396,13 +397,7 @@ export default function BookingsPage() {
 
             <BookingTripDetails booking={selected} />
 
-            {selected.flightNumber && (
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
-                ✈ Flight {selected.flightNumber} · Terminal {selected.terminal}
-                {selected.flightArrivalTime &&
-                  ` · ${format(new Date(selected.flightArrivalTime), "HH:mm")}`}
-              </div>
-            )}
+            <BookingFlightDetails booking={selected} />
 
             {selected.notes && (
               <div className="p-3 rounded-lg bg-[var(--card-hover)] text-xs text-slate-400">
