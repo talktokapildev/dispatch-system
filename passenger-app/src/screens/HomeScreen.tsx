@@ -26,6 +26,8 @@ import { useTheme } from "../lib/ThemeContext";
 import { decodePolyline, toMiles } from "../lib/mapUtils";
 import AddressPicker from "../components/AddressPicker";
 import TripMap from "../components/TripMap";
+import AirportPickupSection from "../components/AirportPickupSection";
+import { AirportBookingState } from "../lib/airport";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const GOOGLE_API_KEY = "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI";
@@ -154,6 +156,8 @@ export default function HomeScreen({ navigation }: any) {
   const [bookingMode, setBookingMode] = useState<"ASAP" | "SCHEDULED">("ASAP");
   const [upcomingBooking, setUpcomingBooking] = useState<any>(null);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  // Airport pickup (meeting point + flight), managed by AirportPickupSection
+  const [airport, setAirport] = useState<AirportBookingState | null>(null);
   const [showIosPicker, setShowIosPicker] = useState(false);
   const [iosTempDate, setIosTempDate] = useState<Date>(
     new Date(Date.now() + MIN_LEAD_MS)
@@ -167,7 +171,9 @@ export default function HomeScreen({ navigation }: any) {
   const autoNavigatedRef = useRef<Set<string>>(new Set());
   const sheetAnim = useRef(new Animated.Value(0)).current;
 
-  const SHEET_NORMAL = estimate ? 370 + insets.bottom : 300 + insets.bottom;
+  // Extra room when the airport pickup section is showing (it scrolls if taller).
+  const SHEET_NORMAL =
+    (estimate ? 370 : 300) + (airport ? 190 : 0) + insets.bottom;
   const SHEET_EXPANDED = SCREEN_HEIGHT - insets.top - 20;
 
   const sheetHeight = sheetAnim.interpolate({
@@ -385,6 +391,13 @@ export default function HomeScreen({ navigation }: any) {
       Alert.alert("Missing addresses", "Please enter both pickup and dropoff.");
       return;
     }
+    if (airport && !airport.ready) {
+      Alert.alert(
+        "Airport pickup",
+        airport.message ?? "Please choose your terminal."
+      );
+      return;
+    }
     if (bookingMode === "SCHEDULED" && !scheduledAt) {
       Alert.alert("Pick a time", "Please choose a pickup date and time.");
       return;
@@ -393,6 +406,7 @@ export default function HomeScreen({ navigation }: any) {
       pickup,
       dropoff,
       estimate,
+      airport,
       scheduledAt:
         bookingMode === "SCHEDULED" ? scheduledAt!.toISOString() : null,
     });
@@ -444,6 +458,11 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const hasRoute = routeCoords.length > 1;
+  const bookDisabled =
+    !pickup ||
+    !dropoff ||
+    (bookingMode === "SCHEDULED" && !scheduledAt) ||
+    (airport !== null && !airport.ready);
   const s = styles(Colors);
 
   return (
@@ -557,7 +576,7 @@ export default function HomeScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            {bookingMode === "SCHEDULED" && (
+            {bookingMode === "SCHEDULED" && !airport?.flight && (
               <TouchableOpacity
                 style={s.scheduleChip}
                 onPress={openSchedulePicker}
@@ -627,6 +646,15 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={s.myLocText}>📍 Use my current location</Text>
           </TouchableOpacity>
 
+          {/* Airport pickups: terminal / flight / pickup time (only shows at airports) */}
+          <AirportPickupSection
+            pickup={pickup}
+            bookingMode={bookingMode}
+            onUsePickup={setPickup}
+            onScheduledAtChange={setScheduledAt}
+            onChange={setAirport}
+          />
+
           <AddressPicker
             label="Dropoff"
             icon="🔴"
@@ -674,20 +702,10 @@ export default function HomeScreen({ navigation }: any) {
           )}
 
           <TouchableOpacity
-            style={[
-              s.bookBtn,
-              (!pickup ||
-                !dropoff ||
-                (bookingMode === "SCHEDULED" && !scheduledAt)) &&
-                s.bookBtnDisabled,
-            ]}
+            style={[s.bookBtn, bookDisabled && s.bookBtnDisabled]}
             onPress={proceedToConfirm}
             activeOpacity={0.85}
-            disabled={
-              !pickup ||
-              !dropoff ||
-              (bookingMode === "SCHEDULED" && !scheduledAt)
-            }
+            disabled={bookDisabled}
           >
             <Text style={s.bookBtnText}>
               {bookingMode === "SCHEDULED"

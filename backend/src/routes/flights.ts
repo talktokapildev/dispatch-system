@@ -16,7 +16,12 @@ import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import {
   getFlightBuffers,
   earliestPickupAfterLanding,
+  isInsideZone,
 } from "../utils/airportPickup";
+import {
+  airportPickupSchema,
+  resolveAirportPickup,
+} from "../services/airportBooking.service";
 
 const AIRPORT = "LGW"; // only airport with meeting points for now
 
@@ -147,6 +152,85 @@ export async function flightRoutes(fastify: FastifyInstance) {
           },
         },
       });
+    }
+  );
+
+  // ─── Is this pickup at an airport with meeting points? ───
+  // Uses the airport's surcharge zone, so "airport pickup" and "airport charge" always agree.
+  fastify.get(
+    "/flights/airport-pickup",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const q = request.query as { lat?: string; lng?: string };
+      const lat = Number(q.lat);
+      const lng = Number(q.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return reply
+          .status(400)
+          .send({ success: false, error: "lat and lng are required" });
+      }
+      const zones = await fastify.prisma.surchargeZone.findMany({
+        where: { isActive: true, airportIata: { not: null } },
+        select: {
+          airportIata: true,
+          latitude: true,
+          longitude: true,
+          radiusMeters: true,
+          polygon: true,
+        },
+      });
+      const zone = zones.find((z) => isInsideZone(lat, lng, z));
+      if (!zone?.airportIata) return reply.send({ success: true, data: null });
+
+      const meetingPoints = await fastify.prisma.airportMeetingPoint.findMany({
+        where: { airportIata: zone.airportIata, isActive: true },
+        select: {
+          id: true,
+          terminal: true,
+          name: true,
+          instructions: true,
+          latitude: true,
+          longitude: true,
+        },
+        orderBy: { terminal: "asc" },
+      });
+      if (!meetingPoints.length)
+        return reply.send({ success: true, data: null });
+
+      const names: Record<string, string> = { LGW: "Gatwick" };
+      return reply.send({
+        success: true,
+        data: {
+          airportIata: zone.airportIata,
+          airportName: names[zone.airportIata] ?? zone.airportIata,
+          meetingPoints,
+        },
+      });
+    }
+  );
+
+  // ─── Dry-run the airport checks before taking card payment ───
+  fastify.post(
+    "/flights/validate-pickup",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const body = request.body as { scheduledAt?: string };
+      const input = airportPickupSchema.parse(request.body);
+      const result = await resolveAirportPickup(
+        fastify.prisma,
+        fastify.redis,
+        input,
+        body?.scheduledAt ? new Date(body.scheduledAt) : null
+      );
+      if (!result.ok) {
+        return reply.status(result.status).send({
+          success: false,
+          error: result.error,
+          code: result.code,
+          ...result.extra,
+        });
+      }
+      return reply.send({ success: true });
     }
   );
 }

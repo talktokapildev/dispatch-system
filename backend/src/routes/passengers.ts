@@ -286,6 +286,9 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           },
           passenger: { include: { user: true } },
           statusHistory: { orderBy: { createdAt: "asc" } },
+          meetingPoint: {
+            select: { name: true, terminal: true, instructions: true },
+          },
         },
       });
 

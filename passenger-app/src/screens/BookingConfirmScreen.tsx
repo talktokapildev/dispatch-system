@@ -14,6 +14,7 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { toMiles } from "../lib/mapUtils";
+import AirportConfirmCard from "../components/AirportConfirmCard";
 
 const OPERATOR_BANK = {
   name: "Kapil Dev",
@@ -43,7 +44,20 @@ const PAYMENT_OPTIONS = [
 export default function BookingConfirmScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const { pickup, dropoff, estimate, scheduledAt } = route.params;
+  const { pickup, dropoff, estimate, scheduledAt, airport } = route.params;
+
+  // Airport pickup fields — the backend re-validates all of these and sets the
+  // pickup to the meeting point itself.
+  const airportFields = airport?.meetingPoint
+    ? {
+        meetingPointId: airport.meetingPoint.id,
+        ...(airport.flight && {
+          flightNumber: airport.flight.flightNumber,
+          flightDate: airport.flight.flightDate,
+          luggageType: airport.flight.luggageType,
+        }),
+      }
+    : {};
 
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>("CASH");
   const [loading, setLoading] = useState(false);
@@ -76,6 +90,15 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
 
   // ── Card flow: payment FIRST, then booking ─────────────────────────────
   const handleCardPayment = async () => {
+    // 0. Airport pickups: validate flight/terminal/time BEFORE taking payment,
+    //    so the passenger is never charged for a booking that then fails.
+    if (airport?.meetingPoint) {
+      await api.post("/flights/validate-pickup", {
+        ...airportFields,
+        scheduledAt: scheduledAt ?? undefined,
+      });
+    }
+
     // 1. Create a PaymentIntent without a booking yet
     const { data: piData } = await api.post("/passengers/payment-intent", {
       estimatedFare: baseFare,
@@ -122,19 +145,29 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
     // FIX: pass estimatedFare so the backend stores the same price the
     // passenger saw on HomeScreen (includes airport surcharges etc.).
     setLoading(true);
-    const { data: bookingData } = await api.post("/passengers/bookings", {
-      pickupAddress: pickup.address,
-      pickupLatitude: pickup.latitude,
-      pickupLongitude: pickup.longitude,
-      dropoffAddress: dropoff.address,
-      dropoffLatitude: dropoff.latitude,
-      dropoffLongitude: dropoff.longitude,
-      passengerCount: 1,
-      paymentMethod: "CARD",
-      stripePaymentIntentId: paymentIntentId,
-      estimatedFare: baseFare, // FIX: price the passenger agreed to
-      scheduledAt: scheduledAt ?? undefined,
-    });
+    let bookingData: any;
+    try {
+      ({ data: bookingData } = await api.post("/passengers/bookings", {
+        pickupAddress: pickup.address,
+        pickupLatitude: pickup.latitude,
+        pickupLongitude: pickup.longitude,
+        dropoffAddress: dropoff.address,
+        dropoffLatitude: dropoff.latitude,
+        dropoffLongitude: dropoff.longitude,
+        passengerCount: 1,
+        paymentMethod: "CARD",
+        stripePaymentIntentId: paymentIntentId,
+        estimatedFare: baseFare, // FIX: price the passenger agreed to
+        scheduledAt: scheduledAt ?? undefined,
+        ...airportFields,
+      }));
+    } catch (err) {
+      // Booking failed after the card was pre-authorised — release the hold.
+      api
+        .delete(`/passengers/payment-intent/${paymentIntentId}`)
+        .catch(() => {});
+      throw err;
+    }
 
     // 5. Navigate to tracking
     navigation.reset({
@@ -167,6 +200,7 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
       paymentMethod: selectedPayment,
       estimatedFare: baseFare, // FIX: price the passenger agreed to
       scheduledAt: scheduledAt ?? undefined,
+      ...airportFields,
     });
 
     navigation.reset({
@@ -217,6 +251,8 @@ export default function BookingConfirmScreen({ route, navigation }: any) {
             </View>
           </View>
         </View>
+
+        <AirportConfirmCard airport={airport} />
 
         {scheduledAt && (
           <View style={[s.card, { borderColor: Colors.brand + "40" }]}>

@@ -21,6 +21,7 @@ import { useOperatorSettings } from "../lib/operatorSettings";
 import { decodePolyline } from "../lib/mapUtils";
 import TripMap from "../components/TripMap";
 import DriverCard from "../components/DriverCard";
+import AirportPickupInfo from "../components/AirportPickupInfo";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_COLLAPSED = 180;
@@ -617,6 +618,9 @@ export default function TrackingScreen({ route, navigation }: any) {
           style={s.expandedContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Airport pickup: flight + meeting point directions */}
+          <AirportPickupInfo booking={booking} />
+
           {/* Driver card */}
           {driver && (
             <DriverCard
