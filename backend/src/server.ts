@@ -150,6 +150,30 @@ async function startStaleBiookingCleanup(
   fastify: Awaited<ReturnType<typeof buildServer>>
 ) {
   const run = async () => {
+    // ── Flight data retention (AeroDataBox: max 7 days) ──────────────────
+    // Runs FIRST: the stale-booking cleanup below returns early when there's
+    // nothing stale, which would otherwise skip this.
+    // Provider data on bookings is a snapshot; delete it once it's 6 days old.
+    // Passenger-owned fields (flightNumber, terminal, luggageType,
+    // meetingPointId) and the pickup time are ours and are kept.
+    try {
+      const cutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+      const cleared = await fastify.prisma.booking.updateMany({
+        where: { flightSnapshotFetchedAt: { lt: cutoff } },
+        data: {
+          flightSnapshot: Prisma.DbNull,
+          flightSnapshotFetchedAt: null,
+          flightArrivalTime: null,
+        },
+      });
+      if (cleared.count > 0) {
+        fastify.log.warn(
+          `[Cleanup] Cleared expired flight data on ${cleared.count} booking(s)`
+        );
+      }
+    } catch (err) {
+      fastify.log.error({ err }, "[Cleanup] Flight data retention error");
+    }
     try {
       const cutoff = new Date(Date.now() - STALE_BOOKING_THRESHOLD_MS);
 
@@ -197,29 +221,6 @@ async function startStaleBiookingCleanup(
     } catch (err) {
       //fastify.log.error("[Cleanup] Stale booking cleanup error:", err);
       fastify.log.error({ err }, "[Cleanup] Stale booking cleanup error");
-    }
-
-    // ── Flight data retention (AeroDataBox: max 7 days) ──────────────────
-    // Provider data on bookings is a snapshot; delete it once it's 6 days old.
-    // Passenger-owned fields (flightNumber, terminal, luggageType,
-    // meetingPointId) and the pickup time are ours and are kept.
-    try {
-      const cutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
-      const cleared = await fastify.prisma.booking.updateMany({
-        where: { flightSnapshotFetchedAt: { lt: cutoff } },
-        data: {
-          flightSnapshot: Prisma.DbNull,
-          flightSnapshotFetchedAt: null,
-          flightArrivalTime: null,
-        },
-      });
-      if (cleared.count > 0) {
-        fastify.log.info(
-          `[Cleanup] Cleared expired flight data on ${cleared.count} booking(s)`
-        );
-      }
-    } catch (err) {
-      fastify.log.error({ err }, "[Cleanup] Flight data retention error");
     }
   };
 
