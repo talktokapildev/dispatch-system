@@ -96,3 +96,24 @@ export function isInsideZone(
     zone.radiusMeters
   );
 }
+
+// ── Pickup timing ────────────────────────────────────────────────────────
+export type LuggageType = "HAND" | "CHECKED";
+
+/** Round up to the next 5 minutes: 15:57 → 16:00. */
+export function roundUpTo5Min(date: Date): Date {
+  const step = 5 * 60_000;
+  return new Date(Math.ceil(date.getTime() / step) * step);
+}
+
+/** Earliest allowed pickup: scheduled landing + luggage buffer, rounded up to 5 minutes. */
+export function earliestPickupAfterLanding(
+  landingUtcIso: string,
+  buffers: FlightBuffers,
+  luggage: LuggageType
+): Date {
+  const minutes = luggage === "HAND" ? buffers.hand : buffers.checked;
+  return roundUpTo5Min(
+    new Date(new Date(landingUtcIso).getTime() + minutes * 60_000)
+  );
+}

@@ -10,6 +10,10 @@ import { MapsService } from "../services/maps.service";
 import { PricingService } from "../services/pricing.service";
 import { DispatchService } from "../services/dispatch.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
+import {
+  airportPickupSchema,
+  resolveAirportPickup,
+} from "../services/airportBooking.service";
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -97,6 +101,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       const { userId } = request.user;
       const body = createBookingSchema.parse(request.body);
 
+      const airportInput = airportPickupSchema.parse(request.body);
+
       const passenger = await getPassenger(userId);
       if (!passenger) {
         return reply
@@ -104,9 +110,30 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "Passenger account not found" });
       }
 
+      // Airport pickups: meeting point + flight details, validated server-side
+      const airport = await resolveAirportPickup(
+        fastify.prisma,
+        fastify.redis,
+        airportInput,
+        body.scheduledAt ? new Date(body.scheduledAt) : null
+      );
+      if (!airport.ok) {
+        return reply.status(airport.status).send({
+          success: false,
+          error: airport.error,
+          code: airport.code,
+          ...airport.extra,
+        });
+      }
+      const pickup = airport.pickup ?? {
+        address: body.pickupAddress,
+        latitude: body.pickupLatitude,
+        longitude: body.pickupLongitude,
+      };
+
       // Calculate route + fare
       const directions = await maps.getDirections(
-        { lat: body.pickupLatitude, lng: body.pickupLongitude },
+        { lat: pickup.latitude, lng: pickup.longitude },
         { lat: body.dropoffLatitude, lng: body.dropoffLongitude }
       );
 
@@ -136,9 +163,9 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           passengerId: passenger.id,
           type: body.scheduledAt ? BookingType.PREBOOKED : BookingType.ASAP,
           status: initialStatus,
-          pickupAddress: body.pickupAddress,
-          pickupLatitude: body.pickupLatitude,
-          pickupLongitude: body.pickupLongitude,
+          pickupAddress: pickup.address,
+          pickupLatitude: pickup.latitude,
+          pickupLongitude: pickup.longitude,
           dropoffAddress: body.dropoffAddress,
           dropoffLatitude: body.dropoffLatitude,
           dropoffLongitude: body.dropoffLongitude,
@@ -152,6 +179,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           passengerCount: body.passengerCount,
           notes: body.notes,
           stops: [],
+          ...airport.data,
         },
       });
 

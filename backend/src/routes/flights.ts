@@ -13,7 +13,10 @@ import {
   LookupFailure,
 } from "../services/flightData.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
-import { getFlightBuffers } from "../utils/airportPickup";
+import {
+  getFlightBuffers,
+  earliestPickupAfterLanding,
+} from "../utils/airportPickup";
 
 const AIRPORT = "LGW"; // only airport with meeting points for now
 
@@ -47,10 +50,10 @@ const FAILURE_RESPONSES: Record<
 };
 
 /** Round up to the next 5 minutes: 15:57 → 16:00. */
-function roundUpTo5Min(date: Date): Date {
-  const step = 5 * 60_000;
-  return new Date(Math.ceil(date.getTime() / step) * step);
-}
+// function roundUpTo5Min(date: Date): Date {
+//   const step = 5 * 60_000;
+//   return new Date(Math.ceil(date.getTime() / step) * step);
+// }
 
 export async function flightRoutes(fastify: FastifyInstance) {
   const flights = new FlightDataService(fastify.redis);
@@ -99,12 +102,16 @@ export async function flightRoutes(fastify: FastifyInstance) {
         }),
       ]);
 
-      const landing = new Date(flight.scheduledArrivalUtc);
-      const handPickup = roundUpTo5Min(
-        new Date(landing.getTime() + buffers.hand * 60_000)
+      //const landing = new Date(flight.scheduledArrivalUtc);
+      const handPickup = earliestPickupAfterLanding(
+        flight.scheduledArrivalUtc,
+        buffers,
+        "HAND"
       );
-      const checkedPickup = roundUpTo5Min(
-        new Date(landing.getTime() + buffers.checked * 60_000)
+      const checkedPickup = earliestPickupAfterLanding(
+        flight.scheduledArrivalUtc,
+        buffers,
+        "CHECKED"
       );
 
       const suggested = flight.terminal
