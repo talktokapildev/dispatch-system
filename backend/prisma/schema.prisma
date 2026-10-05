@@ -479,6 +479,13 @@ model Booking {
   flightSnapshot          Json? // AeroDataBox data: refreshed/cleared by daily job (6-day max age)
   flightSnapshotFetchedAt DateTime?
 
+  // Flight tracking (Phase 2) — ours, kept permanently
+  pickupOffsetMinutes Int? // minutes after gate arrival (luggage buffer + passenger's extra)
+  bookedPickupAt      DateTime? // agreed pickup: at booking, or later confirmed by driver/admin
+  flightWatchId       String?
+  flightWatch         FlightWatch?         @relation(fields: [flightWatchId], references: [id])
+  flightEvents        BookingFlightEvent[]
+
   // Misc
   passengerCount     Int     @default(1)
   notes              String?
@@ -529,6 +536,7 @@ model Booking {
   @@index([dispatchedBy])
   @@index([status, scheduledAt]) // job board queries: open jobs sorted by pickup time
   @@index([flightSnapshotFetchedAt])
+  @@index([flightWatchId])
 }
 
 model BookingStatusHistory {
@@ -971,4 +979,43 @@ model AirportMeetingPoint {
   bookings     Booking[]
 
   @@unique([airportIata, terminal])
+}
+
+// One watch per flight + arrival date, shared by every booking on that flight.
+model FlightWatch {
+  id                    String    @id @default(uuid())
+  flightNumber          String // as stored on bookings, e.g. "EZY8004"
+  arrivalDate           String // YYYY-MM-DD, arrival date at the airport (local)
+  airportIata           String    @default("LGW")
+  subscriptionId        String? // AeroDataBox web-hook subscription
+  status                String    @default("WATCHING") // WATCHING | ARRIVED | CANCELLED | DIVERTED | ENDED
+  // Provider-derived (AeroDataBox) — cleared by the 6-day retention cleanup
+  expectedGateArrivalAt DateTime?
+  actualGateArrivalAt   DateTime?
+  providerUpdatedAt     DateTime? // AeroDataBox "last updated" of the data we last applied
+  // Ours
+  lastCheckedAt         DateTime? // when we last received or fetched data
+  unverified            Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  endedAt               DateTime?
+  bookings              Booking[]
+
+  @@unique([flightNumber, arrivalDate, airportIata])
+  @@index([status])
+}
+
+// Milestones per booking — the admin timeline AND the "send each message once" log.
+model BookingFlightEvent {
+  id          String    @id @default(uuid())
+  bookingId   String
+  type        String // RUNNING_LATE | RUNNING_EARLY | EARLIER_CONFIRMED | ARRIVED | CANCELLED | DIVERTED | UNVERIFIED
+  oldPickupAt DateTime?
+  newPickupAt DateTime?
+  note        String?
+  smsSent     Boolean   @default(false)
+  pushSent    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  booking     Booking   @relation(fields: [bookingId], references: [id])
+
+  @@index([bookingId, type])
 }

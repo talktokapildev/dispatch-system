@@ -47,6 +47,8 @@ type Success = {
     flightArrivalTime?: Date;
     flightSnapshot?: Prisma.InputJsonValue;
     flightSnapshotFetchedAt?: Date;
+    pickupOffsetMinutes?: number;
+    bookedPickupAt?: Date;
   };
 };
 
@@ -167,6 +169,13 @@ export async function resolveAirportPickup(
       ...data,
       flightNumber: number, // passenger's own input (normalised) — kept permanently
       luggageType: input.luggageType,
+      // Ours: passenger's minutes after the scheduled gate arrival, and the agreed pickup.
+      pickupOffsetMinutes: Math.round(
+        (scheduledAt.getTime() -
+          new Date(flight.scheduledArrivalUtc).getTime()) /
+          60_000
+      ),
+      bookedPickupAt: scheduledAt,
       // Provider data below is a snapshot: refreshed or deleted by the daily job within 6 days.
       flightArrivalTime: new Date(flight.scheduledArrivalUtc),
       flightSnapshot: flight as unknown as Prisma.InputJsonValue,
