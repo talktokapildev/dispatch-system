@@ -24,12 +24,17 @@ export type FlightEventType =
   | "ARRIVED"
   | "CANCELLED"
   | "DIVERTED"
-  | "UNVERIFIED";
+  | "UNVERIFIED"
+  | "PICKUP_UPDATE";
+
+/** LIVE = in the air / landed (tracking data, reliable); TIMETABLE = schedule only;
+ *  UNCERTAIN = departure time has passed but no take-off seen (provider data unreliable). */
+export type Confidence = "LIVE" | "TIMETABLE" | "UNCERTAIN";
 
 export type FlightFacts = {
   status: string | null;
   scheduledArrivalUtc: string;
-  revisedArrivalUtc: string | null; // airline/airport estimate or actual gate time
+  revisedArrivalUtc: string | null; // airline/airport estimate or actual gate time (can be STALE)
   predictedArrivalUtc: string | null; // provider's model estimate
   runwayArrivalUtc: string | null; // actual touchdown
   departureScheduledUtc?: string | null;
@@ -41,87 +46,141 @@ export type Interpretation = {
   phase: FlightPhase;
   gateArrival: Date;
   landedAt: Date | null;
+  departed: boolean;
+  confidence: Confidence;
 };
 
 const MIN = 60_000;
+const TAXI_OUT_MIN = 15; // gate → take-off, used when projecting arrival from take-off
+const MIN_FLIGHT_FRACTION = 0.7; // no plane arrives faster than 70% of its scheduled time
+const UNCERTAIN_AFTER_MIN = 15; // departure this late with no take-off seen → uncertain
 const toDate = (s: string | null | undefined) => (s ? new Date(s) : null);
 const floorMinute = (d: Date) => new Date(Math.floor(d.getTime() / MIN) * MIN);
 const ceilMinute = (d: Date) => new Date(Math.ceil(d.getTime() / MIN) * MIN);
+const latest = (ds: (Date | null)[]) =>
+  new Date(
+    Math.max(...ds.filter((d): d is Date => !!d).map((d) => d.getTime()))
+  );
 
-/** Turn provider data into our view: phase + best gate-arrival time. */
-export function interpretFlight(f: FlightFacts): Interpretation {
+/**
+ * Turn provider data into our view: phase + best gate-arrival time.
+ * Defends against stale/impossible provider times (seen live on EZY858:
+ * "revised arrival" stuck at the schedule even after landing 3h late).
+ */
+export function interpretFlight(
+  f: FlightFacts,
+  now: Date = new Date()
+): Interpretation {
   const status = (f.status ?? "").toLowerCase();
   const scheduled = new Date(f.scheduledArrivalUtc);
   const revised = toDate(f.revisedArrivalUtc);
   const predicted = toDate(f.predictedArrivalUtc);
   const runway = toDate(f.runwayArrivalUtc);
-  const runwayPlusTaxi = runway
-    ? new Date(runway.getTime() + TAXI_MIN * MIN)
-    : null;
+  const depScheduled = toDate(f.departureScheduledUtc);
+  const depActual = toDate(f.departureRunwayUtc);
+  const flightMs =
+    depScheduled && scheduled > depScheduled
+      ? scheduled.getTime() - depScheduled.getTime()
+      : null;
 
   if (status === "canceled" || status === "cancelled")
     return {
       phase: "CANCELLED",
       gateArrival: revised ?? scheduled,
       landedAt: null,
+      departed: false,
+      confidence: "LIVE",
     };
   if (status === "diverted")
     return {
       phase: "DIVERTED",
       gateArrival: revised ?? scheduled,
       landedAt: null,
-    };
-  if (status === "arrived")
-    return {
-      phase: "ARRIVED",
-      gateArrival: revised ?? runwayPlusTaxi ?? scheduled,
-      landedAt: runway ?? revised ?? scheduled,
-    };
-  if (status === "landed" || runway)
-    return {
-      phase: "ARRIVED",
-      gateArrival: runwayPlusTaxi ?? revised ?? scheduled,
-      landedAt: runway ?? revised ?? scheduled,
+      departed: true,
+      confidence: "LIVE",
     };
 
-  // Flight time from the timetable (used to project arrival from departure).
-  const depScheduled = toDate(f.departureScheduledUtc);
-  const flightMs =
-    depScheduled && scheduled > depScheduled
-      ? scheduled.getTime() - depScheduled.getTime()
-      : null;
-  const depActual = toDate(f.departureRunwayUtc);
+  // Landed / arrived: touchdown is the anchor. A "revised" time only counts
+  // as the real gate time if it's AFTER touchdown (otherwise it's stale).
+  if (status === "landed" || status === "arrived" || runway) {
+    if (runway) {
+      const gate =
+        revised && revised > runway
+          ? revised
+          : new Date(runway.getTime() + TAXI_MIN * MIN);
+      return {
+        phase: "ARRIVED",
+        gateArrival: gate,
+        landedAt: runway,
+        departed: true,
+        confidence: "LIVE",
+      };
+    }
+    const gate = latest([revised, predicted, scheduled]);
+    return {
+      phase: "ARRIVED",
+      gateArrival: gate,
+      landedAt: gate,
+      departed: true,
+      confidence: "LIVE",
+    };
+  }
+
   const departed =
     !!depActual || ["departed", "enroute", "approaching"].includes(status);
 
   if (departed) {
-    // In the air: arrival estimates come from live tracking — trust them.
-    const projected =
-      depActual && flightMs ? new Date(depActual.getTime() + flightMs) : null;
+    if (depActual && flightMs) {
+      // In the air: trust live estimates, but never one that's impossible
+      // (earlier than take-off + 70% of the scheduled flight time).
+      const minPlausible = new Date(
+        depActual.getTime() + flightMs * MIN_FLIGHT_FRACTION
+      );
+      const plausible = (d: Date | null) => (d && d >= minPlausible ? d : null);
+      const projected = new Date(
+        depActual.getTime() + flightMs - TAXI_OUT_MIN * MIN
+      );
+      return {
+        phase: "SCHEDULED",
+        gateArrival: plausible(revised) ?? plausible(predicted) ?? projected,
+        landedAt: null,
+        departed: true,
+        confidence: "LIVE",
+      };
+    }
+    // Departed per status but no take-off time: take the latest estimate (safe).
     return {
       phase: "SCHEDULED",
-      gateArrival: revised ?? predicted ?? projected ?? scheduled,
+      gateArrival: latest([revised, predicted, scheduled]),
       landedAt: null,
+      departed: true,
+      confidence: "LIVE",
     };
   }
 
-  // Not departed yet: arrival estimates can be stale (e.g. "revised" earlier
-  // than schedule while the plane is still on the ground). The plane can't
-  // arrive before its expected departure + flight time, so take the LATEST
-  // of all estimates. Errs late, which is safe: later moves are automatic and
-  // the estimate tightens once the flight departs.
+  // Not departed yet. Estimates can be stale, so:
+  //  - the plane can't leave before NOW (time floor), and
+  //  - can't arrive before its expected departure + flight time,
+  // so take the LATEST credible estimate. Errs late (safe); tightens at take-off.
   const depExpected = toDate(f.departureRevisedUtc) ?? depScheduled;
+  const depFloor = depExpected ? latest([depExpected, now]) : null;
   const projected =
-    depExpected && flightMs ? new Date(depExpected.getTime() + flightMs) : null;
-  const candidates = [scheduled, revised, predicted, projected].filter(
-    (d): d is Date => !!d
-  );
-  const latest = new Date(Math.max(...candidates.map((d) => d.getTime())));
-  return { phase: "SCHEDULED", gateArrival: latest, landedAt: null };
+    depFloor && flightMs ? new Date(depFloor.getTime() + flightMs) : null;
+  const uncertain =
+    !!depExpected &&
+    now.getTime() - depExpected.getTime() > UNCERTAIN_AFTER_MIN * MIN;
+  return {
+    phase: "SCHEDULED",
+    gateArrival: latest([scheduled, revised, predicted, projected]),
+    landedAt: null,
+    departed: false,
+    confidence: uncertain ? "UNCERTAIN" : "TIMETABLE",
+  };
 }
 
 export type BookingFacts = {
   bookedPickupAt: Date; // agreed time (booking, or later confirmed)
+  lastToldPickupAt?: Date | null; // last pickup time we told anyone (caps automatic earlier moves)
   pickupOffsetMinutes: number; // passenger's minutes after gate arrival
   currentPickupAt: Date; // what everyone sees now
   firedEvents: Set<string>; // milestones already recorded for this booking
@@ -142,8 +201,13 @@ export type Decision = {
   earlyBeyondLimit: boolean; // ideal is >15 min before booked → driver could confirm earlier
 };
 
-export function decide(b: BookingFacts, f: FlightFacts, now: Date): Decision {
-  const interpretation = interpretFlight(f);
+export function decide(
+  b: BookingFacts,
+  f: FlightFacts,
+  now: Date,
+  interpretationOverride?: Interpretation
+): Decision {
+  const interpretation = interpretationOverride ?? interpretFlight(f, now);
   const idealPickupAt = floorMinute(
     new Date(interpretation.gateArrival.getTime() + b.pickupOffsetMinutes * MIN)
   );
@@ -179,7 +243,10 @@ export function decide(b: BookingFacts, f: FlightFacts, now: Date): Decision {
   }
 
   // Target time: later always; earlier capped at EARLY_LIMIT_MIN before booked.
-  const earliestAllowed = new Date(booked.getTime() - EARLY_LIMIT_MIN * MIN);
+  // Earlier moves: at most 15 min below the last time we told anyone (driver
+  // or passenger) — falls back to the booked time if nothing was sent yet.
+  const reference = b.lastToldPickupAt ?? booked;
+  const earliestAllowed = new Date(reference.getTime() - EARLY_LIMIT_MIN * MIN);
   let target =
     idealPickupAt >= booked
       ? idealPickupAt

@@ -110,8 +110,8 @@ export async function flightRoutes(fastify: FastifyInstance) {
 
       //const landing = new Date(flight.scheduledArrivalUtc);
       // Same gate-arrival rule as Phase 2: actual if landed, else best estimate.
-      const expectedArrivalUtc =
-        interpretFlight(flight).gateArrival.toISOString();
+      const interp = interpretFlight(flight);
+      const expectedArrivalUtc = interp.gateArrival.toISOString();
       const handPickup = earliestPickupAfterLanding(
         expectedArrivalUtc,
         buffers,
@@ -137,6 +137,7 @@ export async function flightRoutes(fastify: FastifyInstance) {
             originName: flight.originName,
             scheduledArrivalUtc: flight.scheduledArrivalUtc,
             expectedArrivalUtc,
+            confidence: interp.confidence,
             terminal: flight.terminal,
             status: flight.status,
           },

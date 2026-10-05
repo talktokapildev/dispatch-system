@@ -10,8 +10,9 @@ import { FlightArrival } from "../src/services/flightData.service";
 const prisma = new PrismaClient();
 const mem = new Map<string, string>();
 const fakeRedis: any = {
-  set: async (k: string, v: string) =>
-    mem.has(k) ? null : (mem.set(k, v), "OK"),
+  get: async (k: string) => mem.get(k) ?? null,
+  set: async (k: string, v: string, ...args: any[]) =>
+    args.includes("NX") && mem.has(k) ? null : (mem.set(k, v), "OK"),
   del: async (k: string) => (mem.delete(k), 1),
 };
 
@@ -134,16 +135,20 @@ const hm = (d: Date | null | undefined) =>
       flight({ revisedArrivalUtc: at(landing, 52) }, 4),
     ],
     [
+      "5b delayed 2h (PICKUP_UPDATE: 60+ min)",
+      flight({ revisedArrivalUtc: at(landing, 120) }, 4.5),
+    ],
+    [
       "6 landed (ARRIVED)",
-      flight({ status: "Landed", runwayArrivalUtc: at(landing, 48) }, 5),
+      flight({ status: "Landed", runwayArrivalUtc: at(landing, 115) }, 5),
     ],
     [
       "7 arrived at gate (no duplicate)",
       flight(
         {
           status: "Arrived",
-          revisedArrivalUtc: at(landing, 56),
-          runwayArrivalUtc: at(landing, 48),
+          revisedArrivalUtc: at(landing, 123),
+          runwayArrivalUtc: at(landing, 115),
         },
         6
       ),

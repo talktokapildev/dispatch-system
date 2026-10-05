@@ -24,6 +24,31 @@ const STARTED: BookingStatus[] = [
   BookingStatus.IN_PROGRESS,
 ];
 const DEFAULT_CONTACT_PHONE = "+447398341839";
+const DRIVER_UPDATE_MIN = 15; // driver push when pickup moves this much since they were last told
+const PASSENGER_UPDATE_MIN = 60; // extra passenger SMS only for big further changes
+const TOLD_TTL_S = 3 * 24 * 3600;
+
+// What we last told each party (transient, day-of tracking state).
+const toldKey = (who: "driver" | "passenger", bookingId: string) =>
+  `flight:told:${who}:${bookingId}`;
+async function getTold(
+  redis: Redis,
+  who: "driver" | "passenger",
+  bookingId: string
+): Promise<Date | null> {
+  const v = await redis.get(toldKey(who, bookingId));
+  return v ? new Date(v) : null;
+}
+async function setTold(
+  redis: Redis,
+  who: "driver" | "passenger",
+  bookingId: string,
+  at: Date
+) {
+  await redis.set(toldKey(who, bookingId), at.toISOString(), "EX", TOLD_TTL_S);
+}
+const minutesApart = (a: Date, b: Date) =>
+  Math.abs(a.getTime() - b.getTime()) / 60_000;
 
 export type UpdateSummary = {
   watchId: string;
@@ -87,7 +112,17 @@ export async function applyFlightUpdate(
       return { ...summary, stale: true };
     }
 
-    const interp = interpretFlight(flight);
+    let interp = interpretFlight(flight, now);
+    // Before take-off, never let the estimate go BACKWARDS: provider data can
+    // regress (EZY858 lost a known delay). After take-off, live tracking rules.
+    if (
+      interp.phase === "SCHEDULED" &&
+      !interp.departed &&
+      watch.expectedGateArrivalAt &&
+      interp.gateArrival < watch.expectedGateArrivalAt
+    ) {
+      interp = { ...interp, gateArrival: watch.expectedGateArrivalAt };
+    }
     await prisma.flightWatch.update({
       where: { id: watchId },
       data: {
@@ -120,16 +155,25 @@ export async function applyFlightUpdate(
       if (b.pickupOffsetMinutes == null || !b.bookedPickupAt || !b.scheduledAt)
         continue;
 
+      const toldDriver = await getTold(redis, "driver", b.id);
+      const toldPassenger = await getTold(redis, "passenger", b.id);
+      const lastTold =
+        [toldDriver, toldPassenger]
+          .filter((d): d is Date => !!d)
+          .sort((x, y) => y.getTime() - x.getTime())[0] ?? null;
+
       const d = decide(
         {
           bookedPickupAt: b.bookedPickupAt,
+          lastToldPickupAt: lastTold,
           pickupOffsetMinutes: b.pickupOffsetMinutes,
           currentPickupAt: b.scheduledAt,
           firedEvents: new Set(b.flightEvents.map((e) => e.type)),
           tripStarted: STARTED.includes(b.status),
         },
         flight,
-        now
+        now,
+        interp
       );
 
       // Pickup time + refreshed snapshot (provider data, 6-day retention).
@@ -158,7 +202,7 @@ export async function applyFlightUpdate(
           flight: b.flightNumber ?? "Your flight",
           meetingPoint: b.meetingPoint?.name ?? b.pickupAddress,
           pickupAt: ev.newPickupAt,
-          oldPickupAt: b.bookedPickupAt,
+          oldPickupAt: b.bookedPickupAt, // passenger's reference: the time they agreed, not quiet adjustments
           idealPickupAt: d.idealPickupAt,
           landedAt: d.interpretation.landedAt,
           contactPhone: phone,
@@ -169,6 +213,7 @@ export async function applyFlightUpdate(
         const passengerPhone = b.passenger?.user?.phone;
         if (msg.passengerSms && passengerPhone)
           smsSent = (await sendSms(passengerPhone, msg.passengerSms)).ok;
+        if (smsSent) await setTold(redis, "passenger", b.id, ev.newPickupAt);
 
         const driverUser = b.driver?.user;
         if (driverUser) {
@@ -179,6 +224,7 @@ export async function applyFlightUpdate(
                 data: { type: `FLIGHT_${ev.type}`, bookingId: b.id },
               });
               pushSent = true;
+              await setTold(redis, "driver", b.id, ev.newPickupAt);
             } catch {
               pushSent = false;
             }
@@ -191,6 +237,68 @@ export async function applyFlightUpdate(
           where: { id: event.id },
           data: { smsSent, pushSent },
         });
+      }
+
+      // Follow-up updates (no milestone this round, flight still on its way):
+      //  driver    — whenever pickup moved 15+ min since they were last told
+      //  passenger — only after a "running late/early" text, and 60+ min since their last text
+      const effective = d.newPickupAt ?? b.scheduledAt;
+      if (!d.events.length && d.interpretation.phase === "SCHEDULED") {
+        const fired = new Set(b.flightEvents.map((e) => e.type));
+        const driverUser = b.driver?.user;
+        const driverBase = toldDriver ?? b.bookedPickupAt;
+        const sendDriver =
+          !!driverUser &&
+          minutesApart(effective, driverBase) >= DRIVER_UPDATE_MIN;
+        const passengerBase = toldPassenger ?? b.bookedPickupAt;
+        const sendPassenger =
+          (fired.has("RUNNING_LATE") || fired.has("RUNNING_EARLY")) &&
+          !!toldPassenger &&
+          minutesApart(effective, passengerBase) >= PASSENGER_UPDATE_MIN;
+
+        if (sendDriver || sendPassenger) {
+          const event = await prisma.bookingFlightEvent.create({
+            data: {
+              bookingId: b.id,
+              type: "PICKUP_UPDATE",
+              oldPickupAt: b.scheduledAt,
+              newPickupAt: effective,
+            },
+          });
+          summary.events.push(`${b.reference}:PICKUP_UPDATE`);
+          const msg = buildFlightMessages("PICKUP_UPDATE", {
+            flight: b.flightNumber ?? "Your flight",
+            meetingPoint: b.meetingPoint?.name ?? b.pickupAddress,
+            pickupAt: effective,
+            oldPickupAt: sendDriver ? driverBase : passengerBase,
+            idealPickupAt: d.idealPickupAt,
+            landedAt: null,
+            contactPhone: phone,
+          });
+          let smsSent = false;
+          let pushSent = false;
+          if (sendPassenger && msg.passengerSms && b.passenger?.user?.phone) {
+            smsSent = (await sendSms(b.passenger.user.phone, msg.passengerSms))
+              .ok;
+            if (smsSent) await setTold(redis, "passenger", b.id, effective);
+          }
+          if (sendDriver && msg.driverPush && driverUser) {
+            try {
+              await notifications.sendToUser(driverUser.id, {
+                ...msg.driverPush,
+                data: { type: "FLIGHT_PICKUP_UPDATE", bookingId: b.id },
+              });
+              pushSent = true;
+              await setTold(redis, "driver", b.id, effective);
+            } catch {
+              pushSent = false;
+            }
+          }
+          await prisma.bookingFlightEvent.update({
+            where: { id: event.id },
+            data: { smsSent, pushSent },
+          });
+        }
       }
 
       if (d.newPickupAt || d.events.length) {

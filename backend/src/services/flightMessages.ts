@@ -75,6 +75,18 @@ export function buildFlightMessages(
         driverSmsBackup: null,
       };
     }
+    case "PICKUP_UPDATE":
+      // Follow-up after a further big change (passenger) / any 15+ min change (driver).
+      return {
+        passengerSms: `OrangeRide: ${c.flight} update - your pickup is now ${pickup}. We'll text you the exact time when you land. Call ${c.contactPhone}`,
+        driverPush: {
+          title: `${c.flight} pickup changed`,
+          body: `Pickup now ${pickup} (was ${ukTime(c.oldPickupAt)}). ${
+            c.meetingPoint
+          }.`,
+        },
+        driverSmsBackup: null,
+      };
     case "EARLIER_CONFIRMED":
       return {
         passengerSms: `OrangeRide: Good news - your driver will meet you at ${c.meetingPoint} at ${pickup}. Call ${c.contactPhone}`,
