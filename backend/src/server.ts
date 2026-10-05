@@ -33,6 +33,7 @@ import { teslaRoutes } from "./routes/tesla";
 import { scheduledBookingRoutes } from "./routes/scheduledBooking.routes";
 import { adminBookingTripRoutes } from "./routes/admin/booking-trip";
 import { flightRoutes } from "./routes/flights";
+import { runFlightWatchCycle } from "./services/flightWatch.service";
 
 import { Prisma } from "@prisma/client";
 
@@ -174,6 +175,18 @@ async function startStaleBiookingCleanup(
     } catch (err) {
       fastify.log.error({ err }, "[Cleanup] Flight data retention error");
     }
+    // ── Flight tracking (Phase 2): watches + safety-net lookups ─────────
+    try {
+      await runFlightWatchCycle({
+        prisma: fastify.prisma,
+        redis: fastify.redis,
+        log: fastify.log,
+        io: fastify.io as any,
+      });
+    } catch (err) {
+      fastify.log.error({ err }, "[FlightWatch] Cycle error");
+    }
+
     try {
       const cutoff = new Date(Date.now() - STALE_BOOKING_THRESHOLD_MS);
 
