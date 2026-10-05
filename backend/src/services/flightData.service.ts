@@ -25,6 +25,8 @@ export type FlightArrival = {
   status: string | null; // e.g. "Expected", "Arrived"
   quality: string[]; // e.g. ["Basic"] = timetable only; live data adds more
   fetchedAt: string; // ISO 8601 — drives the 6-day refresh/delete rule
+  runwayArrivalUtc: string | null; // actual touchdown
+  providerUpdatedAt: string | null; // AeroDataBox "last updated" — newer data wins
 };
 
 export type LookupFailure =
@@ -96,14 +98,15 @@ export class FlightDataService {
   async lookupArrival(
     flightNumberInput: string,
     dateLocal: string,
-    airportIata = "LGW"
+    airportIata = "LGW",
+    opts: { fresh?: boolean } = {}
   ): Promise<LookupResult> {
     const number = normaliseFlightNumber(flightNumberInput);
     if (!number || !isValidDate(dateLocal))
       return { ok: false, reason: "invalid_input" };
 
     const cacheKey = `flight:arrival:${airportIata}:${number}:${dateLocal}`;
-    const cached = await this.redis.get(cacheKey);
+    const cached = opts.fresh ? null : await this.redis.get(cacheKey);
     if (cached) return JSON.parse(cached) as LookupResult;
 
     if (!this.apiKey) return { ok: false, reason: "provider_error" };
@@ -197,6 +200,8 @@ export class FlightDataService {
         scheduledArrivalUtc: scheduled!,
         predictedArrivalUtc: parseProviderTime(a.predictedTime),
         revisedArrivalUtc: parseProviderTime(a.revisedTime),
+        runwayArrivalUtc: parseProviderTime(a.runwayTime),
+        providerUpdatedAt: parseProviderTime(f.lastUpdatedUtc),
         terminal: parseTerminal(a.terminal),
         status: typeof f.status === "string" ? f.status : null,
         quality: Array.isArray(a.quality) ? a.quality : [],
