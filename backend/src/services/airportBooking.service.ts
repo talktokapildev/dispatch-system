@@ -17,6 +17,7 @@ import {
   getFlightBuffers,
   earliestPickupAfterLanding,
 } from "../utils/airportPickup";
+import { interpretFlight } from "./flightRules";
 
 export const airportPickupSchema = z.object({
   meetingPointId: z.string().uuid().optional(),
@@ -146,8 +147,10 @@ export async function resolveAirportPickup(
 
   const flight = lookup.flight;
   const buffers = await getFlightBuffers(prisma);
+  // Same gate-arrival rule as the lookup and Phase 2 (no double-counting of delays).
+  const expectedArrival = interpretFlight(flight).gateArrival;
   const earliest = earliestPickupAfterLanding(
-    flight.scheduledArrivalUtc,
+    expectedArrival.toISOString(),
     buffers,
     input.luggageType
   );
@@ -170,10 +173,9 @@ export async function resolveAirportPickup(
       flightNumber: number, // passenger's own input (normalised) — kept permanently
       luggageType: input.luggageType,
       // Ours: passenger's minutes after the scheduled gate arrival, and the agreed pickup.
+
       pickupOffsetMinutes: Math.round(
-        (scheduledAt.getTime() -
-          new Date(flight.scheduledArrivalUtc).getTime()) /
-          60_000
+        (scheduledAt.getTime() - expectedArrival.getTime()) / 60_000
       ),
       bookedPickupAt: scheduledAt,
       // Provider data below is a snapshot: refreshed or deleted by the daily job within 6 days.

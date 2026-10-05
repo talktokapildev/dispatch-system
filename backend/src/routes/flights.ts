@@ -22,6 +22,7 @@ import {
   airportPickupSchema,
   resolveAirportPickup,
 } from "../services/airportBooking.service";
+import { interpretFlight } from "../services/flightRules";
 
 const AIRPORT = "LGW"; // only airport with meeting points for now
 
@@ -108,13 +109,16 @@ export async function flightRoutes(fastify: FastifyInstance) {
       ]);
 
       //const landing = new Date(flight.scheduledArrivalUtc);
+      // Same gate-arrival rule as Phase 2: actual if landed, else best estimate.
+      const expectedArrivalUtc =
+        interpretFlight(flight).gateArrival.toISOString();
       const handPickup = earliestPickupAfterLanding(
-        flight.scheduledArrivalUtc,
+        expectedArrivalUtc,
         buffers,
         "HAND"
       );
       const checkedPickup = earliestPickupAfterLanding(
-        flight.scheduledArrivalUtc,
+        expectedArrivalUtc,
         buffers,
         "CHECKED"
       );
@@ -132,6 +136,7 @@ export async function flightRoutes(fastify: FastifyInstance) {
             originIata: flight.originIata,
             originName: flight.originName,
             scheduledArrivalUtc: flight.scheduledArrivalUtc,
+            expectedArrivalUtc,
             terminal: flight.terminal,
             status: flight.status,
           },

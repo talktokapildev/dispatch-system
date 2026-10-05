@@ -32,6 +32,9 @@ export type FlightFacts = {
   revisedArrivalUtc: string | null; // airline/airport estimate or actual gate time
   predictedArrivalUtc: string | null; // provider's model estimate
   runwayArrivalUtc: string | null; // actual touchdown
+  departureScheduledUtc?: string | null;
+  departureRevisedUtc?: string | null; // estimated (or actual) off-block at origin
+  departureRunwayUtc?: string | null; // actual take-off
 };
 
 export type Interpretation = {
@@ -81,11 +84,40 @@ export function interpretFlight(f: FlightFacts): Interpretation {
       landedAt: runway ?? revised ?? scheduled,
     };
 
-  return {
-    phase: "SCHEDULED",
-    gateArrival: revised ?? predicted ?? scheduled,
-    landedAt: null,
-  };
+  // Flight time from the timetable (used to project arrival from departure).
+  const depScheduled = toDate(f.departureScheduledUtc);
+  const flightMs =
+    depScheduled && scheduled > depScheduled
+      ? scheduled.getTime() - depScheduled.getTime()
+      : null;
+  const depActual = toDate(f.departureRunwayUtc);
+  const departed =
+    !!depActual || ["departed", "enroute", "approaching"].includes(status);
+
+  if (departed) {
+    // In the air: arrival estimates come from live tracking — trust them.
+    const projected =
+      depActual && flightMs ? new Date(depActual.getTime() + flightMs) : null;
+    return {
+      phase: "SCHEDULED",
+      gateArrival: revised ?? predicted ?? projected ?? scheduled,
+      landedAt: null,
+    };
+  }
+
+  // Not departed yet: arrival estimates can be stale (e.g. "revised" earlier
+  // than schedule while the plane is still on the ground). The plane can't
+  // arrive before its expected departure + flight time, so take the LATEST
+  // of all estimates. Errs late, which is safe: later moves are automatic and
+  // the estimate tightens once the flight departs.
+  const depExpected = toDate(f.departureRevisedUtc) ?? depScheduled;
+  const projected =
+    depExpected && flightMs ? new Date(depExpected.getTime() + flightMs) : null;
+  const candidates = [scheduled, revised, predicted, projected].filter(
+    (d): d is Date => !!d
+  );
+  const latest = new Date(Math.max(...candidates.map((d) => d.getTime())));
+  return { phase: "SCHEDULED", gateArrival: latest, landedAt: null };
 }
 
 export type BookingFacts = {

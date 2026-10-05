@@ -26,6 +26,9 @@ export type FlightArrival = {
   quality: string[]; // e.g. ["Basic"] = timetable only; live data adds more
   fetchedAt: string; // ISO 8601 — drives the 6-day refresh/delete rule
   runwayArrivalUtc: string | null; // actual touchdown
+  departureScheduledUtc: string | null;
+  departureRevisedUtc: string | null; // estimated (or actual) off-block at origin
+  departureRunwayUtc: string | null; // actual take-off
   providerUpdatedAt: string | null; // AeroDataBox "last updated" — newer data wins
 };
 
@@ -202,6 +205,9 @@ export class FlightDataService {
         revisedArrivalUtc: parseProviderTime(a.revisedTime),
         runwayArrivalUtc: parseProviderTime(a.runwayTime),
         providerUpdatedAt: parseProviderTime(f.lastUpdatedUtc),
+        departureScheduledUtc: parseProviderTime(f.departure?.scheduledTime),
+        departureRevisedUtc: parseProviderTime(f.departure?.revisedTime),
+        departureRunwayUtc: parseProviderTime(f.departure?.runwayTime),
         terminal: parseTerminal(a.terminal),
         status: typeof f.status === "string" ? f.status : null,
         quality: Array.isArray(a.quality) ? a.quality : [],
