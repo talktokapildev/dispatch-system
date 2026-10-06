@@ -15,6 +15,7 @@ import {
   PanResponder,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -167,6 +168,10 @@ export default function HomeScreen({ navigation }: any) {
   const [airport, setAirport] = useState<AirportBookingState | null>(null);
   // True while the section is asking the backend whether the pickup is at an airport.
   const [airportChecking, setAirportChecking] = useState(false);
+  // Keyboard open → airport section shows a one-line summary (keeps the
+  // dropoff field visible) and a "Done" button offers a clear way out.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const tabBarHeight = useBottomTabBarHeight();
   const [showIosPicker, setShowIosPicker] = useState(false);
   const [iosTempDate, setIosTempDate] = useState<Date>(
     new Date(Date.now() + MIN_LEAD_MS)
@@ -192,7 +197,9 @@ export default function HomeScreen({ navigation }: any) {
       (estimate ? 370 : 300) + (airport ? 150 : 0),
       Math.round(SCREEN_HEIGHT * 0.58)
     ) + insets.bottom;
-  const SHEET_EXPANDED = SCREEN_HEIGHT - insets.top - 20;
+  // The screen sits above the tab bar, so subtract it — otherwise the expanded
+  // sheet runs up under the status bar and its handle can't be reached.
+  const SHEET_EXPANDED = SCREEN_HEIGHT - insets.top - tabBarHeight - 12;
   // Peek: handle + one-line trip summary + Book button — map gets the screen.
   const SHEET_PEEK = 150 + insets.bottom;
   // Height actually covering the map right now (for map fit + locate button).
@@ -267,12 +274,16 @@ export default function HomeScreen({ navigation }: any) {
   const expand = () => {
     peekRef.current = false;
     setPeek(false);
+    setKeyboardOpen(true);
     animateSheet(1);
   };
 
   // Keyboard hidden → back to normal, unless the passenger chose peek
   // (goPeek dismisses the keyboard, which fires this listener).
-  const collapse = () => animateSheet(peekRef.current ? -1 : 0);
+  const collapse = () => {
+    setKeyboardOpen(false);
+    animateSheet(peekRef.current ? -1 : 0);
+  };
 
   // Map-focused: shrink the sheet so the whole route is visible.
   const goPeek = () => {
@@ -638,13 +649,27 @@ export default function HomeScreen({ navigation }: any) {
             airport section keeps its terminal/flight choices. */}
         <View style={{ flex: 1, display: peek ? "none" : "flex" }}>
           <ScrollView
-            keyboardShouldPersistTaps="always"
+            // "handled": taps on empty space close the keyboard; taps on
+            // buttons/suggestions still work. Swipe down also closes it.
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.scrollContent}
           >
-            <Text style={s.greeting} numberOfLines={1} ellipsizeMode="tail">
-              {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
-            </Text>
+            <View style={s.greetingRow}>
+              <Text style={s.greeting} numberOfLines={1} ellipsizeMode="tail">
+                {user?.firstName ? `Where to, ${user.firstName}?` : "Where to?"}
+              </Text>
+              {keyboardOpen && (
+                <TouchableOpacity
+                  onPress={() => Keyboard.dismiss()}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={s.doneText}>Done</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/* When: Now vs Schedule — compact pill + inline date/time chip,
               merged into a single row to save vertical space */}
@@ -762,6 +787,7 @@ export default function HomeScreen({ navigation }: any) {
               onScheduledAtChange={setScheduledAt}
               onChange={setAirport}
               onCheckingChange={setAirportChecking}
+              compact={keyboardOpen}
             />
 
             <TouchableOpacity
@@ -917,12 +943,20 @@ const styles = (
       paddingTop: Spacing.sm,
       paddingBottom: Spacing.sm,
     },
+    greetingRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: Spacing.md,
+      marginBottom: Spacing.md,
+    },
     greeting: {
+      flex: 1,
       fontSize: FontSize.xl,
       fontWeight: "700",
       color: C.white,
-      marginBottom: Spacing.md,
     },
+    doneText: { fontSize: FontSize.md, color: C.brand, fontWeight: "700" },
     myLocBtn: { marginBottom: Spacing.sm, marginTop: -4 },
     scheduleRow: {
       flexDirection: "row",

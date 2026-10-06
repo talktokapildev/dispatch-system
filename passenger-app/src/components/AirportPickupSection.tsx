@@ -41,6 +41,7 @@ import {
   toYmd,
   fromYmd,
   ukTime,
+  TERMINAL_LABEL,
 } from "../lib/airport";
 
 type Place = { address: string; latitude: number; longitude: number };
@@ -52,6 +53,7 @@ type Props = {
   onScheduledAtChange: (date: Date | null) => void;
   onChange: (state: AirportBookingState | null) => void;
   onCheckingChange?: (checking: boolean) => void; // HomeScreen disables Book while checking
+  compact?: boolean; // keyboard open: show a one-line summary so the dropoff field stays visible
 };
 
 const MIN_LEAD_MS = 2 * 60 * 60 * 1000; // must match backend ScheduledBookingService
@@ -63,6 +65,7 @@ export default function AirportPickupSection({
   onScheduledAtChange,
   onChange,
   onCheckingChange,
+  compact = false,
 }: Props) {
   const { Colors } = useTheme();
   const s = styles(Colors);
@@ -288,6 +291,27 @@ export default function AirportPickupSection({
   };
 
   if (!airport) return null;
+
+  // Keyboard open (typing an address): one-line summary. State is kept — this
+  // only changes what's rendered, so nothing is lost when the keyboard closes.
+  if (compact) {
+    const parts = [
+      usingFlight && lookup
+        ? `✈ ${lookup.flight.flightNumber}`
+        : `✈ ${airport.airportName} pickup`,
+      meetingPoint
+        ? TERMINAL_LABEL[meetingPoint.terminal] ?? meetingPoint.terminal
+        : null,
+      usingFlight && timing ? `pickup ${ukTime(timing.pickupAt)}` : null,
+    ].filter(Boolean);
+    return (
+      <View style={[s.box, s.compactBox]}>
+        <Text style={s.compactText} numberOfLines={1}>
+          {parts.join(" · ")}
+        </Text>
+      </View>
+    );
+  }
 
   const meetingPoints = lookup?.meetingPoints?.length
     ? lookup.meetingPoints
@@ -566,6 +590,8 @@ const styles = (
       backgroundColor: C.brand + "0D",
       zIndex: -1,
     },
+    compactBox: { paddingBottom: Spacing.sm },
+    compactText: { fontSize: FontSize.xs, color: C.brand, fontWeight: "700" },
     uncertainBox: {
       marginTop: Spacing.md,
       borderRadius: Radius.md,
