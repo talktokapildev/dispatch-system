@@ -11,6 +11,7 @@ import { FastifyInstance } from "fastify";
 import {
   FlightDataService,
   LookupFailure,
+  normaliseFlightNumber,
 } from "../services/flightData.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import {
@@ -92,6 +93,10 @@ export async function flightRoutes(fastify: FastifyInstance) {
       }
 
       const flight = result.flight;
+      // Show the passenger's own flight number (as on their booking / Gatwick's board),
+      // not the provider's form (e.g. "EZY8752", not "U2 8752").
+      const displayNumber =
+        normaliseFlightNumber(number) ?? flight.flightNumber;
       const [buffers, meetingPoints] = await Promise.all([
         getFlightBuffers(fastify.prisma),
         fastify.prisma.airportMeetingPoint.findMany({
@@ -113,7 +118,7 @@ export async function flightRoutes(fastify: FastifyInstance) {
       const interp = interpretFlight(flight);
       // Don't offer pickups for flights that won't arrive, or already have.
       if (interp.phase !== "SCHEDULED") {
-        const n = flight.flightNumber || number;
+        const n = displayNumber;
         const t = new Intl.DateTimeFormat("en-GB", {
           timeZone: "Europe/London",
           hour: "2-digit",
@@ -151,7 +156,8 @@ export async function flightRoutes(fastify: FastifyInstance) {
         success: true,
         data: {
           flight: {
-            flightNumber: flight.flightNumber,
+            flightNumber: displayNumber,
+            providerFlightNumber: flight.flightNumber,
             airlineName: flight.airlineName,
             originIata: flight.originIata,
             originName: flight.originName,
