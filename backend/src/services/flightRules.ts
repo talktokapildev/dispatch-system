@@ -54,6 +54,7 @@ const MIN = 60_000;
 const TAXI_OUT_MIN = 15; // gate → take-off, used when projecting arrival from take-off
 const MIN_FLIGHT_FRACTION = 0.7; // no plane arrives faster than 70% of its scheduled time
 const UNCERTAIN_AFTER_MIN = 15; // departure this late with no take-off seen → uncertain
+const CREDIBLE_DELAY_MIN = 10; // "revised" this much later than schedule = a real airline update
 const toDate = (s: string | null | undefined) => (s ? new Date(s) : null);
 const floorMinute = (d: Date) => new Date(Math.floor(d.getTime() / MIN) * MIN);
 const ceilMinute = (d: Date) => new Date(Math.ceil(d.getTime() / MIN) * MIN);
@@ -158,15 +159,45 @@ export function interpretFlight(
     };
   }
 
-  // Not departed yet. Estimates can be stale, so:
+  // Not departed yet (no take-off seen). Two very different situations:
+  //
+  //  A) A CREDIBLE airline update: "revised" arrival meaningfully LATER than
+  //     schedule (seen: EZY8598 revised +1h55, matching Gatwick's board, while
+  //     take-off from Split went unrecorded — no tracking coverage there).
+  //     Trust it, as long as its implied departure isn't still in the future
+  //     (then the time floor below still applies).
+  //  B) No credible update: "revised" equal to / earlier than schedule is just
+  //     the timetable echoed back (seen: EZY858, EZY8752 — both stuck on the
+  //     ground). Use the time floor: the plane can't leave before NOW.
+  const credibleRevised =
+    revised &&
+    revised.getTime() - scheduled.getTime() >= CREDIBLE_DELAY_MIN * MIN
+      ? revised
+      : null;
+  if (credibleRevised && flightMs) {
+    const impliedDeparture = new Date(credibleRevised.getTime() - flightMs);
+    if (impliedDeparture <= now) {
+      return {
+        phase: "SCHEDULED",
+        gateArrival: latest([credibleRevised, predicted]),
+        landedAt: null,
+        departed: false,
+        confidence: "TIMETABLE",
+      };
+    }
+  }
+
+  // Estimates can be stale, so:
   //  - the plane can't leave before NOW (time floor), and
   //  - can't arrive before its expected departure + flight time,
-  // so take the LATEST credible estimate. Errs late (safe); tightens at take-off.
+  // so take the LATEST credible estimate. Errs late; tightens at take-off.
   const depExpected = toDate(f.departureRevisedUtc) ?? depScheduled;
   const depFloor = depExpected ? latest([depExpected, now]) : null;
   const projected =
     depFloor && flightMs ? new Date(depFloor.getTime() + flightMs) : null;
+  // Uncertain only when there's NO credible airline update to go on.
   const uncertain =
+    !credibleRevised &&
     !!depExpected &&
     now.getTime() - depExpected.getTime() > UNCERTAIN_AFTER_MIN * MIN;
   return {
