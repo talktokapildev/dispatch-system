@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   Platform,
   Modal,
+  Keyboard,
 } from "react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
@@ -93,6 +94,9 @@ export default function AirportPickupSection({
   const [customTime, setCustomTime] = useState<Date | null>(null);
   const [showMoreTime, setShowMoreTime] = useState(false);
   const flightTimeActive = useRef(false);
+  // True while the flight-number field has focus: never collapse to the
+  // one-line summary then, or the field unmounts and the keyboard closes.
+  const [typingFlight, setTypingFlight] = useState(false);
 
   const resetFlight = () => {
     setLookup(null);
@@ -165,6 +169,8 @@ export default function AirportPickupSection({
   const findFlight = async () => {
     const number = flightNumber.trim();
     if (!number) return;
+    Keyboard.dismiss();
+    setTypingFlight(false);
     setSearching(true);
     setLookupError(null);
     try {
@@ -294,7 +300,7 @@ export default function AirportPickupSection({
 
   // Keyboard open (typing an address): one-line summary. State is kept — this
   // only changes what's rendered, so nothing is lost when the keyboard closes.
-  if (compact) {
+  if (compact && !typingFlight) {
     const parts = [
       usingFlight && lookup
         ? `✈ ${lookup.flight.flightNumber}`
@@ -365,6 +371,8 @@ export default function AirportPickupSection({
             autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={findFlight}
+            onFocus={() => setTypingFlight(true)}
+            onBlur={() => setTypingFlight(false)}
           />
           <TouchableOpacity
             style={s.dateBtn}
