@@ -111,6 +111,26 @@ export async function flightRoutes(fastify: FastifyInstance) {
       //const landing = new Date(flight.scheduledArrivalUtc);
       // Same gate-arrival rule as Phase 2: actual if landed, else best estimate.
       const interp = interpretFlight(flight);
+      // Don't offer pickups for flights that won't arrive, or already have.
+      if (interp.phase !== "SCHEDULED") {
+        const n = flight.flightNumber || number;
+        const t = new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(interp.landedAt ?? interp.gateArrival);
+        const error =
+          interp.phase === "CANCELLED"
+            ? `${n} on that date has been cancelled. Please check with your airline.`
+            : interp.phase === "DIVERTED"
+            ? `${n} has been diverted to another airport. Please check with your airline.`
+            : `${n} landed at ${t} on that date. If you're at Gatwick now, book with "Now".`;
+        return reply.status(409).send({
+          success: false,
+          error,
+          code: `flight_${interp.phase.toLowerCase()}`,
+        });
+      }
       const expectedArrivalUtc = interp.gateArrival.toISOString();
       const handPickup = earliestPickupAfterLanding(
         expectedArrivalUtc,

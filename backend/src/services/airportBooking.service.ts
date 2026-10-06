@@ -148,7 +148,17 @@ export async function resolveAirportPickup(
   const flight = lookup.flight;
   const buffers = await getFlightBuffers(prisma);
   // Same gate-arrival rule as the lookup and Phase 2 (no double-counting of delays).
-  const expectedArrival = interpretFlight(flight).gateArrival;
+  const interp = interpretFlight(flight);
+  if (interp.phase !== "SCHEDULED") {
+    const msg =
+      interp.phase === "CANCELLED"
+        ? "This flight has been cancelled. Please check with your airline."
+        : interp.phase === "DIVERTED"
+        ? "This flight has been diverted. Please check with your airline."
+        : 'This flight has already landed. If you\'re at Gatwick, book with "Now".';
+    return fail(409, `flight_${interp.phase.toLowerCase()}`, msg);
+  }
+  const expectedArrival = interp.gateArrival;
   const earliest = earliestPickupAfterLanding(
     expectedArrival.toISOString(),
     buffers,
