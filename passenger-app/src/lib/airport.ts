@@ -24,11 +24,13 @@ export type AirportInfo = {
 
 export type FlightLookup = {
   flight: {
-    flightNumber: string;
+    flightNumber: string; // passenger's own form, e.g. "EZY8004"
     airlineName: string | null;
     originIata: string | null;
     originName: string | null;
     scheduledArrivalUtc: string;
+    expectedArrivalUtc?: string; // best current estimate (server rule)
+    confidence?: "LIVE" | "TIMETABLE" | "UNCERTAIN";
     terminal: Terminal | null;
     status: string | null;
   };
@@ -50,6 +52,7 @@ export type AirportBookingState = {
     display: string; // e.g. "U2 8004 · easyJet"
     originName: string | null;
     scheduledArrivalUtc: string;
+    expectedArrivalUtc: string; // = scheduled unless delayed/early
     bufferMinutes: number;
   } | null;
   ready: boolean; // can the passenger continue to Confirm?

@@ -258,6 +258,9 @@ export default function AirportPickupSection({
                 .join(" · "),
               originName: lookup.flight.originName,
               scheduledArrivalUtc: lookup.flight.scheduledArrivalUtc,
+              expectedArrivalUtc:
+                lookup.flight.expectedArrivalUtc ??
+                lookup.flight.scheduledArrivalUtc,
               bufferMinutes: timing.bufferMinutes,
             }
           : null,
@@ -424,6 +427,13 @@ export default function AirportPickupSection({
 
   // Schedule mode, flight found.
   const f = lookup.flight;
+  const expected = f.expectedArrivalUtc ?? f.scheduledArrivalUtc;
+  const changed =
+    Math.abs(
+      new Date(expected).getTime() - new Date(f.scheduledArrivalUtc).getTime()
+    ) >=
+    5 * 60_000;
+  const uncertain = f.confidence === "UNCERTAIN";
   const later = customTime
     ? Math.round(
         (timing.pickupAt.getTime() - timing.earliest.getTime()) / 60_000
@@ -441,8 +451,12 @@ export default function AirportPickupSection({
         </TouchableOpacity>
       </View>
       <Text style={s.sub}>
-        {f.originName ? `From ${f.originName} · ` : ""}Lands{" "}
-        {ukTime(f.scheduledArrivalUtc)} (UK time)
+        {f.originName ? `From ${f.originName} · ` : ""}
+        {changed
+          ? `Scheduled ${ukTime(f.scheduledArrivalUtc)} · now expected ${ukTime(
+              expected
+            )} (UK time)`
+          : `Lands ${ukTime(f.scheduledArrivalUtc)} (UK time)`}
       </Text>
 
       <TerminalPicker
@@ -470,13 +484,34 @@ export default function AirportPickupSection({
         ))}
       </View>
 
+      {uncertain && !timing.tooSoon && (
+        <View style={s.uncertainBox}>
+          <Text style={s.uncertainTitle}>
+            {f.flightNumber} is delayed. The new landing time isn't confirmed
+            yet.
+          </Text>
+          <Text style={s.uncertainText}>
+            No need to choose a pickup time. We'll track your flight and set
+            your pickup for {timing.bufferMinutes} minutes after it lands, and
+            text you the exact time when you land.
+          </Text>
+          <Text style={s.uncertainHint}>
+            Prefer to wait? Book with "Now" once you've landed.
+          </Text>
+        </View>
+      )}
+
       <View style={[s.timeBox, timing.tooSoon && s.timeBoxWarn]}>
         <Text style={[s.timeMain, timing.tooSoon && { color: Colors.danger }]}>
-          Pickup {ukTime(timing.pickupAt)}
+          {uncertain && !timing.tooSoon
+            ? `Current estimate: around ${ukTime(timing.pickupAt)}`
+            : `Pickup ${ukTime(timing.pickupAt)}`}
         </Text>
         <Text style={[s.timeSub, timing.tooSoon && { color: Colors.danger }]}>
           {timing.tooSoon
             ? 'Too soon to schedule. Book with "Now" after you land.'
+            : uncertain
+            ? "We'll update this as your flight progresses"
             : `${timing.bufferMinutes} min after landing${
                 later > 0 ? ` + ${later} min` : ""
               }`}
@@ -494,7 +529,7 @@ export default function AirportPickupSection({
       <NeedMoreTimeSheet
         visible={showMoreTime}
         earliest={timing.earliest}
-        landingUtc={f.scheduledArrivalUtc}
+        landingUtc={expected}
         onClose={() => setShowMoreTime(false)}
         onSelect={(choice) => {
           if ("custom" in choice) {
@@ -515,14 +550,44 @@ const styles = (
   C: ReturnType<typeof import("../lib/ThemeContext").useTheme>["Colors"]
 ) =>
   StyleSheet.create({
+    // Option B: visually attached to the pickup field above it — tinted card,
+    // square top tucked under the pickup input.
     box: {
       borderWidth: 1,
-      borderColor: C.border,
-      borderRadius: Radius.lg,
-      padding: Spacing.md,
-      marginTop: Spacing.sm,
+      borderColor: C.brand + "40",
+      borderTopWidth: 0,
+      borderBottomLeftRadius: Radius.lg,
+      borderBottomRightRadius: Radius.lg,
+      marginTop: -Spacing.md,
+      paddingTop: Spacing.md + Spacing.md,
+      paddingHorizontal: Spacing.md,
+      paddingBottom: Spacing.md,
       marginBottom: Spacing.sm,
-      backgroundColor: C.card,
+      backgroundColor: C.brand + "0D",
+      zIndex: -1,
+    },
+    uncertainBox: {
+      marginTop: Spacing.md,
+      borderRadius: Radius.md,
+      padding: Spacing.md,
+      backgroundColor: C.brand + "1A",
+    },
+    uncertainTitle: {
+      fontSize: FontSize.sm,
+      color: C.white,
+      fontWeight: "700",
+    },
+    uncertainText: {
+      fontSize: FontSize.xs,
+      color: C.muted,
+      marginTop: 4,
+      lineHeight: 18,
+    },
+    uncertainHint: {
+      fontSize: FontSize.xs,
+      color: C.muted,
+      marginTop: 6,
+      fontStyle: "italic",
     },
     airportTag: {
       fontSize: FontSize.xs,

@@ -754,13 +754,6 @@ export default function HomeScreen({ navigation }: any) {
               onClear={() => setPickup(null)}
             />
 
-            <TouchableOpacity
-              style={s.myLocBtn}
-              onPress={useMyLocationAsPickup}
-            >
-              <Text style={s.myLocText}>📍 Use my current location</Text>
-            </TouchableOpacity>
-
             {/* Airport pickups: terminal / flight / pickup time (only shows at airports) */}
             <AirportPickupSection
               pickup={pickup}
@@ -770,6 +763,13 @@ export default function HomeScreen({ navigation }: any) {
               onChange={setAirport}
               onCheckingChange={setAirportChecking}
             />
+
+            <TouchableOpacity
+              style={s.myLocBtn}
+              onPress={useMyLocationAsPickup}
+            >
+              <Text style={s.myLocText}>📍 Use my current location</Text>
+            </TouchableOpacity>
 
             <AddressPicker
               label="Dropoff"

@@ -27,7 +27,17 @@ export default function AirportConfirmCard({
           {f.originName && <Row label="From" value={f.originName} s={s} />}
           <Row
             label="Lands"
-            value={`${ukTime(f.scheduledArrivalUtc)} (UK time)`}
+            value={
+              Math.abs(
+                new Date(f.expectedArrivalUtc).getTime() -
+                  new Date(f.scheduledArrivalUtc).getTime()
+              ) >=
+              5 * 60_000
+                ? `Expected ${ukTime(f.expectedArrivalUtc)} (scheduled ${ukTime(
+                    f.scheduledArrivalUtc
+                  )})`
+                : `${ukTime(f.scheduledArrivalUtc)} (UK time)`
+            }
             s={s}
           />
           <Row
