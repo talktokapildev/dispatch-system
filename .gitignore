@@ -16,4 +16,7 @@
 *.log
 
 # system
-.DS_Storepassenger-app/google-services.json
+.DS_Store
+passenger-app/google-services.json
+
+*.pem
