@@ -114,9 +114,16 @@ async function attachBookings(prisma: PrismaClient, log: Log, now: Date) {
 
   for (const b of candidates) {
     // Scheduled gate arrival: from the snapshot if still there, else pickup − offset (ours, permanent).
-    const arrival =
-      b.flightArrivalTime ??
-      new Date(b.scheduledAt!.getTime() - b.pickupOffsetMinutes! * MIN);
+    // Expected gate arrival = current pickup − passenger's offset (ours, permanent,
+    // already includes any delay known at booking). Using the SCHEDULED time here
+    // skipped flights booked when already 2h+ late (scheduled time "in the past").
+    const arrival = new Date(
+      b.scheduledAt!.getTime() - b.pickupOffsetMinutes! * MIN
+    );
+    // The provider looks flights up by SCHEDULED arrival date: use the snapshot's
+    // scheduled time while we have it, else the expected date (differs only for a
+    // late-evening flight delayed past midnight; step 6 keeps the snapshot fresh).
+    const providerDate = londonDate(b.flightArrivalTime ?? arrival);
     const minutesToArrival = (arrival.getTime() - now.getTime()) / MIN;
     if (
       minutesToArrival > ATTACH_WINDOW_MIN ||
@@ -129,7 +136,7 @@ async function attachBookings(prisma: PrismaClient, log: Log, now: Date) {
       where: {
         flightNumber_arrivalDate_airportIata: {
           flightNumber: b.flightNumber!,
-          arrivalDate: londonDate(arrival),
+          arrivalDate: providerDate,
           airportIata,
         },
       },
