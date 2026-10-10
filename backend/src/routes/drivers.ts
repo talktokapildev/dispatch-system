@@ -9,7 +9,11 @@ import {
 import { RedisKeys } from "../plugins/redis";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
-import { NotificationService } from "../services/notification.service";
+import {
+  NotificationService,
+  PUSH_APPS,
+  PushApp,
+} from "../services/notification.service";
 import { PricingService } from "../services/pricing.service";
 import { uploadToCloudinary } from "../services/cloudinary.service";
 import { SocketEvent } from "../types";
@@ -1404,20 +1408,27 @@ export async function driverRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const { userId } = request.user;
-      const { token, platform } = request.body as {
+      const { token, platform, app } = request.body as {
         token: string;
         platform: string;
+        app?: string; // "driver" | "passenger" — older app builds don't send it
       };
 
       if (!token || !platform)
-        return reply
-          .status(400)
-          .send({ success: false, error: "token and platform are required" });
+        return reply.status(400).send({
+          success: false,
+          error: "token and platform are required",
+        });
+      if (app !== undefined && !PUSH_APPS.includes(app as PushApp))
+        return reply.status(400).send({
+          success: false,
+          error: "app must be driver or passenger",
+        });
 
       await fastify.prisma.pushToken.upsert({
         where: { userId_token: { userId, token } },
-        update: { platform, updatedAt: new Date() },
-        create: { userId, token, platform },
+        update: { platform, ...(app && { app }), updatedAt: new Date() },
+        create: { userId, token, platform, app: app ?? null },
       });
 
       return reply.send({ success: true });

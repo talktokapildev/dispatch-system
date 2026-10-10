@@ -219,12 +219,20 @@ export async function applyFlightUpdate(
         if (driverUser) {
           if (msg.driverPush) {
             try {
-              await notifications.sendToUser(driverUser.id, {
-                ...msg.driverPush,
-                data: { type: `FLIGHT_${ev.type}`, bookingId: b.id },
-              });
-              pushSent = true;
-              await setTold(redis, "driver", b.id, ev.newPickupAt);
+              const delivered = await notifications.sendToUser(
+                driverUser.id,
+                {
+                  ...msg.driverPush,
+                  data: {
+                    type: `FLIGHT_${ev.type}`,
+                    bookingId: b.id,
+                  },
+                },
+                "driver"
+              );
+              pushSent = delivered > 0;
+              if (pushSent)
+                await setTold(redis, "driver", b.id, ev.newPickupAt);
             } catch (err) {
               pushSent = false;
               console.error("[FlightUpdate] driver push failed:", err);
@@ -285,12 +293,19 @@ export async function applyFlightUpdate(
           }
           if (sendDriver && msg.driverPush && driverUser) {
             try {
-              await notifications.sendToUser(driverUser.id, {
-                ...msg.driverPush,
-                data: { type: "FLIGHT_PICKUP_UPDATE", bookingId: b.id },
-              });
-              pushSent = true;
-              await setTold(redis, "driver", b.id, effective);
+              const delivered = await notifications.sendToUser(
+                driverUser.id,
+                {
+                  ...msg.driverPush,
+                  data: {
+                    type: "FLIGHT_PICKUP_UPDATE",
+                    bookingId: b.id,
+                  },
+                },
+                "driver"
+              );
+              pushSent = delivered > 0;
+              if (pushSent) await setTold(redis, "driver", b.id, effective);
             } catch (err) {
               pushSent = false;
               console.error("[FlightUpdate] driver push failed:", err);

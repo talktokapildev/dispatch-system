@@ -77,7 +77,7 @@ export function usePushNotifications() {
       // by the time this fires, causing silent 401s and no token stored on backend.
       await api.post(
         "/notifications/token",
-        { token, platform: Platform.OS },
+        { token, platform: Platform.OS, app: "passenger" },
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
       console.log("[Push] Token registered:", token.slice(0, 30) + "…");

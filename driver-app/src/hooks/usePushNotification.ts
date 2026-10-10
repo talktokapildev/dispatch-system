@@ -73,7 +73,11 @@ export function usePushNotifications() {
       });
       const token = tokenData.data;
       tokenRef.current = token;
-      await api.post("/notifications/token", { token, platform: Platform.OS });
+      await api.post("/notifications/token", {
+        token,
+        platform: Platform.OS,
+        app: "driver",
+      });
       console.log("[Push] Token registered:", token.slice(0, 30) + "…");
     } catch (err: any) {
       console.log("[Push] Could not get push token:", err);

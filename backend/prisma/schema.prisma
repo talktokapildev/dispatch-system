@@ -677,6 +677,7 @@ model PushToken {
   userId    String
   token     String
   platform  String
+  app       String? // "driver" | "passenger" — null = registered by an older app build
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
