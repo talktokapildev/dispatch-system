@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Platform, Alert } from "react-native";
+import { Platform, Alert, AppState } from "react-native";
 import Constants from "expo-constants";
 import { api, useAuthStore } from "../lib/api";
 
@@ -13,6 +13,7 @@ export function usePushNotifications() {
     if (!authToken) return;
 
     let sub: any;
+    let appSub: any;
 
     setupNotifications();
 
@@ -29,6 +30,13 @@ export function usePushNotifications() {
         }),
       });
 
+      // Clear the app-icon badge on open and whenever the app comes to the front.
+      Notifications.setBadgeCountAsync(0).catch(() => {});
+      appSub = AppState.addEventListener("change", (state) => {
+        if (state === "active")
+          Notifications.setBadgeCountAsync(0).catch(() => {});
+      });
+
       sub = Notifications.addNotificationResponseReceivedListener(
         (response) => {
           const data = response.notification.request.content.data;
@@ -39,7 +47,10 @@ export function usePushNotifications() {
       await registerToken(Notifications);
     }
 
-    return () => sub?.remove();
+    return () => {
+      sub?.remove();
+      appSub?.remove();
+    };
   }, [authToken]); // ← re-run when auth token changes (login/logout)
 
   const registerToken = async (Notifications: any) => {

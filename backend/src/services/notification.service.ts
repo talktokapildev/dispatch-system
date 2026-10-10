@@ -87,7 +87,7 @@ export class NotificationService {
       title: notification.title,
       body: notification.body,
       data: notification.data ?? {},
-      badge: 1,
+      //badge: 1,
       channelId: "default",
       priority: "high",
     });

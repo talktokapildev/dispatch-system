@@ -420,7 +420,7 @@ export class DispatchService {
         let surchargeAmount = 0;
         try {
           const zones = await (this.prisma as any).surchargeZone.findMany({
-            where: { active: true },
+            where: { isActive: true },
           });
           const dLat = completedBooking.dropoffLatitude;
           const dLng = completedBooking.dropoffLongitude;
