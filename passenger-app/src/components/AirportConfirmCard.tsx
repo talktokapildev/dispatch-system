@@ -64,7 +64,7 @@ export default function AirportConfirmCard({
 
       {f && (
         <Text style={s.note}>
-          ✈ Pickup is set {f.bufferMinutes} min after your scheduled landing. We
+          ✈ Pickup is set {f.bufferMinutes} min after your expected landing. We
           track your flight. If it's late, your driver waits.
         </Text>
       )}

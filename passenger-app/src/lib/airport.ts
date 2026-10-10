@@ -81,6 +81,16 @@ export function ukTime(d: Date | string): string {
   }).format(new Date(d));
 }
 
+/** UK calendar day of a moment, e.g. "Sat 07 Nov" (shown next to flight times). */
+export function ukDay(d: Date | string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(d));
+}
+
 export function ukDayTime(d: Date | string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",

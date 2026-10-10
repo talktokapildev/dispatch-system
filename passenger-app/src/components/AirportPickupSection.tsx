@@ -42,6 +42,7 @@ import {
   toYmd,
   fromYmd,
   ukTime,
+  ukDay,
   TERMINAL_LABEL,
 } from "../lib/airport";
 
@@ -485,10 +486,12 @@ export default function AirportPickupSection({
       <Text style={s.sub}>
         {f.originName ? `From ${f.originName} · ` : ""}
         {changed
-          ? `Scheduled ${ukTime(f.scheduledArrivalUtc)} · now expected ${ukTime(
-              expected
-            )} (UK time)`
-          : `Lands ${ukTime(f.scheduledArrivalUtc)} (UK time)`}
+          ? `${ukDay(expected)} · scheduled ${ukTime(
+              f.scheduledArrivalUtc
+            )} · now expected ${ukTime(expected)} (UK time)`
+          : `Lands ${ukDay(f.scheduledArrivalUtc)} ${ukTime(
+              f.scheduledArrivalUtc
+            )} (UK time)`}
       </Text>
 
       <TerminalPicker
