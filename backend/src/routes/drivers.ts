@@ -491,6 +491,9 @@ export async function driverRoutes(fastify: FastifyInstance) {
       }
 
       // Also emit directly to passenger room for instant update
+      // Also emit directly to passenger room for instant update.
+      // (Push notifications for these statuses are sent once, by
+      // dispatch.updateBookingStatus above — not here, or passengers get two.)
       if (
         [
           "COMPLETED",
@@ -501,44 +504,15 @@ export async function driverRoutes(fastify: FastifyInstance) {
       ) {
         const booking = await fastify.prisma.booking.findUnique({
           where: { id: bookingId },
-          include: { passenger: true },
+          select: { passenger: { select: { userId: true } } },
         });
-        if (booking) {
-          if (booking.passenger) {
-            fastify.io
-              .to(`passenger:${booking.passenger.userId}`)
-              .emit("passenger:status_update", {
-                bookingId,
-                status,
-              });
-
-            // Push notification to passenger for each status change
-            // so they're notified even when the passenger app is backgrounded
-            const passengerUserId = booking.passenger.userId;
-            const driverUser = await fastify.prisma.driver.findUnique({
-              where: { id: booking.driverId! },
-              include: { user: true },
+        if (booking?.passenger) {
+          fastify.io
+            .to(`passenger:${booking.passenger.userId}`)
+            .emit("passenger:status_update", {
+              bookingId,
+              status,
             });
-            const driverFirstName =
-              driverUser?.user?.firstName ?? "Your driver";
-
-            if (status === "DRIVER_EN_ROUTE") {
-              notifications
-                .notifyDriverEnRoute(passengerUserId, driverFirstName)
-                .catch(() => {});
-            } else if (status === "DRIVER_ARRIVED") {
-              notifications
-                .notifyDriverArrived(passengerUserId, driverFirstName)
-                .catch(() => {});
-            } else if (status === "IN_PROGRESS") {
-              notifications.notifyTripStarted(passengerUserId).catch(() => {});
-            } else if (status === "COMPLETED") {
-              const fare = booking.actualFare ?? booking.estimatedFare ?? 0;
-              notifications
-                .notifyTripComplete(passengerUserId, Number(fare))
-                .catch(() => {});
-            }
-          }
         }
       }
       let completionData: Record<string, any> | undefined;
