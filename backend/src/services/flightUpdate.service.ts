@@ -225,8 +225,9 @@ export async function applyFlightUpdate(
               });
               pushSent = true;
               await setTold(redis, "driver", b.id, ev.newPickupAt);
-            } catch {
+            } catch (err) {
               pushSent = false;
+              console.error("[FlightUpdate] driver push failed:", err);
             }
           }
           if (msg.driverSmsBackup && driverUser.phone)
@@ -290,8 +291,9 @@ export async function applyFlightUpdate(
               });
               pushSent = true;
               await setTold(redis, "driver", b.id, effective);
-            } catch {
+            } catch (err) {
               pushSent = false;
+              console.error("[FlightUpdate] driver push failed:", err);
             }
           }
           await prisma.bookingFlightEvent.update({

@@ -12,12 +12,24 @@ type ExpoPushTicketType = import("expo-server-sdk").ExpoPushTicket;
 let _expo: ExpoType | null = null;
 let _ExpoClass: typeof import("expo-server-sdk").Expo | null = null;
 
+// A REAL dynamic import. tsc (module: commonjs) rewrites a plain `import()`
+// into `require()`, which throws ERR_REQUIRE_ESM for ESM-only packages like
+// expo-server-sdk v6. Wrapping it in Function stops tsc from touching it.
+const importEsm = new Function("specifier", "return import(specifier)") as <
+  T = any
+>(
+  specifier: string
+) => Promise<T>;
+
 async function getExpo(): Promise<{
   expo: ExpoType;
   Expo: typeof import("expo-server-sdk").Expo;
 }> {
   if (_expo && _ExpoClass) return { expo: _expo, Expo: _ExpoClass };
-  const mod = await import("expo-server-sdk");
+  //const mod = await import("expo-server-sdk");
+  const mod = await importEsm<typeof import("expo-server-sdk")>(
+    "expo-server-sdk"
+  );
   _ExpoClass = mod.Expo;
   _expo = new mod.Expo();
   return { expo: _expo, Expo: _ExpoClass };
@@ -29,7 +41,10 @@ export class NotificationService {
   constructor(prisma: PrismaClient) {
     this.prisma = prisma;
     // Eagerly warm up the dynamic import so the first notification isn't slow
-    getExpo().catch(() => {});
+    //getExpo().catch(() => {});
+    getExpo().catch((err) =>
+      console.error("[Push] expo-server-sdk failed to load:", err)
+    );
   }
 
   // ── Send to a specific user (looks up all their registered tokens) ─────────
