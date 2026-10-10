@@ -1019,3 +1019,19 @@ model BookingFlightEvent {
 
   @@index([bookingId, type])
 }
+
+
+/// Raw AeroDataBox Flight Alert notifications (step 5a capture).
+/// Provider data — deleted after 6 days by the retention block in server.ts.
+model FlightWebhookEvent {
+  id             String   @id @default(uuid())
+  receivedAt     DateTime @default(now())
+  subscriptionId String?
+  flightNumber   String?
+  flightCount    Int      @default(0)
+  balance        Int?
+  payload        Json
+
+  @@index([receivedAt])
+  @@index([subscriptionId])
+}

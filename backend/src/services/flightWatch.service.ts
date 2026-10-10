@@ -15,12 +15,22 @@
 //   4. END      watches that arrived / were cancelled / diverted / have no
 //               active bookings / are 2h past arrival with no arrival data
 //   5. RETAIN   clear provider-derived times on watches ended 6+ days ago
+//   6. ALERTS   (step 5a) keep one AeroDataBox web-hook subscription per flight
+//               number while any watch for it is open; delete it after; hourly
+//               reconcile removes anything we don't need. Capture only for now.
 //
 // Disabled unless FLIGHT_TRACKING_ENABLED=true (safe deploy switch).
+// Subscriptions are only created when FLIGHT_WEBHOOKS_ENABLED=true as well.
 import { PrismaClient, BookingStatus } from "@prisma/client";
 import Redis from "ioredis";
 import { FlightDataService } from "./flightData.service";
 import { applyFlightUpdate } from "./flightUpdate.service";
+import {
+  alertsEnabled,
+  subscribeFlight,
+  deleteSubscription,
+  listSubscriptionIds,
+} from "./flightAlerts.service";
 
 const MIN = 60_000;
 const ATTACH_WINDOW_MIN = 24 * 60;
@@ -29,6 +39,8 @@ const LOOKUP_SPACING_MS = 600; // AeroDataBox Pro: 2 requests/second
 const UNVERIFIED_WITHIN_MIN = 30;
 const GIVE_UP_AFTER_MIN = 120;
 const RETENTION_DAYS = 6;
+const SUBSCRIBE_RETRY_S = 30 * 60; // a failed subscribe is retried after 30 min
+const RECONCILE_EVERY_S = 60 * 60; // list + delete unneeded subscriptions hourly
 
 const FINISHED: BookingStatus[] = [
   BookingStatus.COMPLETED,
@@ -84,6 +96,8 @@ export async function runFlightWatchCycle(deps: CycleDeps): Promise<void> {
     await flagUnverified(prisma, log, now);
     await endWatches(prisma, log, now);
     await clearOldWatchData(prisma, now);
+    await ensureSubscriptions(prisma, redis, log);
+    await reconcileSubscriptions(prisma, redis, log);
   } finally {
     await redis.del("flightwatch:cycle");
   }
@@ -113,7 +127,6 @@ async function attachBookings(prisma: PrismaClient, log: Log, now: Date) {
   });
 
   for (const b of candidates) {
-    // Scheduled gate arrival: from the snapshot if still there, else pickup − offset (ours, permanent).
     // Expected gate arrival = current pickup − passenger's offset (ours, permanent,
     // already includes any delay known at booking). Using the SCHEDULED time here
     // skipped flights booked when already 2h+ late (scheduled time "in the past").
@@ -143,7 +156,7 @@ async function attachBookings(prisma: PrismaClient, log: Log, now: Date) {
       update: {},
       create: {
         flightNumber: b.flightNumber!,
-        arrivalDate: londonDate(arrival),
+        arrivalDate: providerDate, // must match the `where` above
         airportIata,
         expectedGateArrivalAt: arrival,
       },
@@ -296,7 +309,7 @@ async function endWatches(prisma: PrismaClient, log: Log, now: Date) {
         ...(overdue && { unverified: true }),
       },
     });
-    // Step 5 adds: delete the AeroDataBox alert subscription here.
+    await releaseSubscription(prisma, log, w.id, w.subscriptionId);
     log.warn(
       `[FlightWatch] ended ${w.flightNumber} ${w.arrivalDate} (${
         finishedFlight
@@ -327,4 +340,107 @@ async function clearOldWatchData(prisma: PrismaClient, now: Date) {
       providerUpdatedAt: null,
     },
   });
+}
+
+// ── 6. Web-hook subscriptions (step 5a: capture only) ────────────────────────
+
+/** Every open watch gets a subscription: shared per flight number, created if missing. */
+async function ensureSubscriptions(
+  prisma: PrismaClient,
+  redis: Redis,
+  log: Log
+) {
+  if (!alertsEnabled()) return;
+  const watches = await prisma.flightWatch.findMany({
+    where: { endedAt: null, status: "WATCHING", subscriptionId: null },
+    select: { id: true, flightNumber: true },
+  });
+
+  for (const w of watches) {
+    // Another open watch with the same number may already have one (any date).
+    const shared = await prisma.flightWatch.findFirst({
+      where: {
+        flightNumber: w.flightNumber,
+        endedAt: null,
+        subscriptionId: { not: null },
+      },
+      select: { subscriptionId: true },
+    });
+    let subscriptionId = shared?.subscriptionId ?? null;
+
+    if (!subscriptionId) {
+      // Don't hammer the API if subscribing keeps failing.
+      const attempt = await redis.set(
+        `flightalert:subscribe:${w.flightNumber}`,
+        "1",
+        "EX",
+        SUBSCRIBE_RETRY_S,
+        "NX"
+      );
+      if (!attempt) continue;
+      subscriptionId = await subscribeFlight(w.flightNumber, log);
+      if (!subscriptionId) continue;
+    }
+
+    await prisma.flightWatch.update({
+      where: { id: w.id },
+      data: { subscriptionId },
+    });
+  }
+}
+
+/** After a watch ends: delete its subscription unless another open watch still uses it. */
+async function releaseSubscription(
+  prisma: PrismaClient,
+  log: Log,
+  watchId: string,
+  subscriptionId: string | null
+) {
+  if (!subscriptionId) return;
+  const stillUsed = await prisma.flightWatch.count({
+    where: { subscriptionId, endedAt: null, id: { not: watchId } },
+  });
+  if (stillUsed > 0) return;
+  await deleteSubscription(subscriptionId, log); // failures are caught by reconcile
+}
+
+/**
+ * Hourly: delete every AeroDataBox subscription that no open watch needs.
+ * With FLIGHT_WEBHOOKS_ENABLED off, that means ALL of them — so switching the
+ * flag off stops credit spend within the hour.
+ */
+async function reconcileSubscriptions(
+  prisma: PrismaClient,
+  redis: Redis,
+  log: Log
+) {
+  const due = await redis.set(
+    "flightalert:reconcile",
+    "1",
+    "EX",
+    RECONCILE_EVERY_S,
+    "NX"
+  );
+  if (!due) return;
+
+  const ids = await listSubscriptionIds();
+  if (!ids || ids.length === 0) return; // unreadable or nothing there → do nothing
+
+  const keep = new Set<string>();
+  if (alertsEnabled()) {
+    const open = await prisma.flightWatch.findMany({
+      where: { endedAt: null, subscriptionId: { not: null } },
+      select: { subscriptionId: true },
+    });
+    open.forEach((w) => keep.add(w.subscriptionId!));
+  }
+
+  for (const id of ids) {
+    if (keep.has(id)) continue;
+    await deleteSubscription(id, log);
+    await prisma.flightWatch.updateMany({
+      where: { subscriptionId: id },
+      data: { subscriptionId: null },
+    });
+  }
 }

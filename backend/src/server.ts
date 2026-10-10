@@ -34,6 +34,7 @@ import { scheduledBookingRoutes } from "./routes/scheduledBooking.routes";
 import { adminBookingTripRoutes } from "./routes/admin/booking-trip";
 import { flightRoutes } from "./routes/flights";
 import { runFlightWatchCycle } from "./services/flightWatch.service";
+import { flightWebhookRoutes } from "./routes/flightWebhooks";
 
 import { Prisma } from "@prisma/client";
 
@@ -95,6 +96,8 @@ async function buildServer() {
   fastify.register(complianceRoutes, { prefix });
   fastify.register(teslaRoutes, { prefix });
   fastify.register(flightRoutes, { prefix });
+  // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
+  fastify.register(flightWebhookRoutes);
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
@@ -172,6 +175,10 @@ async function startStaleBiookingCleanup(
           `[Cleanup] Cleared expired flight data on ${cleared.count} booking(s)`
         );
       }
+      // Raw web-hook notifications are provider data too.
+      await fastify.prisma.flightWebhookEvent.deleteMany({
+        where: { receivedAt: { lt: cutoff } },
+      });
     } catch (err) {
       fastify.log.error({ err }, "[Cleanup] Flight data retention error");
     }
