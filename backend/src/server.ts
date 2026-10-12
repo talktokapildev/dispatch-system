@@ -35,6 +35,7 @@ import { adminBookingTripRoutes } from "./routes/admin/booking-trip";
 import { flightRoutes } from "./routes/flights";
 import { runFlightWatchCycle } from "./services/flightWatch.service";
 import { flightWebhookRoutes } from "./routes/flightWebhooks";
+import { adminBookingFlightRoutes } from "./routes/admin/booking-flight";
 
 import { Prisma } from "@prisma/client";
 
@@ -96,6 +97,7 @@ async function buildServer() {
   fastify.register(complianceRoutes, { prefix });
   fastify.register(teslaRoutes, { prefix });
   fastify.register(flightRoutes, { prefix });
+  fastify.register(adminBookingFlightRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
 

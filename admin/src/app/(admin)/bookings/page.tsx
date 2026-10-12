@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { Plus, Search, Download, Pencil, X, Check } from "lucide-react";
 import {
@@ -148,6 +148,35 @@ export default function BookingsPage() {
     editMutation.mutate({ id: selected.id, body });
   };
 
+  // Open a booking: show the list row at once, then load the full booking
+  // (flight tracking, timeline, earlier-pickup offer) from the detail endpoint.
+  const openBooking = (b: any) => {
+    setSelected(b);
+    setEditing(false);
+    api
+      .get(`/admin/bookings/${b.id}`)
+      .then((r) =>
+        setSelected((cur: any) => (cur?.id === b.id ? r.data.data : cur))
+      )
+      .catch(() => {});
+  };
+
+  // After a flight action (e.g. earlier pickup confirmed): refresh both views.
+  const refreshSelected = () => {
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    if (selected) openBooking(selected);
+  };
+
+  // Deep link from the Alerts page: /bookings?open=<bookingId>
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("open");
+    if (!id) return;
+    api
+      .get(`/admin/bookings/${id}`)
+      .then((r) => setSelected(r.data.data))
+      .catch(() => toast.error("Booking not found"));
+  }, []);
+
   const set =
     (key: string) =>
     (
@@ -241,10 +270,7 @@ export default function BookingsPage() {
                 <tr
                   key={b.id}
                   className="table-row cursor-pointer"
-                  onClick={() => {
-                    setSelected(b);
-                    setEditing(false);
-                  }}
+                  onClick={() => openBooking(b)}
                 >
                   <td className="px-4 py-3 font-mono text-xs text-brand-400">
                     {b.reference}
@@ -276,8 +302,19 @@ export default function BookingsPage() {
                   <td className="px-4 py-3">
                     <Badge status={b.type} label={b.type.replace(/_/g, " ")} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     <Badge status={b.status} />
+                    {b.flightWatch?.unverified &&
+                      !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(
+                        b.status
+                      ) && (
+                        <span
+                          className="ml-1.5 text-amber-400"
+                          title="Flight unverified - no fresh flight data near arrival"
+                        >
+                          ⚠
+                        </span>
+                      )}
                   </td>
                   <td className="px-4 py-3 text-xs font-semibold text-brand-400">
                     £{(b.actualFare ?? b.estimatedFare).toFixed(2)}
@@ -397,7 +434,10 @@ export default function BookingsPage() {
 
             <BookingTripDetails booking={selected} />
 
-            <BookingFlightDetails booking={selected} />
+            <BookingFlightDetails
+              booking={selected}
+              onChanged={refreshSelected}
+            />
 
             {selected.notes && (
               <div className="p-3 rounded-lg bg-[var(--card-hover)] text-xs text-slate-400">

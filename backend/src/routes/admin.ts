@@ -5,6 +5,7 @@ import { subDays, startOfDay, endOfDay } from "date-fns";
 import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
 import bcrypt from "bcryptjs";
+import { earliestPickupAt } from "../services/flightUpdate.service";
 
 const corporateSchema = z.object({
   name: z.string().min(2),
@@ -645,11 +646,29 @@ export async function adminRoutes(fastify: FastifyInstance) {
           driver: { include: { user: true, vehicle: true } },
           dispatchedByUser: dispatcherInclude,
           meetingPoint: { select: { name: true, terminal: true } },
+          flightWatch: {
+            select: {
+              flightNumber: true,
+              arrivalDate: true,
+              status: true,
+              expectedGateArrivalAt: true,
+              actualGateArrivalAt: true,
+              lastCheckedAt: true,
+              unverified: true,
+              endedAt: true,
+            },
+          },
+          flightEvents: { orderBy: { createdAt: "asc" } },
         },
       });
       if (!booking)
         return reply.status(404).send({ success: false, error: "Not found" });
-      return reply.send({ success: true, data: booking });
+      // Step 6a: when the passenger could be picked up 5+ min earlier
+      const earliestAt = earliestPickupAt(booking, booking.flightWatch);
+      return reply.send({
+        success: true,
+        data: { ...booking, earlierPickup: earliestAt ? { earliestAt } : null },
+      });
     }
   );
 

@@ -348,6 +348,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
               },
             },
             meetingPoint: { select: { name: true, terminal: true } },
+            flightWatch: { select: { unverified: true, status: true } },
           },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),

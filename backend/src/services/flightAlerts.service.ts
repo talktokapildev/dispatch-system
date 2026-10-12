@@ -246,7 +246,7 @@ export function summariseNotification(body: any): NotificationSummary {
 
 // ── Guarded automatic top-up ────────────────────────────────────────────────
 
-async function alertAdmin(log: Log, text: string) {
+export async function alertAdmin(log: Log, text: string) {
   const to = process.env.ADMIN_ALERT_PHONE?.trim();
   if (!to) {
     log.warn(`[FlightAlert] (ADMIN_ALERT_PHONE not set) ${text}`);

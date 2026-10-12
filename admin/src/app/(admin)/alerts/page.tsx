@@ -12,6 +12,7 @@ import {
   ChevronUp,
   X,
   Package,
+  Plane,
 } from "lucide-react";
 import { SectionHeader, Spinner } from "@/components/ui";
 import { useState } from "react";
@@ -44,6 +45,15 @@ export default function AlertsPage() {
     queryKey: ["lost-property"],
     queryFn: () => api.get("/admin/lost-property").then((r) => r.data.data),
   });
+
+  // Step 6a: unverified flights + bookings where an earlier pickup is possible.
+  const { data: flightAlerts } = useQuery({
+    queryKey: ["flight-alerts"],
+    queryFn: () => api.get("/admin/flight-alerts").then((r) => r.data.data),
+    refetchInterval: 60_000,
+  });
+  const unverifiedFlights: any[] = flightAlerts?.unverified ?? [];
+  const earlierPossible: any[] = flightAlerts?.earlierPossible ?? [];
 
   const { data: expiring30, isLoading: l1 } = useQuery({
     queryKey: ["expiring", 30],
@@ -134,6 +144,8 @@ export default function AlertsPage() {
   );
 
   const totalAlerts =
+    unverifiedFlights.length +
+    earlierPossible.length +
     (critical?.length ?? 0) +
     (warning?.length ?? 0) +
     (pendingDocs?.length ?? 0) +
@@ -174,11 +186,85 @@ export default function AlertsPage() {
             </div>
             <p className="text-sm font-medium text-white">All clear</p>
             <p className="text-xs text-slate-500 mt-1">
-              No complaints, lost property, expiring documents or pending
-              reviews
+              No flight issues, complaints, lost property, expiring documents
+              or pending reviews
             </p>
           </div>
         )}
+
+      {/* ── Flights (step 6a) ── */}
+      {(unverifiedFlights.length > 0 || earlierPossible.length > 0) && (
+        <div className="card border-amber-500/20">
+          <div className="flex items-center gap-2 p-4 border-b border-[var(--border)]">
+            <Plane size={14} className="text-amber-400" />
+            <p className="text-sm font-semibold text-white">Flights</p>
+            <span className="ml-auto text-[10px] text-slate-500">
+              refreshes every minute
+            </span>
+          </div>
+          <div className="divide-y divide-[#1e2d42]">
+            {unverifiedFlights.map((w: any) => (
+              <div key={w.id} className="px-4 py-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-amber-400">
+                    ⚠ Unverified
+                  </span>
+                  <span className="text-xs text-white">{w.flightNumber}</span>
+                  <span className="text-[10px] text-slate-500">
+                    expected {ukTime(w.expectedGateArrivalAt)} · last data{" "}
+                    {w.lastCheckedAt ? ukTime(w.lastCheckedAt) : "never"}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  No fresh flight data near arrival — check Gatwick arrivals or
+                  call the passenger.
+                </p>
+                {w.bookings.map((b: any) => (
+                  <a
+                    key={b.id}
+                    href={`/bookings?open=${b.id}`}
+                    className="flex items-center gap-2 mt-1 text-xs hover:underline"
+                  >
+                    <span className="font-mono text-brand-400">
+                      {b.reference}
+                    </span>
+                    <span className="text-slate-300">
+                      {b.passenger?.user?.firstName}{" "}
+                      {b.passenger?.user?.lastName}
+                    </span>
+                    <span className="text-slate-500">
+                      {b.passenger?.user?.phone} · pickup{" "}
+                      {ukTime(b.scheduledAt)}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ))}
+            {earlierPossible.map((b: any) => (
+              <a
+                key={b.id}
+                href={`/bookings?open=${b.id}`}
+                className="block px-4 py-3 hover:bg-[var(--card-hover)]"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-green-400">
+                    Earlier pickup possible
+                  </span>
+                  <span className="font-mono text-[10px] text-brand-400">
+                    {b.reference}
+                  </span>
+                  <span className="text-xs text-white">{b.flightNumber}</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Ready from {ukTime(b.earliestAt)} · pickup now{" "}
+                  {ukTime(b.scheduledAt)} · {b.passenger?.user?.firstName}{" "}
+                  {b.passenger?.user?.lastName} — open to confirm →
+                </p>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Lost Property (TfL Condition 9) ── */}
       {!loadingLost && (openLost.length > 0 || closedLost.length > 0) && (
@@ -692,6 +778,18 @@ export default function AlertsPage() {
       )}
     </div>
   );
+}
+
+/** UK time, "12 Oct, 15:25". */
+function ukTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }
 
 function AlertSection({ icon: Icon, title, colour, items, daysUntil }: any) {

@@ -13,7 +13,7 @@
 //               only happen when alerts are quiet.
 //   2b. LANDING once a forecast runway time has passed, re-apply the stored
 //               data (no API call) so ARRIVED fires within one cycle
-//   3. FLAG     "unverified"
+//   3. FLAG     "unverified" when there's no fresh data within 30 min of arrival
 //   4. END      watches that arrived / were cancelled / diverted / have no
 //               active bookings / are 2h past arrival with no arrival data
 //   5. RETAIN   clear provider-derived times on watches ended 6+ days ago
@@ -34,7 +34,9 @@ import {
   deleteSubscription,
   listSubscriptionIds,
   maybeTopUp,
+  alertAdmin,
 } from "./flightAlerts.service";
+import { ukTime } from "./flightMessages";
 
 const MIN = 60_000;
 const ATTACH_WINDOW_MIN = 24 * 60;
@@ -268,17 +270,14 @@ async function recheckLandingForecasts(deps: CycleDeps, now: Date) {
 
   for (const w of watches) {
     // The snapshot is the latest data applyFlightUpdate accepted.
-    const snap = w.bookings[0]
-      ?.flightSnapshot as unknown as FlightArrival | null;
+    const snap = w.bookings[0]?.flightSnapshot as unknown as FlightArrival | null;
     if (!snap?.runwayArrivalUtc || !snap.scheduledArrivalUtc) continue;
     if (new Date(snap.runwayArrivalUtc) > now) continue; // still a forecast
     if (interpretFlight(snap, now).phase !== "ARRIVED") continue;
 
     const s = await applyFlightUpdate(prisma, redis, w.id, snap, { now, io });
     log.warn(
-      `[FlightWatch] ${w.flightNumber} ${
-        w.arrivalDate
-      }: landing forecast passed, re-applied stored data${
+      `[FlightWatch] ${w.flightNumber} ${w.arrivalDate}: landing forecast passed, re-applied stored data${
         s.events.length ? `, events ${s.events.join(", ")}` : ""
       }${s.stale ? " (locked or stale - next cycle retries)" : ""}`
     );
@@ -299,7 +298,7 @@ async function flagUnverified(prisma: PrismaClient, log: Log, now: Date) {
     include: {
       bookings: {
         where: { status: { notIn: FINISHED } },
-        select: { id: true, scheduledAt: true },
+        select: { id: true, reference: true, scheduledAt: true },
       },
     },
   });
@@ -323,6 +322,22 @@ async function flagUnverified(prisma: PrismaClient, log: Log, now: Date) {
     log.warn(
       `[FlightWatch] ${w.flightNumber} ${w.arrivalDate} UNVERIFIED (no fresh data near arrival)`
     );
+    if (w.bookings.length) {
+      const [first, ...rest] = w.bookings;
+      const day = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        day: "2-digit",
+        month: "short",
+      }).format(w.expectedGateArrivalAt ?? now);
+      await alertAdmin(
+        log,
+        `OrangeRide ops: ${w.flightNumber} ${day} UNVERIFIED - no flight data near arrival. ${
+          first.reference
+        } pickup ${first.scheduledAt ? ukTime(first.scheduledAt) : "?"}${
+          rest.length ? ` +${rest.length} more` : ""
+        }. Check Gatwick arrivals.`
+      );
+    }
   }
 }
 
@@ -472,8 +487,10 @@ async function reconcileSubscriptions(
     "NX"
   );
   if (!due) return;
+
   // Hourly credit check too (notifications also check after each delivery).
   await maybeTopUp({ prisma, redis, log }, null);
+
   const ids = await listSubscriptionIds();
   if (!ids || ids.length === 0) return; // unreadable or nothing there → do nothing
 

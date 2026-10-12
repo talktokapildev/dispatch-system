@@ -236,6 +236,7 @@ export type BookingFacts = {
   currentPickupAt: Date; // what everyone sees now
   firedEvents: Set<string>; // milestones already recorded for this booking
   tripStarted: boolean; // driver arrived / trip started / finished → don't touch
+  earlierConfirmed?: boolean; // EARLIER_CONFIRMED fired → never auto-move below bookedPickupAt
 };
 
 export type PlannedEvent = {
@@ -296,8 +297,12 @@ export function decide(
   // Target time: later always; earlier capped at EARLY_LIMIT_MIN before booked.
   // Earlier moves: at most 15 min below the last time we told anyone (driver
   // or passenger) — falls back to the booked time if nothing was sent yet.
+  // After an admin/driver confirmed an earlier time, that time is a floor:
+  // never move below it automatically (later moves still apply).
   const reference = b.lastToldPickupAt ?? booked;
-  const earliestAllowed = new Date(reference.getTime() - EARLY_LIMIT_MIN * MIN);
+  const earliestAllowed = b.earlierConfirmed
+    ? booked
+    : new Date(reference.getTime() - EARLY_LIMIT_MIN * MIN);
   let target =
     idealPickupAt >= booked
       ? idealPickupAt
@@ -336,7 +341,8 @@ export function decide(
       });
     } else if (
       -lateBy >= MESSAGE_THRESHOLD_MIN &&
-      !b.firedEvents.has("RUNNING_EARLY")
+      !b.firedEvents.has("RUNNING_EARLY") &&
+      !b.firedEvents.has("EARLIER_CONFIRMED")
     ) {
       events.push({
         type: "RUNNING_EARLY",

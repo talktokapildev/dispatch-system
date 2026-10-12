@@ -91,7 +91,10 @@ export function buildFlightMessages(
     case "EARLIER_CONFIRMED":
       return {
         passengerSms: `OrangeRide: Good news - your driver will meet you at ${c.meetingPoint} at ${pickup}. Call ${c.contactPhone}`,
-        driverPush: null,
+        driverPush: {
+          title: `${c.flight} pickup confirmed`,
+          body: `Pickup ${pickup} at ${c.meetingPoint}. Confirmed by OrangeRide.`,
+        },
         driverSmsBackup: null,
       };
     case "ARRIVED": {
