@@ -93,16 +93,18 @@ export async function adminRoutes(fastify: FastifyInstance) {
           },
           _sum: { actualFare: true },
         }),
+        // Prisma columns are camelCase (no @@map). Days are UK days; counts cast
+        // to int (COUNT is BigInt, which JSON can't serialise).
         fastify.prisma.$queryRaw`
           SELECT
-            DATE(created_at) as date,
-            COUNT(*) as total,
-            COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed,
-            SUM(COALESCE(actual_fare, estimated_fare)) FILTER (WHERE status = 'COMPLETED') as revenue
+            DATE(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/London') as date,
+            COUNT(*)::int as total,
+            (COUNT(*) FILTER (WHERE status = 'COMPLETED'))::int as completed,
+            (SUM(COALESCE("actualFare", "estimatedFare")) FILTER (WHERE status = 'COMPLETED'))::float8 as revenue
           FROM "Booking"
-          WHERE created_at >= ${weekAgo}
-          GROUP BY DATE(created_at)
-          ORDER BY date ASC
+          WHERE "createdAt" >= ${weekAgo}
+          GROUP BY 1
+          ORDER BY 1 ASC
         `,
         fastify.prisma.driverDocument.count({ where: { status: "PENDING" } }),
         fastify.prisma.driverDocument.count({
