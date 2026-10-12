@@ -252,7 +252,7 @@ export async function alertAdmin(log: Log, text: string) {
     log.warn(`[FlightAlert] (ADMIN_ALERT_PHONE not set) ${text}`);
     return;
   }
-  const r = await sendSms(to, text);
+  const r = await sendSms(to, text, { purpose: "ADMIN_ALERT" });
   if (!r.ok) log.warn(`[FlightAlert] admin alert SMS failed: ${r.error}`);
 }
 

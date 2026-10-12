@@ -10,22 +10,23 @@
 import { FastifyInstance } from "fastify";
 // Add near the top with the other imports:
 import { getFaceCroppedUrl } from "../../utils/cloudinaryFaceCrop";
+import {
+  sendSms as sendSmsShared,
+  maskPhone,
+  normaliseUkPhone,
+} from "../../services/sms.service";
 
+// Shared sms.service (recorded + delivery status). Same sender as before
+// (our number); best-effort — a failed text never fails approve/reject.
 async function sendSms(fastify: FastifyInstance, to: string, body: string) {
-  try {
-    const twilio = require("twilio");
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
+  const r = await sendSmsShared(normaliseUkPhone(to), body, {
+    purpose: "DRIVER_APPLICATION",
+    preferNumber: true,
+  });
+  if (!r.ok)
+    fastify.log.error(
+      `Failed to send SMS notification to ${maskPhone(to)}: ${r.error}`
     );
-    await client.messages.create({
-      body,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to,
-    });
-  } catch (err) {
-    fastify.log.error({ err }, "Failed to send SMS notification");
-  }
 }
 
 export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {

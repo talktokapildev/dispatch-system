@@ -36,6 +36,8 @@ import { flightRoutes } from "./routes/flights";
 import { runFlightWatchCycle } from "./services/flightWatch.service";
 import { flightWebhookRoutes } from "./routes/flightWebhooks";
 import { adminBookingFlightRoutes } from "./routes/admin/booking-flight";
+import { twilioWebhookRoutes } from "./routes/twilioWebhooks";
+import { enableSmsTracking } from "./services/sms.service";
 
 import { Prisma } from "@prisma/client";
 
@@ -75,6 +77,9 @@ async function buildServer() {
   await fastify.register(authPlugin);
   await fastify.register(socketPlugin);
 
+  // Record every SMS + request Twilio delivery-status callbacks (backlog A).
+  enableSmsTracking(fastify.prisma);
+
   // ─── Routes ───
   const prefix = config.API_PREFIX;
   await fastify.register(authRoutes, { prefix });
@@ -100,6 +105,8 @@ async function buildServer() {
   fastify.register(adminBookingFlightRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
+  // Provider callback — no /api/v1 prefix (Twilio-signed)
+  fastify.register(twilioWebhookRoutes);
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
@@ -183,6 +190,16 @@ async function startStaleBiookingCleanup(
       });
     } catch (err) {
       fastify.log.error({ err }, "[Cleanup] Flight data retention error");
+    }
+    // ── SMS delivery log retention (30 days) ─────────────────────────────
+    try {
+      await fastify.prisma.smsMessage.deleteMany({
+        where: {
+          createdAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      });
+    } catch (err) {
+      fastify.log.error({ err }, "[Cleanup] SMS log retention error");
     }
     // ── Flight tracking (Phase 2): watches + safety-net lookups ─────────
     try {

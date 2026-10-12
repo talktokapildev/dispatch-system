@@ -1040,3 +1040,23 @@ model FlightWebhookEvent {
   @@index([subscriptionId])
   @@index([notificationId])
 }
+
+/// Every SMS Twilio accepted, with its delivery status (Twilio status callbacks).
+/// Phone stored as last 4 digits only. 30-day retention (5-min loop in server.ts).
+model SmsMessage {
+  id            String    @id @default(uuid())
+  sid           String    @unique // Twilio MessageSid
+  purpose       String // FLIGHT_PASSENGER | FLIGHT_DRIVER_BACKUP | ADMIN_ALERT | OTP | DRIVER_APPLICATION | TEST
+  bookingId     String?
+  flightEventId String? // BookingFlightEvent.id (no FK: this is a log)
+  toLast4       String
+  sender        String? // alphanumeric sender id or our number
+  status        String // queued | sending | sent | delivered | undelivered | failed | ...
+  errorCode     String?
+  alertedAt     DateTime? // admin alert sent (at most once)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([bookingId])
+}

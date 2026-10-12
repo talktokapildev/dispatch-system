@@ -5,7 +5,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import { addMinutes } from "date-fns";
-import Twilio from "twilio";
+import { sendSms, maskPhone } from "../services/sms.service";
 import { RedisKeys, RedisTTL } from "../plugins/redis";
 import { OTP_EXPIRY_MINUTES, OTP_LENGTH } from "../config";
 
@@ -30,27 +30,21 @@ const adminLoginSchema = z.object({
 const DEMO_PHONES = ["+447700000001", "+447700000003"];
 const DEMO_OTP = "123456";
 
-// ─── Twilio client (lazy-initialised) ────────────────────────────────────────
-function getTwilioClient(): Twilio.Twilio | null {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return null;
-  return Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-}
-
+// ─── OTP SMS (shared sms.service: recorded + delivery status) ────────────────
+// preferNumber: OTPs keep coming from TWILIO_PHONE_NUMBER, as before.
+// Throws on failure so the route can return 500 and clear the code.
 async function sendSmsOtp(to: string, code: string): Promise<void> {
-  const client = getTwilioClient();
-  const from = process.env.TWILIO_PHONE_NUMBER;
-
-  if (!client || !from) {
+  const r = await sendSms(
+    to,
+    `Your OrangeRide verification code is: ${code}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
+    { purpose: "OTP", preferNumber: true }
+  );
+  if (r.ok) return;
+  if (r.notConfigured) {
     console.log(`[OTP fallback] Code for ${to}: ${code}`);
     return;
   }
-
-  await client.messages.create({
-    body: `Your OrangeRide verification code is: ${code}. Valid for ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
-    from,
-    to,
-  });
+  throw new Error(r.error);
 }
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -72,9 +66,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     try {
       await sendSmsOtp(body.phone, code);
-      fastify.log.info(`OTP sent via SMS to ${body.phone}`);
+      fastify.log.info(`OTP sent via SMS to ${maskPhone(body.phone)}`);
     } catch (err: any) {
-      fastify.log.error(`Twilio SMS failed for ${body.phone}: ${err.message}`);
+      fastify.log.error(
+        `Twilio SMS failed for ${maskPhone(body.phone)}: ${err.message}`
+      );
       await fastify.redis.del(key);
       return reply.status(500).send({
         success: false,

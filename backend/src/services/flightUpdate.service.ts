@@ -216,7 +216,13 @@ export async function applyFlightUpdate(
         let pushSent = false;
         const passengerPhone = b.passenger?.user?.phone;
         if (msg.passengerSms && passengerPhone)
-          smsSent = (await sendSms(passengerPhone, msg.passengerSms)).ok;
+          smsSent = (
+            await sendSms(passengerPhone, msg.passengerSms, {
+              purpose: "FLIGHT_PASSENGER",
+              bookingId: b.id,
+              flightEventId: event.id,
+            })
+          ).ok;
         if (smsSent) await setTold(redis, "passenger", b.id, ev.newPickupAt);
 
         const driverUser = b.driver?.user;
@@ -243,7 +249,11 @@ export async function applyFlightUpdate(
             }
           }
           if (msg.driverSmsBackup && driverUser.phone)
-            await sendSms(driverUser.phone, msg.driverSmsBackup);
+            await sendSms(driverUser.phone, msg.driverSmsBackup, {
+              purpose: "FLIGHT_DRIVER_BACKUP",
+              bookingId: b.id,
+              flightEventId: event.id,
+            });
         }
 
         await prisma.bookingFlightEvent.update({
@@ -291,8 +301,13 @@ export async function applyFlightUpdate(
           let smsSent = false;
           let pushSent = false;
           if (sendPassenger && msg.passengerSms && b.passenger?.user?.phone) {
-            smsSent = (await sendSms(b.passenger.user.phone, msg.passengerSms))
-              .ok;
+            smsSent = (
+              await sendSms(b.passenger.user.phone, msg.passengerSms, {
+                purpose: "FLIGHT_PASSENGER",
+                bookingId: b.id,
+                flightEventId: event.id,
+              })
+            ).ok;
             if (smsSent) await setTold(redis, "passenger", b.id, effective);
           }
           if (sendDriver && msg.driverPush && driverUser) {
@@ -510,7 +525,13 @@ export async function confirmEarlierPickup(
     let pushSent = false;
     const passengerPhone = b.passenger?.user?.phone;
     if (msg.passengerSms && passengerPhone) {
-      smsSent = (await sendSms(passengerPhone, msg.passengerSms)).ok;
+      smsSent = (
+        await sendSms(passengerPhone, msg.passengerSms, {
+          purpose: "FLIGHT_PASSENGER",
+          bookingId: b.id,
+          flightEventId: event.id,
+        })
+      ).ok;
       if (smsSent) await setTold(redis, "passenger", b.id, pickupAt);
     }
     const driverUser = b.driver?.user;
