@@ -101,9 +101,29 @@ export function interpretFlight(
       confidence: "LIVE",
     };
 
+  // A runway time AHEAD of now, while the status isn't landed/arrived, is the
+  // provider's landing FORECAST on final approach, not a touchdown (seen live
+  // on EZY8182: runway 14:00Z reported at 13:58Z, status still EnRoute).
+  // Still in the air: gate = forecast touchdown + taxi (or a later revised
+  // time). The watch cycle re-applies the stored data once the forecast time
+  // has passed, so ARRIVED fires without another lookup.
+  const statusLanded = status === "landed" || status === "arrived";
+  if (runway && runway > now && !statusLanded) {
+    return {
+      phase: "SCHEDULED",
+      gateArrival:
+        revised && revised > runway
+          ? revised
+          : new Date(runway.getTime() + TAXI_MIN * MIN),
+      landedAt: null,
+      departed: true,
+      confidence: "LIVE",
+    };
+  }
+
   // Landed / arrived: touchdown is the anchor. A "revised" time only counts
   // as the real gate time if it's AFTER touchdown (otherwise it's stale).
-  if (status === "landed" || status === "arrived" || runway) {
+  if (statusLanded || runway) {
     if (runway) {
       const gate =
         revised && revised > runway

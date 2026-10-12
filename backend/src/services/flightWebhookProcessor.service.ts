@@ -127,7 +127,15 @@ async function handle(deps: ProcessDeps, body: any): Promise<string> {
         i.phase
       } gate ${ukTime(i.gateArrival)}${
         i.landedAt ? ` landed ${ukTime(i.landedAt)}` : ""
-      }${leg.runwayArrivalUtc ? "" : " (no touchdown)"} | watch gate ${
+      }${
+        i.phase === "ARRIVED"
+          ? leg.runwayArrivalUtc
+            ? ""
+            : " (no touchdown)"
+          : leg.runwayArrivalUtc
+          ? ` (landing forecast ${ukTime(new Date(leg.runwayArrivalUtc))})`
+          : ""
+      } | watch gate ${
         w.expectedGateArrivalAt ? ukTime(w.expectedGateArrivalAt) : "-"
       }`;
       log.warn(`[FlightAlert] ${line}`);

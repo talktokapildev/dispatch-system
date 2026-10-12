@@ -11,7 +11,9 @@
 //               Every result goes through applyFlightUpdate (one update path).
 //               "Last update" includes web-hook alerts (step 5), so lookups
 //               only happen when alerts are quiet.
-//   3. FLAG     "unverified" when there's no fresh data within 30 min of arrival
+//   2b. LANDING once a forecast runway time has passed, re-apply the stored
+//               data (no API call) so ARRIVED fires within one cycle
+//   3. FLAG     "unverified"
 //   4. END      watches that arrived / were cancelled / diverted / have no
 //               active bookings / are 2h past arrival with no arrival data
 //   5. RETAIN   clear provider-derived times on watches ended 6+ days ago
@@ -23,8 +25,9 @@
 // Subscriptions are only created when FLIGHT_WEBHOOKS_ENABLED=true as well.
 import { PrismaClient, BookingStatus } from "@prisma/client";
 import Redis from "ioredis";
-import { FlightDataService } from "./flightData.service";
+import { FlightDataService, FlightArrival } from "./flightData.service";
 import { applyFlightUpdate } from "./flightUpdate.service";
+import { interpretFlight } from "./flightRules";
 import {
   alertsEnabled,
   subscribeFlight,
@@ -94,6 +97,7 @@ export async function runFlightWatchCycle(deps: CycleDeps): Promise<void> {
   try {
     await attachBookings(prisma, log, now);
     await checkWatches(deps, now);
+    await recheckLandingForecasts(deps, now);
     await flagUnverified(prisma, log, now);
     await endWatches(prisma, log, now);
     await clearOldWatchData(prisma, now);
@@ -233,6 +237,51 @@ async function checkWatches(deps: CycleDeps, now: Date) {
         }`
       );
     }
+  }
+}
+
+// ── 2b. Landing forecasts ────────────────────────────────────────────────────
+// A runway time in the future is a landing FORECAST (flightRules). Once that
+// time has passed, re-apply the latest stored flight data — no API call — so
+// ARRIVED fires within one cycle of touchdown even if no new data arrives.
+// Newer data (web-hook or lookup) replaces the forecast as usual, so a
+// go-around simply moves it later.
+async function recheckLandingForecasts(deps: CycleDeps, now: Date) {
+  const { prisma, redis, log, io } = deps;
+  const watches = await prisma.flightWatch.findMany({
+    where: { status: "WATCHING", endedAt: null },
+    select: {
+      id: true,
+      flightNumber: true,
+      arrivalDate: true,
+      bookings: {
+        where: {
+          status: { notIn: FINISHED },
+          flightSnapshotFetchedAt: { not: null },
+        },
+        orderBy: { flightSnapshotFetchedAt: "desc" },
+        take: 1,
+        select: { flightSnapshot: true },
+      },
+    },
+  });
+
+  for (const w of watches) {
+    // The snapshot is the latest data applyFlightUpdate accepted.
+    const snap = w.bookings[0]
+      ?.flightSnapshot as unknown as FlightArrival | null;
+    if (!snap?.runwayArrivalUtc || !snap.scheduledArrivalUtc) continue;
+    if (new Date(snap.runwayArrivalUtc) > now) continue; // still a forecast
+    if (interpretFlight(snap, now).phase !== "ARRIVED") continue;
+
+    const s = await applyFlightUpdate(prisma, redis, w.id, snap, { now, io });
+    log.warn(
+      `[FlightWatch] ${w.flightNumber} ${
+        w.arrivalDate
+      }: landing forecast passed, re-applied stored data${
+        s.events.length ? `, events ${s.events.join(", ")}` : ""
+      }${s.stale ? " (locked or stale - next cycle retries)" : ""}`
+    );
   }
 }
 
