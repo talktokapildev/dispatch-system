@@ -30,6 +30,7 @@ import {
   subscribeFlight,
   deleteSubscription,
   listSubscriptionIds,
+  maybeTopUp,
 } from "./flightAlerts.service";
 
 const MIN = 60_000;
@@ -65,7 +66,7 @@ export type CycleDeps = {
 };
 
 /** London calendar date (YYYY-MM-DD) of a moment. */
-function londonDate(d: Date): string {
+export function londonDate(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(
     d
   );
@@ -422,7 +423,8 @@ async function reconcileSubscriptions(
     "NX"
   );
   if (!due) return;
-
+  // Hourly credit check too (notifications also check after each delivery).
+  await maybeTopUp({ prisma, redis, log }, null);
   const ids = await listSubscriptionIds();
   if (!ids || ids.length === 0) return; // unreadable or nothing there → do nothing
 

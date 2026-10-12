@@ -13,6 +13,7 @@ export type MessageContext = {
   oldPickupAt: Date;
   idealPickupAt: Date; // when the passenger could be ready (may be earlier than allowed)
   landedAt: Date | null;
+  landedIsTouchdown?: boolean; // false = landedAt is the gate arrival (no touchdown time from the provider)
   contactPhone: string; // OrangeRide number for passengers
 };
 
@@ -94,8 +95,12 @@ export function buildFlightMessages(
         driverSmsBackup: null,
       };
     case "ARRIVED": {
+      // No touchdown time from the provider → landedAt is the gate arrival,
+      // so say "arrived", not "landed".
       const landed = c.landedAt
-        ? ` landed ${ukTime(c.landedAt)}`
+        ? c.landedIsTouchdown === false
+          ? ` arrived ${ukTime(c.landedAt)}`
+          : ` landed ${ukTime(c.landedAt)}`
         : " has landed";
       return {
         passengerSms: `OrangeRide: Welcome to Gatwick! ${c.flight}${landed}. Meet your driver at ${c.meetingPoint} at ${pickup}. Call ${c.contactPhone}`,

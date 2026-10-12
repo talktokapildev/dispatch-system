@@ -205,6 +205,7 @@ export async function applyFlightUpdate(
           oldPickupAt: b.bookedPickupAt, // passenger's reference: the time they agreed, not quiet adjustments
           idealPickupAt: d.idealPickupAt,
           landedAt: d.interpretation.landedAt,
+          landedIsTouchdown: !!flight.runwayArrivalUtc,
           contactPhone: phone,
         });
 

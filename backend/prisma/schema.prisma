@@ -1032,7 +1032,11 @@ model FlightWebhookEvent {
   flightCount    Int      @default(0)
   balance        Int?
   payload        Json
+  notificationId String?   // AeroDataBox notification id (de-dupe itself is in Redis)
+  processedAt    DateTime?
+  outcome        String?   // step 5b: "applied …", "shadow …", "duplicate", "no open watch …"
 
   @@index([receivedAt])
   @@index([subscriptionId])
+  @@index([notificationId])
 }

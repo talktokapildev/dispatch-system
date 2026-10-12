@@ -4,6 +4,11 @@
 // headers, response parsing) lives in this file, so switching marketplace
 // (RapidAPI → API.Market) or provider (→ FlightAware) touches nothing else.
 //
+// The leg parser (parseArrivalLegs) is shared by the lookup API and the
+// Flight Alert web-hooks (step 5b). Web-hooks send enums as NUMBERS
+// (status 2 = EnRoute, 9 = Arrived; quality [0,1]); the lookup API sends
+// words. Both end up as the same words here.
+//
 // Data retention: AeroDataBox Pro allows caching for 7 days. Results here are
 // cached in Redis for minutes only; what gets stored on bookings is handled
 // as a snapshot that the daily job refreshes or deletes within 6 days.
@@ -78,6 +83,83 @@ function parseTerminal(t: unknown): Terminal | null {
   if (s === "N" || s === "NORTH") return "NORTH";
   if (s === "S" || s === "SOUTH") return "SOUTH";
   return null;
+}
+
+// Web-hook enums arrive as numbers. 2 = EnRoute and 9 = Arrived are confirmed
+// live; the rest follow AeroDataBox's documented order (an unmapped number
+// becomes "Unknown(<n>)" so it shows up in logs instead of being guessed).
+const STATUS_NAMES = [
+  "Unknown",
+  "Expected",
+  "EnRoute",
+  "CheckIn",
+  "Boarding",
+  "GateClosed",
+  "Departed",
+  "Delayed",
+  "Approaching",
+  "Arrived",
+  "Canceled",
+  "Diverted",
+];
+const QUALITY_NAMES = ["Basic", "Live", "Approximate"];
+
+function parseStatus(s: unknown): string | null {
+  if (typeof s === "string") return s;
+  if (typeof s === "number") return STATUS_NAMES[s] ?? `Unknown(${s})`;
+  return null;
+}
+
+function parseQuality(q: unknown): string[] {
+  if (!Array.isArray(q)) return [];
+  return q.map((v) =>
+    typeof v === "number" ? QUALITY_NAMES[v] ?? `Unknown(${v})` : String(v)
+  );
+}
+
+function parseLeg(f: any, scheduled: string): FlightArrival {
+  const a = f.arrival ?? {};
+  return {
+    flightNumber: typeof f.number === "string" ? f.number : "",
+    airlineName: f.airline?.name ?? null,
+    airlineIata: f.airline?.iata ?? null,
+    originIata: f.departure?.airport?.iata ?? null,
+    originName:
+      f.departure?.airport?.municipalityName ??
+      f.departure?.airport?.shortName ??
+      f.departure?.airport?.name ??
+      null,
+    scheduledArrivalUtc: scheduled,
+    predictedArrivalUtc: parseProviderTime(a.predictedTime),
+    revisedArrivalUtc: parseProviderTime(a.revisedTime),
+    runwayArrivalUtc: parseProviderTime(a.runwayTime),
+    providerUpdatedAt: parseProviderTime(f.lastUpdatedUtc),
+    departureScheduledUtc: parseProviderTime(f.departure?.scheduledTime),
+    departureRevisedUtc: parseProviderTime(f.departure?.revisedTime),
+    departureRunwayUtc: parseProviderTime(f.departure?.runwayTime),
+    terminal: parseTerminal(a.terminal),
+    status: parseStatus(f.status),
+    quality: parseQuality(a.quality),
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Every leg landing at `airportIata`, parsed, earliest scheduled arrival first.
+ * Used by lookups (one date) and web-hooks (may contain several dates — the
+ * caller picks the leg whose scheduled London date matches its watch).
+ */
+export function parseArrivalLegs(
+  legs: unknown,
+  airportIata: string
+): FlightArrival[] {
+  if (!Array.isArray(legs)) return [];
+  return legs
+    .filter((f) => f?.arrival?.airport?.iata === airportIata)
+    .map((f) => ({ f, scheduled: parseProviderTime(f.arrival?.scheduledTime) }))
+    .filter((x): x is { f: any; scheduled: string } => !!x.scheduled)
+    .sort((a, b) => a.scheduled.localeCompare(b.scheduled))
+    .map(({ f, scheduled }) => parseLeg(f, scheduled));
 }
 
 function isValidDate(date: string): boolean {
@@ -161,7 +243,11 @@ export class FlightDataService {
     } else if (status !== 200 || !Array.isArray(body)) {
       return { ok: false, reason: "provider_error" }; // don't cache provider failures
     } else {
-      result = this.pickArrival(body, airportIata);
+      // A flight number can have several legs; take the earliest landing here.
+      const legs = parseArrivalLegs(body, airportIata);
+      result = legs.length
+        ? { ok: true, flight: legs[0] }
+        : { ok: false, reason: "not_arriving" };
     }
 
     await this.redis.set(
@@ -171,48 +257,5 @@ export class FlightDataService {
       result.ok ? CACHE_TTL_FOUND_S : CACHE_TTL_NOT_FOUND_S
     );
     return result;
-  }
-
-  /** A flight number can have several legs; choose the one landing at our airport. */
-  private pickArrival(legs: any[], airportIata: string): LookupResult {
-    const candidates = legs
-      .filter((f) => f?.arrival?.airport?.iata === airportIata)
-      .map((f) => ({
-        f,
-        scheduled: parseProviderTime(f.arrival?.scheduledTime),
-      }))
-      .filter((x) => x.scheduled)
-      .sort((a, b) => a.scheduled!.localeCompare(b.scheduled!));
-
-    if (!candidates.length) return { ok: false, reason: "not_arriving" };
-
-    const { f, scheduled } = candidates[0];
-    const a = f.arrival ?? {};
-    return {
-      ok: true,
-      flight: {
-        flightNumber: typeof f.number === "string" ? f.number : "",
-        airlineName: f.airline?.name ?? null,
-        airlineIata: f.airline?.iata ?? null,
-        originIata: f.departure?.airport?.iata ?? null,
-        originName:
-          f.departure?.airport?.municipalityName ??
-          f.departure?.airport?.shortName ??
-          f.departure?.airport?.name ??
-          null,
-        scheduledArrivalUtc: scheduled!,
-        predictedArrivalUtc: parseProviderTime(a.predictedTime),
-        revisedArrivalUtc: parseProviderTime(a.revisedTime),
-        runwayArrivalUtc: parseProviderTime(a.runwayTime),
-        providerUpdatedAt: parseProviderTime(f.lastUpdatedUtc),
-        departureScheduledUtc: parseProviderTime(f.departure?.scheduledTime),
-        departureRevisedUtc: parseProviderTime(f.departure?.revisedTime),
-        departureRunwayUtc: parseProviderTime(f.departure?.runwayTime),
-        terminal: parseTerminal(a.terminal),
-        status: typeof f.status === "string" ? f.status : null,
-        quality: Array.isArray(a.quality) ? a.quality : [],
-        fetchedAt: new Date().toISOString(),
-      },
-    };
   }
 }

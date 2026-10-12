@@ -20,3 +20,5 @@
 passenger-app/google-services.json
 
 *.pem
+
+backend/scripts/fixtures/
