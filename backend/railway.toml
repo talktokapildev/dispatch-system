@@ -2,7 +2,6 @@
 builder = "nixpacks"
  
 [deploy]
-releaseCommand = "npx prisma db push"
 startCommand = "node dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
