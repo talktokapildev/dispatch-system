@@ -50,6 +50,9 @@ export async function driverFlightRoutes(fastify: FastifyInstance) {
         terminal: true,
         passengerCount: true,
         claimedAt: true,
+        completedAt: true,
+        actualDistance: true, // miles (completed trips)
+        actualDuration: true, // minutes
       },
     });
     const visible =

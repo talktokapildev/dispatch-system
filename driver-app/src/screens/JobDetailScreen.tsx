@@ -30,14 +30,18 @@ import TripMap from "../components/TripMap";
 import AddressCard from "../components/AddressCard";
 import FlightPanel from "../components/FlightPanel";
 import { useJobDetail, hm } from "../lib/flight";
-import { claimJob, legText } from "../lib/jobs";
+import { actualTripText, claimJob, legText } from "../lib/jobs";
+
+// Opened from Job History: read-only, actual trip instead of "from you".
+const FINISHED = ["COMPLETED", "CANCELLED", "NO_SHOW"];
 
 export default function JobDetailScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
   const initialJob = route.params?.job ?? null;
   const bookingId: string | undefined =
     route.params?.bookingId ?? initialJob?.id;
-  const detail = useJobDetail(bookingId);
+  const openedFinished = FINISHED.includes(initialJob?.status);
+  const detail = useJobDetail(bookingId, { withDistance: !openedFinished });
   const job = detail.job ?? initialJob;
   const flight = detail.flight ?? initialJob?.flight ?? null;
   const distance = detail.distance ?? initialJob?.distance ?? null;
@@ -51,6 +55,7 @@ export default function JobDetailScreen({ route, navigation }: any) {
   const canManage = job?.status === "DRIVER_ASSIGNED";
   // Job still on the open job board: look before claiming.
   const isOpen = job?.status === "SCHEDULED_OPEN";
+  const isFinished = FINISHED.includes(job?.status);
 
   // Job released / reassigned / deleted while open.
   useEffect(() => {
@@ -211,8 +216,32 @@ export default function JobDetailScreen({ route, navigation }: any) {
             showsVerticalScrollIndicator={false}
           >
             <View style={s.headerRow}>
-              <View style={s.typeBadge}>
-                <Text style={s.typeText}>{job.type?.replace(/_/g, " ")}</Text>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <View style={s.typeBadge}>
+                  <Text style={s.typeText}>{job.type?.replace(/_/g, " ")}</Text>
+                </View>
+                {isFinished && (
+                  <View
+                    style={[
+                      s.typeBadge,
+                      {
+                        backgroundColor:
+                          (job.status === "COMPLETED" ? Colors.success : Colors.danger) + "20",
+                        borderColor:
+                          (job.status === "COMPLETED" ? Colors.success : Colors.danger) + "40",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.typeText,
+                        { color: job.status === "COMPLETED" ? Colors.success : Colors.danger },
+                      ]}
+                    >
+                      {job.status.replace(/_/g, " ")}
+                    </Text>
+                  </View>
+                )}
               </View>
               <Text style={s.fare}>£{fare.toFixed(2)}</Text>
             </View>
@@ -230,8 +259,12 @@ export default function JobDetailScreen({ route, navigation }: any) {
             <AddressCard
               pickupAddress={job.pickupAddress}
               dropoffAddress={job.dropoffAddress}
-              pickupMeta={legText(distance?.toPickup)}
-              dropoffMeta={legText(distance?.trip)}
+              pickupMeta={isFinished ? null : legText(distance?.toPickup)}
+              dropoffMeta={
+                isFinished
+                  ? actualTripText(job) // what was actually driven
+                  : legText(distance?.trip)
+              }
             />
 
             {flight ? (

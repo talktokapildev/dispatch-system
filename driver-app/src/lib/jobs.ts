@@ -29,6 +29,8 @@ export function actualTripText(job: {
   actualDuration?: number | null;
 }): string | null {
   if (job.actualDistance == null || job.actualDuration == null) return null;
+  // Nothing recorded (e.g. completed without moving) → show nothing.
+  if (job.actualDistance <= 0.05) return null;
   return legText({
     miles: Math.round(job.actualDistance * 10) / 10,
     minutes: Math.round(job.actualDuration),

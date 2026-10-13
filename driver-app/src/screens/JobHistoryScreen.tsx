@@ -102,7 +102,11 @@ export default function JobHistoryScreen({ navigation }: any) {
         renderItem={({ item }) => {
           const net = (item.actualFare ?? item.estimatedFare ?? 0) * 0.85;
           return (
-            <View style={s.jobCard}>
+            <TouchableOpacity
+              style={s.jobCard}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate("JobDetail", { job: item })}
+            >
               <View style={s.jobTop}>
                 <Text style={s.jobRef}>{item.reference}</Text>
                 <Text style={s.jobEarning}>£{net.toFixed(2)}</Text>
@@ -136,7 +140,7 @@ export default function JobHistoryScreen({ navigation }: any) {
                   </Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           );
         }}
       />
