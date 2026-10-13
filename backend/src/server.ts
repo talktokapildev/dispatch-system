@@ -166,13 +166,23 @@ async function startStaleBiookingCleanup(
     // ── Flight data retention (AeroDataBox: max 7 days) ──────────────────
     // Runs FIRST: the stale-booking cleanup below returns early when there's
     // nothing stale, which would otherwise skip this.
-    // Provider data on bookings is a snapshot; delete it once it's 6 days old.
+    // Provider data on bookings is a snapshot. Future bookings are refreshed
+    // every 5 days (step 6b, flightRefresh.service); it is deleted
+    //   - 1 day after the pickup (pickup is after arrival, so >= arrival + 1 day)
+    //   - or once 6 days old (safety net: refresh paused / not found)
     // Passenger-owned fields (flightNumber, terminal, luggageType,
     // meetingPointId) and the pickup time are ours and are kept.
     try {
       const cutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const cleared = await fastify.prisma.booking.updateMany({
-        where: { flightSnapshotFetchedAt: { lt: cutoff } },
+        where: {
+          flightSnapshotFetchedAt: { not: null },
+          OR: [
+            { flightSnapshotFetchedAt: { lt: cutoff } },
+            { scheduledAt: { lt: dayAgo } },
+          ],
+        },
         data: {
           flightSnapshot: Prisma.DbNull,
           flightSnapshotFetchedAt: null,

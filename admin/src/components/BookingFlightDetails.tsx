@@ -60,6 +60,10 @@ const EVENT_LABEL: Record<string, string> = {
   DIVERTED: "Flight diverted",
   UNVERIFIED: "⚠ Unverified",
   EARLIER_CONFIRMED: "Earlier pickup confirmed",
+  // Step 6b — weeks-ahead schedule checks (admin only, nothing sent)
+  SCHEDULE_CHANGE: "⚠ Airline schedule changed",
+  SCHEDULE_CANCELLED: "⚠ Schedule shows cancelled",
+  SCHEDULE_NOT_FOUND: "⚠ Flight not found on date",
 };
 // Events that send messages (UNVERIFIED is admin-only).
 const MESSAGING_EVENTS = new Set([

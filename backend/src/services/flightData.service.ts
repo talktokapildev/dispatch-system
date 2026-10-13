@@ -226,6 +226,13 @@ export class FlightDataService {
         );
         status = res.status;
         body = res.data;
+        // Monthly quota left — read by the step-6b refresh guard (units floor).
+        const rawUnits = res.headers?.["x-ratelimit-api-units-remaining"];
+        const units = Number(rawUnits);
+        if (rawUnits != null && rawUnits !== "" && Number.isFinite(units))
+          await this.redis
+            .set("adb:units:remaining", String(units), "EX", 2 * 86_400)
+            .catch(() => undefined);
       } catch {
         return { ok: false, reason: "provider_error" }; // timeout / network
       }

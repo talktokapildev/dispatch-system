@@ -16,7 +16,11 @@
 //   3. FLAG     "unverified" when there's no fresh data within 30 min of arrival
 //   4. END      watches that arrived / were cancelled / diverted / have no
 //               active bookings / are 2h past arrival with no arrival data
-//   5. RETAIN   clear provider-derived times on watches ended 6+ days ago
+//   0. REFRESH  (step 6b, flightRefresh.service) future bookings not yet
+//               watched: refresh provider data every 5 days, admin alert on
+//               schedule change / cancellation / not found. Own flag
+//               FLIGHT_REFRESH_ENABLED; a failure never blocks tracking.
+//   5. RETAIN   clear provider-derived times on watches ended 1+ day ago
 //   6. ALERTS   (step 5a) keep one AeroDataBox web-hook subscription per flight
 //               number while any watch for it is open; delete it after; hourly
 //               reconcile removes anything we don't need. Capture only for now.
@@ -37,6 +41,7 @@ import {
   alertAdmin,
 } from "./flightAlerts.service";
 import { ukTime } from "./flightMessages";
+import { refreshFutureFlights } from "./flightRefresh.service";
 
 const MIN = 60_000;
 const ATTACH_WINDOW_MIN = 24 * 60;
@@ -44,7 +49,7 @@ const MAX_LOOKUPS_PER_CYCLE = 20;
 const LOOKUP_SPACING_MS = 600; // AeroDataBox Pro: 2 requests/second
 const UNVERIFIED_WITHIN_MIN = 30;
 const GIVE_UP_AFTER_MIN = 120;
-const RETENTION_DAYS = 6;
+const RETENTION_DAYS = 1; // watch provider fields: cleared 1 day after the watch ends (6b)
 const SUBSCRIBE_RETRY_S = 30 * 60; // a failed subscribe is retried after 30 min
 const RECONCILE_EVERY_S = 60 * 60; // list + delete unneeded subscriptions hourly
 
@@ -97,6 +102,11 @@ export async function runFlightWatchCycle(deps: CycleDeps): Promise<void> {
   if (!lock) return;
 
   try {
+    try {
+      await refreshFutureFlights({ prisma, redis, log, now });
+    } catch (err) {
+      console.error("[FlightRefresh] step failed:", err);
+    }
     await attachBookings(prisma, log, now);
     await checkWatches(deps, now);
     await recheckLandingForecasts(deps, now);
