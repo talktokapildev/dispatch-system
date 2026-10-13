@@ -60,6 +60,7 @@ const EVENT_LABEL: Record<string, string> = {
   DIVERTED: "Flight diverted",
   UNVERIFIED: "⚠ Unverified",
   EARLIER_CONFIRMED: "Earlier pickup confirmed",
+  EARLIER_POSSIBLE: "Earlier pickup offered to driver", // Phase 2b (push only)
   // Step 6b — weeks-ahead schedule checks (admin only, nothing sent)
   SCHEDULE_CHANGE: "⚠ Airline schedule changed",
   SCHEDULE_CANCELLED: "⚠ Schedule shows cancelled",
@@ -74,6 +75,7 @@ const MESSAGING_EVENTS = new Set([
   "CANCELLED",
   "DIVERTED",
   "EARLIER_CONFIRMED",
+  "EARLIER_POSSIBLE",
 ]);
 
 function ukTime(iso: string | null | undefined, withDate = true): string {

@@ -6,6 +6,10 @@
 // too: action buttons only render when job.status === "DRIVER_ASSIGNED",
 // and fare falls back to actualFare for completed jobs. Nothing here
 // assumes the job came from the claimed-jobs list specifically.
+//
+// Phase 2b: opens with { job } (from the job board) or just { bookingId }
+// (tapping a flight push). Either way it re-fetches the job + flight from
+// GET /drivers/jobs/:id/detail and keeps it fresh (socket, foreground, 2 min).
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -24,19 +28,36 @@ import { useTheme } from "../lib/ThemeContext";
 import { decodePolyline } from "../lib/mapUtils";
 import TripMap from "../components/TripMap";
 import AddressCard from "../components/AddressCard";
+import FlightPanel from "../components/FlightPanel";
+import { useJobDetail, hm } from "../lib/flight";
 
 export default function JobDetailScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
-  const { job } = route.params;
+  const initialJob = route.params?.job ?? null;
+  const bookingId: string | undefined =
+    route.params?.bookingId ?? initialJob?.id;
+  const detail = useJobDetail(bookingId);
+  const job = detail.job ?? initialJob;
+  const flight = detail.flight ?? initialJob?.flight ?? null;
+  const [confirming, setConfirming] = useState(false);
 
   const [routeCoords, setRouteCoords] = useState<
     { latitude: number; longitude: number }[]
   >([]);
   const [busy, setBusy] = useState(false);
 
-  const canManage = job.status === "DRIVER_ASSIGNED";
+  const canManage = job?.status === "DRIVER_ASSIGNED";
+
+  // Job released / reassigned / deleted while open.
+  useEffect(() => {
+    if (!detail.notFound) return;
+    Alert.alert("Job no longer available", "This job isn't assigned to you any more.", [
+      { text: "OK", onPress: () => navigation.goBack() },
+    ]);
+  }, [detail.notFound]);
 
   useEffect(() => {
+    if (!job) return;
     const fetchRoute = async () => {
       try {
         const { data } = await api.get("/maps/directions", {
@@ -52,7 +73,33 @@ export default function JobDetailScreen({ route, navigation }: any) {
       } catch {}
     };
     fetchRoute();
-  }, []);
+  }, [job?.id]);
+
+  const handleConfirmEarlier = async (earliestAt: string) => {
+    setConfirming(true);
+    try {
+      const { data } = await api.post(
+        `/drivers/jobs/${job.id}/confirm-earlier`,
+        { earliestAt }
+      );
+      Alert.alert(
+        "Pickup moved",
+        `New pickup ${hm(data.data.pickupAt)}.${
+          data.data.smsSent
+            ? " We've texted the passenger."
+            : " We couldn't text the passenger - please call them."
+        }`
+      );
+    } catch (err: any) {
+      Alert.alert(
+        "Couldn't confirm",
+        err.response?.data?.error ?? "Please try again."
+      );
+    } finally {
+      setConfirming(false);
+      detail.refresh();
+    }
+  };
 
   const handleStart = async () => {
     setBusy(true);
@@ -103,8 +150,15 @@ export default function JobDetailScreen({ route, navigation }: any) {
     );
   };
 
-  const fare = job.actualFare ?? job.estimatedFare ?? 0;
   const s = styles(Colors);
+  if (!job) {
+    return (
+      <View style={[s.container, { alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator color={Colors.brand} size="large" />
+      </View>
+    );
+  }
+  const fare = job.actualFare ?? job.estimatedFare ?? 0;
 
   return (
     <View style={s.container}>
@@ -156,7 +210,15 @@ export default function JobDetailScreen({ route, navigation }: any) {
               dropoffAddress={job.dropoffAddress}
             />
 
-            {job.flightNumber && (
+            {flight ? (
+              <FlightPanel
+                flight={flight}
+                canConfirm={canManage}
+                confirming={confirming}
+                onConfirmEarlier={handleConfirmEarlier}
+                terminal={job.terminal}
+              />
+            ) : job.flightNumber && (
               <View style={s.infoCard}>
                 <Text style={s.infoText}>
                   ✈️ Flight {job.flightNumber}

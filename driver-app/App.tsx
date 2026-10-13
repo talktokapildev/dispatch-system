@@ -31,6 +31,7 @@ import DocumentUploadScreen from "./src/screens/DocumentUploadScreen";
 import ApplicationPendingScreen from "./src/screens/ApplicationPendingScreen";
 import TeslaSettingsScreen from "./src/screens/TeslaSettingsScreen";
 import { usePushNotifications } from "./src/hooks/usePushNotification";
+import { navigationRef, flushPendingNotification } from "./src/lib/navigation";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -144,7 +145,12 @@ function AppNavigator() {
     // that area is always Colors.bg instead of black.
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <StatusBar style={theme === "dark" ? "light" : "dark"} />
-      <NavigationContainer theme={navTheme}>
+      <NavigationContainer
+        ref={navigationRef}
+        theme={navTheme}
+        onReady={flushPendingNotification}
+        onStateChange={flushPendingNotification}
+      >
         <Stack.Navigator
           screenOptions={{
             headerShown: false,

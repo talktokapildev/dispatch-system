@@ -4,7 +4,7 @@
     "newArchEnabled": false,
     "slug": "orangeride-driver",
     "scheme": "orangeride",
-    "version": "1.0.21",
+    "version": "1.0.22",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.driver",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
@@ -29,6 +29,9 @@
           "maps",
           "waze"
         ]
+      },
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
       },
       "backgroundModes": [
         "location",
@@ -44,7 +47,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 18,
+      "versionCode": 19,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",

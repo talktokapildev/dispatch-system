@@ -42,6 +42,7 @@ import PassengerCard from "../components/PassengerCard";
 import { getSocket } from "../lib/socket";
 import { blockBookingDispatch } from "../lib/dispatchFlags";
 import { useTeslaNavigation } from "../hooks/useTeslaNavigation";
+import { useJobDetail, flightToneColor } from "../lib/flight";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_COLLAPSED = 185; // tall enough to show cancel button without expanding
@@ -71,6 +72,10 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   } = route.params;
 
   const [booking, setBooking] = useState<any>(preloadedBooking ?? null);
+  // Phase 2b: one-line live flight status (airport pickups only).
+  const { flight } = useJobDetail(
+    booking?.flightNumber ? bookingId : undefined
+  );
   const [loading, setLoading] = useState(!preloadedBooking);
   const [updating, setUpdating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -697,7 +702,19 @@ export default function ActiveJobScreen({ route, navigation }: any) {
               ]}
             >
               <Text style={{ color: Colors.info, fontSize: FontSize.sm }}>
-                ✈ Flight {booking.flightNumber} · Terminal {booking.terminal}
+                ✈ Flight {booking.flightNumber}
+                {booking.terminal ? ` · Terminal ${booking.terminal}` : ""}
+                {flight ? " · " : ""}
+                {flight && (
+                  <Text
+                    style={{
+                      color: flightToneColor(flight.tone, Colors),
+                      fontWeight: "700",
+                    }}
+                  >
+                    {flight.chip}
+                  </Text>
+                )}
               </Text>
             </View>
           )}

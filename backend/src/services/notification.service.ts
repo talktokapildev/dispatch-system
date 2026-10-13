@@ -65,10 +65,15 @@ export class NotificationService {
   //                                      other app can't make the batch fail
   //  - tokens tagged with the other app → skipped
   // Tokens Expo reports as DeviceNotRegistered (app deleted/reinstalled) are removed.
+  // opts.timeSensitive (iOS 15+): breaks through Focus / notification summary
+  // and stays on the lock screen. Driver app needs the time-sensitive
+  // entitlement (driver-app/app.json); without it iOS treats it as "active".
+  // Used for flight pushes and job offers only.
   async sendToUser(
     userId: string,
     notification: Notification,
-    app: PushApp
+    app: PushApp,
+    opts: { timeSensitive?: boolean } = {}
   ): Promise<number> {
     const tokens: { token: string; app: string | null }[] =
       await this.prisma.pushToken.findMany({
@@ -90,6 +95,7 @@ export class NotificationService {
       //badge: 1,
       channelId: "default",
       priority: "high",
+      ...(opts.timeSensitive && { interruptionLevel: "time-sensitive" as const }),
     });
 
     const tagged = valid.filter((t) => t.app === app).map((t) => t.token);
@@ -237,7 +243,8 @@ export class NotificationService {
         body: `Pickup: ${pickup.split(",")[0]} · £${fare.toFixed(2)}`,
         data: { type: "JOB_OFFER" },
       },
-      "driver"
+      "driver",
+      { timeSensitive: true }
     );
   }
 }

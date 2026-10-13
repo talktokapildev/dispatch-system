@@ -22,6 +22,8 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
+import { DriverFlight, useFlightUpdates } from "../lib/flight";
+import { FlightChip } from "../components/FlightPanel";
 
 interface ScheduledJob {
   id: string;
@@ -39,6 +41,7 @@ interface ScheduledJob {
   terminal?: string;
   canStart?: boolean;
   status?: string;
+  flight?: DriverFlight | null; // Phase 2b — claimed tab only
 }
 
 type Tab = "open" | "claimed";
@@ -80,6 +83,12 @@ export default function JobBoardScreen({ navigation, route }: any) {
       fetchJobs(tab);
     }, [tab, fetchJobs])
   );
+
+  // Phase 2b: a flight on one of my claimed jobs changed → refresh the chips.
+  useFlightUpdates((bookingId) => {
+    if (tab === "claimed" && jobs.some((j) => j.id === bookingId))
+      fetchJobs("claimed", true);
+  });
 
   const getCurrentLocation = async (): Promise<{
     latitude: number;
@@ -289,8 +298,25 @@ export default function JobBoardScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
-                {item.flightNumber && (
-                  <Text style={s.metaText}>✈️ {item.flightNumber}</Text>
+                {item.flight ? (
+                  <View style={s.flightRow}>
+                    <Text style={s.metaText}>✈️ {item.flightNumber}</Text>
+                    <FlightChip flight={item.flight} />
+                    {item.flight.scheduleNotice && (
+                      <Text style={[s.metaText, { color: Colors.warning }]}>
+                        ⚠ Schedule changed
+                      </Text>
+                    )}
+                    {item.flight.earlierPickup && (
+                      <Text style={[s.metaText, { color: Colors.success }]}>
+                        Earlier pickup possible
+                      </Text>
+                    )}
+                  </View>
+                ) : (
+                  item.flightNumber && (
+                    <Text style={s.metaText}>✈️ {item.flightNumber}</Text>
+                  )
                 )}
                 {item.notes && <Text style={s.metaText}>📝 {item.notes}</Text>}
 
@@ -429,6 +455,13 @@ const styles = (
       marginVertical: 2,
     },
     metaText: { fontSize: FontSize.xs, color: C.muted, marginBottom: 4 },
+    flightRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 4,
+    },
     claimBtn: {
       backgroundColor: C.brand,
       borderRadius: Radius.md,

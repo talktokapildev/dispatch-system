@@ -7,6 +7,10 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { MapsService } from "../services/maps.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
+import {
+  buildDriverFlightView,
+  driverFlightSelect,
+} from "../services/driverFlightView";
 
 const claimSchema = z.object({
   latitude: z.number(),
@@ -60,9 +64,20 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
       }
 
       const jobs = await scheduledBookings.listClaimedByDriver(driver.id);
-      const jobsWithCanStart = jobs.map((j) => ({
+      // Phase 2b: compact flight summary for the job card chip.
+      const flightRows = await fastify.prisma.booking.findMany({
+        where: {
+          id: { in: jobs.filter((j) => j.flightNumber).map((j) => j.id) },
+        },
+        select: driverFlightSelect,
+      });
+      const flights = new Map(
+        flightRows.map((r) => [r.id, buildDriverFlightView(r)])
+      );
+      const jobsWithCanStart = jobs.map(({ flightSnapshot: _snap, ...j }) => ({
         ...j,
         canStart: ScheduledBookingService.canStartNow(j.scheduledAt),
+        flight: flights.get(j.id) ?? null,
       }));
       return reply.send({ success: true, data: jobsWithCanStart });
     }

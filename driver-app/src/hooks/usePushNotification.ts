@@ -2,6 +2,10 @@ import { useEffect, useRef } from "react";
 import { Platform, Alert, AppState } from "react-native"; // ← Alert imported statically
 import Constants from "expo-constants";
 import { api, useAuthStore } from "../lib/api"; // ← import useAuthStore
+import { openFromNotification } from "../lib/navigation";
+
+// The notification that launched the app is handled once per app run.
+let coldStartChecked = false;
 
 export function usePushNotifications() {
   const tokenRef = useRef<string | null>(null);
@@ -41,8 +45,22 @@ export function usePushNotifications() {
         (response) => {
           const data = response.notification.request.content.data;
           console.log("[Push] Notification tapped:", data);
+          openFromNotification(data as Record<string, any>); // Phase 2b
         }
       );
+
+      // App launched by tapping a notification (cold start) — once per run.
+      if (!coldStartChecked) {
+        coldStartChecked = true;
+        Notifications.getLastNotificationResponseAsync()
+          .then((response) => {
+            if (response)
+              openFromNotification(
+                response.notification.request.content.data as Record<string, any>
+              );
+          })
+          .catch(() => {});
+      }
 
       await registerToken(Notifications);
     }

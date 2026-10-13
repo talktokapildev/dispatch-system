@@ -62,6 +62,18 @@ type Emitter = {
   to: (room: string) => { emit: (event: string, data: unknown) => void };
 };
 
+/** Tell the driver app to re-fetch this job's flight panel (Phase 2b). */
+export function notifyDriverApp(
+  io: Emitter | undefined,
+  driverUserId: string | null | undefined,
+  bookingId: string
+) {
+  if (!io || !driverUserId) return;
+  try {
+    io.to(`driver:${driverUserId}`).emit("driver:flight_update", { bookingId });
+  } catch {}
+}
+
 async function contactPhone(prisma: PrismaClient): Promise<string> {
   const row = await prisma.systemSetting.findUnique({
     where: { key: "contactPhone" },
@@ -238,7 +250,8 @@ export async function applyFlightUpdate(
                     bookingId: b.id,
                   },
                 },
-                "driver"
+                "driver",
+                { timeSensitive: true }
               );
               pushSent = delivered > 0;
               if (pushSent)
@@ -321,7 +334,8 @@ export async function applyFlightUpdate(
                     bookingId: b.id,
                   },
                 },
-                "driver"
+                "driver",
+                { timeSensitive: true }
               );
               pushSent = delivered > 0;
               if (pushSent) await setTold(redis, "driver", b.id, effective);
@@ -337,17 +351,112 @@ export async function applyFlightUpdate(
         }
       }
 
-      if (d.newPickupAt || d.events.length) {
+      // Phase 2b: tell the driver once (time-sensitive push) when the flight is
+      // early enough that an earlier pickup needs their confirmation.
+      const earlierPushed = await maybePushEarlierPossible(
+        prisma,
+        notifications,
+        b,
+        watchId,
+        now
+      );
+
+      if (d.newPickupAt || d.events.length || earlierPushed) {
         opts.io
           ?.to("admin")
           .emit("admin:booking:updated", { bookingId: b.id, status: b.status });
       }
+      // Driver app re-fetches its flight panel on every update (cheap; the
+      // gate estimate and "checked X min ago" change even without a milestone).
+      notifyDriverApp(opts.io, b.driver?.user?.id, b.id);
     }
 
     return summary;
   } finally {
     await redis.del(lockKey);
   }
+}
+
+// ── Earlier pickup possible → tell the driver once (Phase 2b) ────────────────
+// Driver-only, time-sensitive push; recorded as EARLIER_POSSIBLE (the "once"
+// log, shown on the admin timeline). Not after an earlier time was confirmed.
+async function maybePushEarlierPossible(
+  prisma: PrismaClient,
+  notifications: NotificationService,
+  b: {
+    id: string;
+    flightNumber: string | null;
+    driver: { user: { id: string } | null } | null;
+    flightEvents: { type: string }[];
+  },
+  watchId: string,
+  now: Date
+): Promise<boolean> {
+  const driverUserId = b.driver?.user?.id;
+  if (!driverUserId) return false;
+  const fired = new Set(b.flightEvents.map((e) => e.type));
+  if (fired.has("EARLIER_POSSIBLE") || fired.has("EARLIER_CONFIRMED"))
+    return false;
+
+  const fresh = await prisma.booking.findUnique({
+    where: { id: b.id },
+    select: {
+      status: true,
+      scheduledAt: true,
+      pickupOffsetMinutes: true,
+      flightWatch: {
+        select: {
+          status: true,
+          expectedGateArrivalAt: true,
+          actualGateArrivalAt: true,
+        },
+      },
+    },
+  });
+  if (!fresh?.flightWatch || !fresh.scheduledAt) return false;
+  const earliest = earliestPickupAt(fresh, fresh.flightWatch, now);
+  if (!earliest) return false;
+
+  const flight = b.flightNumber ?? "Your flight";
+  const event = await prisma.bookingFlightEvent.create({
+    data: {
+      bookingId: b.id,
+      type: "EARLIER_POSSIBLE",
+      oldPickupAt: fresh.scheduledAt,
+      newPickupAt: earliest,
+      note: `Driver asked to confirm ${ukTime(earliest)} (now ${ukTime(
+        fresh.scheduledAt
+      )})`,
+    },
+  });
+  let pushSent = false;
+  try {
+    pushSent =
+      (await notifications.sendToUser(
+        driverUserId,
+        {
+          title: `${flight} is early`,
+          body: `${flight} is early: passenger ready from ${ukTime(
+            earliest
+          )}. Tap to confirm.`,
+          data: { type: "FLIGHT_EARLIER_POSSIBLE", bookingId: b.id },
+        },
+        "driver",
+        { timeSensitive: true }
+      )) > 0;
+  } catch (err) {
+    console.error("[FlightUpdate] earlier-possible push failed:", err);
+  }
+  await prisma.bookingFlightEvent.update({
+    where: { id: event.id },
+    data: { pushSent },
+  });
+  console.warn(
+    `[FlightWatch] ${flight} ${b.id}: earlier pickup possible from ${ukTime(
+      earliest
+    )} - driver ${pushSent ? "notified" : "push FAILED"} (watch ${watchId})`
+  );
+  return true;
 }
 
 // ── Confirm an earlier pickup ────────────────────────────────────────────────
@@ -437,7 +546,7 @@ export async function confirmEarlierPickup(
   bookingId: string,
   pickupTime: string, // "HH:MM", UK time
   confirmedBy: string,
-  opts: { now?: Date; io?: Emitter } = {}
+  opts: { now?: Date; io?: Emitter; byDriver?: boolean } = {}
 ): Promise<ConfirmEarlierResult> {
   const now = opts.now ?? new Date();
   const first = await prisma.booking.findUnique({
@@ -535,7 +644,10 @@ export async function confirmEarlierPickup(
       if (smsSent) await setTold(redis, "passenger", b.id, pickupAt);
     }
     const driverUser = b.driver?.user;
-    if (msg.driverPush && driverUser) {
+    if (opts.byDriver && driverUser) {
+      // The driver confirmed it themselves in the app: no push back to them.
+      await setTold(redis, "driver", b.id, pickupAt);
+    } else if (msg.driverPush && driverUser) {
       try {
         const delivered = await new NotificationService(prisma).sendToUser(
           driverUser.id,
@@ -543,7 +655,8 @@ export async function confirmEarlierPickup(
             ...msg.driverPush,
             data: { type: "FLIGHT_EARLIER_CONFIRMED", bookingId: b.id },
           },
-          "driver"
+          "driver",
+          { timeSensitive: true }
         );
         pushSent = delivered > 0;
         if (pushSent) await setTold(redis, "driver", b.id, pickupAt);
@@ -559,6 +672,7 @@ export async function confirmEarlierPickup(
     opts.io
       ?.to("admin")
       .emit("admin:booking:updated", { bookingId: b.id, status: b.status });
+    notifyDriverApp(opts.io, driverUser?.id, b.id);
     return { ok: true, pickupAt: pickupAt.toISOString(), smsSent, pushSent };
   } finally {
     await redis.del(lockKey);
