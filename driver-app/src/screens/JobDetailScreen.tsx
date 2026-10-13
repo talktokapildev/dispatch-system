@@ -30,6 +30,7 @@ import TripMap from "../components/TripMap";
 import AddressCard from "../components/AddressCard";
 import FlightPanel from "../components/FlightPanel";
 import { useJobDetail, hm } from "../lib/flight";
+import { claimJob, legText } from "../lib/jobs";
 
 export default function JobDetailScreen({ route, navigation }: any) {
   const { Colors } = useTheme();
@@ -39,6 +40,7 @@ export default function JobDetailScreen({ route, navigation }: any) {
   const detail = useJobDetail(bookingId);
   const job = detail.job ?? initialJob;
   const flight = detail.flight ?? initialJob?.flight ?? null;
+  const distance = detail.distance ?? initialJob?.distance ?? null;
   const [confirming, setConfirming] = useState(false);
 
   const [routeCoords, setRouteCoords] = useState<
@@ -47,11 +49,18 @@ export default function JobDetailScreen({ route, navigation }: any) {
   const [busy, setBusy] = useState(false);
 
   const canManage = job?.status === "DRIVER_ASSIGNED";
+  // Job still on the open job board: look before claiming.
+  const isOpen = job?.status === "SCHEDULED_OPEN";
 
   // Job released / reassigned / deleted while open.
   useEffect(() => {
     if (!detail.notFound) return;
-    Alert.alert("Job no longer available", "This job isn't assigned to you any more.", [
+    Alert.alert(
+      "Job no longer available",
+      isOpen
+        ? "Another driver has just claimed this job."
+        : "This job isn't assigned to you any more.",
+      [
       { text: "OK", onPress: () => navigation.goBack() },
     ]);
   }, [detail.notFound]);
@@ -121,6 +130,19 @@ export default function JobDetailScreen({ route, navigation }: any) {
       );
       setBusy(false);
     }
+  };
+
+  const handleClaim = async () => {
+    setBusy(true);
+    const result = await claimJob(job.id);
+    if (result === "claimed") {
+      await detail.refresh(); // now mine → claimed mode (Release / Start)
+      Alert.alert("Job claimed", 'It\'s now under "My Claimed" on the job board.');
+    } else if (result === "gone") {
+      navigation.goBack();
+      return;
+    }
+    setBusy(false);
   };
 
   const handleRelease = () => {
@@ -208,6 +230,8 @@ export default function JobDetailScreen({ route, navigation }: any) {
             <AddressCard
               pickupAddress={job.pickupAddress}
               dropoffAddress={job.dropoffAddress}
+              pickupMeta={legText(distance?.toPickup)}
+              dropoffMeta={legText(distance?.trip)}
             />
 
             {flight ? (
@@ -250,6 +274,22 @@ export default function JobDetailScreen({ route, navigation }: any) {
                 {job.reference}
               </Text>
             </View>
+
+            {isOpen && (
+              <View style={s.actionsRow}>
+                <TouchableOpacity
+                  style={[s.startBtn, busy && s.btnDisabled]}
+                  onPress={handleClaim}
+                  disabled={busy}
+                >
+                  {busy ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <Text style={s.startBtnText}>Claim Job</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
 
             {canManage && (
               <View style={s.actionsRow}>

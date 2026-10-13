@@ -6,9 +6,13 @@ import { FontSize, Spacing, Radius } from '../lib/theme'
 interface Props {
   pickupAddress: string
   dropoffAddress: string
+  /** e.g. "2.1 mi · 6 min" — distance from the driver to pickup */
+  pickupMeta?: string | null
+  /** e.g. "5.3 mi · 16 min" — the trip itself */
+  dropoffMeta?: string | null
 }
 
-export default function AddressCard({ pickupAddress, dropoffAddress }: Props) {
+export default function AddressCard({ pickupAddress, dropoffAddress, pickupMeta, dropoffMeta }: Props) {
   const { Colors } = useTheme()
   const s = styles(Colors)
 
@@ -17,7 +21,7 @@ export default function AddressCard({ pickupAddress, dropoffAddress }: Props) {
       <View style={s.row}>
         <View style={[s.dot, { backgroundColor: Colors.success }]} />
         <View style={{ flex: 1 }}>
-          <Text style={s.label}>Pickup</Text>
+          <Text style={s.label}>Pickup{pickupMeta ? `  ·  ${pickupMeta} from you` : ''}</Text>
           <Text style={s.text}>{pickupAddress}</Text>
         </View>
       </View>
@@ -25,7 +29,7 @@ export default function AddressCard({ pickupAddress, dropoffAddress }: Props) {
       <View style={s.row}>
         <View style={[s.dot, { backgroundColor: Colors.danger }]} />
         <View style={{ flex: 1 }}>
-          <Text style={s.label}>Dropoff</Text>
+          <Text style={s.label}>Dropoff{dropoffMeta ? `  ·  ${dropoffMeta} trip` : ''}</Text>
           <Text style={s.text}>{dropoffAddress}</Text>
         </View>
       </View>

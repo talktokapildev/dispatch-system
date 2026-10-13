@@ -12,6 +12,7 @@ import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
+import { actualTripText } from "../lib/jobs";
 
 export default function JobHistoryScreen({ navigation }: any) {
   const { Colors } = useTheme();
@@ -119,6 +120,10 @@ export default function JobHistoryScreen({ navigation }: any) {
                   <Text style={s.routeText} numberOfLines={1}>
                     {item.dropoffAddress}
                   </Text>
+                  {/* Completed trips: actual distance + time driven */}
+                  {item.status === "COMPLETED" && actualTripText(item) && (
+                    <Text style={s.legText}>{actualTripText(item)}</Text>
+                  )}
                 </View>
               </View>
               <View style={s.jobBottom}>
@@ -188,6 +193,12 @@ const styles = (
     routeRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
     dot: { width: 8, height: 8, borderRadius: 4 },
     routeText: { fontSize: FontSize.sm, color: C.text, flex: 1 },
+    legText: {
+      fontSize: FontSize.xs,
+      color: C.muted,
+      fontWeight: "600",
+      flexShrink: 0,
+    },
     routeLine: {
       width: 2,
       height: 12,

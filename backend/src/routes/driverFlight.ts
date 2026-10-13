@@ -1,9 +1,12 @@
 // backend/src/routes/driverFlight.ts
 //
-// Phase 2b — driver flight endpoints (own jobs only):
-//   GET  /drivers/jobs/:id/detail
-//        → { job, flight }  job = the fields the job screens show (+ canStart),
-//          flight = buildDriverFlightView (null if no flight)
+// Phase 2b — driver job/flight endpoints:
+//   GET  /drivers/jobs/:id/detail[?lat=&lng=]
+//        → { job, flight, distance }  for the driver's OWN job, or a job still
+//          open on the job board (so drivers can look before claiming).
+//          job = the fields the job screens show (+ canStart),
+//          flight = buildDriverFlightView (null if no flight),
+//          distance = { toPickup (from lat/lng), trip } (jobDistance.service)
 //   POST /drivers/jobs/:id/confirm-earlier  { earliestAt: ISO }
 //        → confirmEarlierPickup at the suggested earliest time (one tap).
 //          earliestAt is the time the driver saw: if the flight moved since,
@@ -16,11 +19,12 @@ import {
 } from "../services/driverFlightView";
 import { confirmEarlierPickup } from "../services/flightUpdate.service";
 import { ukTime } from "../services/flightMessages";
+import { jobDistances, parseCoords } from "../services/jobDistance.service";
 
 const SAME_TIME_MS = 60_000;
 
 export async function driverFlightRoutes(fastify: FastifyInstance) {
-  async function ownJob(userId: string, id: string) {
+  async function ownJob(userId: string, id: string, allowOpen = false) {
     const driver = await fastify.prisma.driver.findUnique({
       where: { userId },
       select: { id: true, user: { select: { firstName: true, lastName: true } } },
@@ -48,8 +52,11 @@ export async function driverFlightRoutes(fastify: FastifyInstance) {
         claimedAt: true,
       },
     });
-    if (!booking || booking.driverId !== driver.id)
-      return { ok: false as const, error: 404 };
+    const visible =
+      !!booking &&
+      (booking.driverId === driver.id ||
+        (allowOpen && !booking.driverId && booking.status === "SCHEDULED_OPEN"));
+    if (!booking || !visible) return { ok: false as const, error: 404 };
     return { ok: true as const, driver, booking };
   }
 
@@ -58,7 +65,7 @@ export async function driverFlightRoutes(fastify: FastifyInstance) {
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
-      const r = await ownJob(request.user.userId, id);
+      const r = await ownJob(request.user.userId, id, true);
       if (!r.ok)
         return reply
           .status(r.error)
@@ -72,6 +79,13 @@ export async function driverFlightRoutes(fastify: FastifyInstance) {
         driverId: _d,
         ...job
       } = r.booking;
+      const distance = (
+        await jobDistances(
+          fastify.redis,
+          [r.booking],
+          parseCoords(request.query as { lat?: string; lng?: string })
+        )
+      ).get(r.booking.id);
       return reply.send({
         success: true,
         data: {
@@ -80,6 +94,7 @@ export async function driverFlightRoutes(fastify: FastifyInstance) {
             canStart: ScheduledBookingService.canStartNow(job.scheduledAt),
           },
           flight: buildDriverFlightView(r.booking),
+          distance: distance ?? null,
         },
       });
     }

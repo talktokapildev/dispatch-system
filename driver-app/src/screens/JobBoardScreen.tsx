@@ -16,7 +16,6 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Location from "expo-location";
 import { useFocusEffect } from "@react-navigation/native";
 import { api } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
@@ -24,6 +23,7 @@ import { useTheme } from "../lib/ThemeContext";
 import { format } from "date-fns";
 import { DriverFlight, useFlightUpdates } from "../lib/flight";
 import { FlightChip } from "../components/FlightPanel";
+import { claimJob, coordsParams, JobDistance, legText } from "../lib/jobs";
 
 interface ScheduledJob {
   id: string;
@@ -41,7 +41,8 @@ interface ScheduledJob {
   terminal?: string;
   canStart?: boolean;
   status?: string;
-  flight?: DriverFlight | null; // Phase 2b — claimed tab only
+  flight?: DriverFlight | null; // airport jobs (both tabs)
+  distance?: JobDistance | null; // from me now → pickup, and the trip
 }
 
 type Tab = "open" | "claimed";
@@ -64,7 +65,8 @@ export default function JobBoardScreen({ navigation, route }: any) {
         activeTab === "open"
           ? "/bookings/scheduled/open"
           : "/bookings/scheduled/mine";
-      const { data } = await api.get(endpoint);
+      // Location (if allowed) → "x mi · y min" from me to each pickup.
+      const { data } = await api.get(endpoint, { params: await coordsParams() });
       setJobs(data.data ?? []);
     } catch {
       // silent — pull-to-refresh available
@@ -90,58 +92,19 @@ export default function JobBoardScreen({ navigation, route }: any) {
       fetchJobs("claimed", true);
   });
 
-  const getCurrentLocation = async (): Promise<{
-    latitude: number;
-    longitude: number;
-  } | null> => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Location needed",
-          "Your location is used to check you can reach pickup in time."
-        );
-        return null;
-      }
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      return {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      };
-    } catch {
-      return null;
-    }
-  };
-
   const handleClaim = async (job: ScheduledJob) => {
-    const coords = await getCurrentLocation();
-    if (!coords) return;
-
     setBusyId(job.id);
     try {
-      await api.post(`/bookings/${job.id}/claim`, coords);
-      // Job leaves the open pool — remove locally for instant feedback,
-      // then let the "My Claimed" tab pick it up next time it's viewed.
-      setJobs((prev) => prev.filter((j) => j.id !== job.id));
-      Alert.alert(
-        "Job claimed",
-        'Find it any time under the "My Claimed" tab.'
-      );
-    } catch (err: any) {
-      const reason = err.response?.data?.error;
-      const messages: Record<string, string> = {
-        already_claimed: "Another driver just claimed this job.",
-        eta_infeasible:
-          "You wouldn't be able to reach pickup in time from your current location.",
-        lock_contended: "This job is being claimed right now — try again.",
-      };
-      Alert.alert(
-        "Couldn't claim job",
-        messages[reason] ?? "Please try again."
-      );
-      if (reason === "already_claimed") {
+      const result = await claimJob(job.id); // shows its own error alerts
+      if (result === "claimed") {
+        // Job leaves the open pool — remove locally for instant feedback,
+        // then let the "My Claimed" tab pick it up next time it's viewed.
+        setJobs((prev) => prev.filter((j) => j.id !== job.id));
+        Alert.alert(
+          "Job claimed",
+          'Find it any time under the "My Claimed" tab.'
+        );
+      } else if (result === "gone") {
         setJobs((prev) => prev.filter((j) => j.id !== job.id));
       }
     } finally {
@@ -261,8 +224,7 @@ export default function JobBoardScreen({ navigation, route }: any) {
             return (
               <TouchableOpacity
                 style={s.jobCard}
-                activeOpacity={tab === "claimed" ? 0.8 : 1}
-                disabled={tab !== "claimed"}
+                activeOpacity={0.8}
                 onPress={() => navigation.navigate("JobDetail", { job: item })}
               >
                 <View style={s.jobTop}>
@@ -288,6 +250,11 @@ export default function JobBoardScreen({ navigation, route }: any) {
                     <Text style={s.routeText} numberOfLines={1}>
                       {item.pickupAddress}
                     </Text>
+                    {legText(item.distance?.toPickup) && (
+                      <Text style={s.legText}>
+                        {legText(item.distance?.toPickup)}
+                      </Text>
+                    )}
                   </View>
                   <View style={s.routeLine} />
                   <View style={s.routeRow}>
@@ -295,6 +262,9 @@ export default function JobBoardScreen({ navigation, route }: any) {
                     <Text style={s.routeText} numberOfLines={1}>
                       {item.dropoffAddress}
                     </Text>
+                    {legText(item.distance?.trip) && (
+                      <Text style={s.legText}>{legText(item.distance?.trip)}</Text>
+                    )}
                   </View>
                 </View>
 
@@ -447,6 +417,12 @@ const styles = (
     routeRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
     dot: { width: 8, height: 8, borderRadius: 4 },
     routeText: { fontSize: FontSize.sm, color: C.text, flex: 1 },
+    legText: {
+      fontSize: FontSize.xs,
+      color: C.muted,
+      fontWeight: "600",
+      flexShrink: 0,
+    },
     routeLine: {
       width: 2,
       height: 12,

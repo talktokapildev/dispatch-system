@@ -11,6 +11,8 @@ import {
   buildDriverFlightView,
   driverFlightSelect,
 } from "../services/driverFlightView";
+import { jobDistances, parseCoords } from "../services/jobDistance.service";
+import type { Booking } from "@prisma/client";
 
 const claimSchema = z.object({
   latitude: z.number(),
@@ -25,6 +27,32 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
     fastify.io,
     maps
   );
+
+  // Job board cards: flight chip (airport jobs) + distances
+  // (?lat=&lng= = driver's current location, optional). Raw provider snapshot
+  // is not sent to the app.
+  async function decorate(jobs: Booking[], query: unknown) {
+    const flightRows = await fastify.prisma.booking.findMany({
+      where: {
+        id: { in: jobs.filter((j) => j.flightNumber).map((j) => j.id) },
+      },
+      select: driverFlightSelect,
+    });
+    const flights = new Map(
+      flightRows.map((r) => [r.id, buildDriverFlightView(r)])
+    );
+    const distances = await jobDistances(
+      fastify.redis,
+      jobs,
+      parseCoords((query ?? {}) as { lat?: string; lng?: string }),
+      maps
+    );
+    return jobs.map(({ flightSnapshot: _snap, ...j }) => ({
+      ...j,
+      flight: flights.get(j.id) ?? null,
+      distance: distances.get(j.id) ?? null,
+    }));
+  }
 
   // ─── List open jobs (driver job board) ───
   fastify.get(
@@ -43,7 +71,10 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
       }
 
       const jobs = await scheduledBookings.listOpenJobs();
-      return reply.send({ success: true, data: jobs });
+      return reply.send({
+        success: true,
+        data: await decorate(jobs, request.query),
+      });
     }
   );
 
@@ -64,21 +95,12 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
       }
 
       const jobs = await scheduledBookings.listClaimedByDriver(driver.id);
-      // Phase 2b: compact flight summary for the job card chip.
-      const flightRows = await fastify.prisma.booking.findMany({
-        where: {
-          id: { in: jobs.filter((j) => j.flightNumber).map((j) => j.id) },
-        },
-        select: driverFlightSelect,
-      });
-      const flights = new Map(
-        flightRows.map((r) => [r.id, buildDriverFlightView(r)])
+      const jobsWithCanStart = (await decorate(jobs, request.query)).map(
+        (j) => ({
+          ...j,
+          canStart: ScheduledBookingService.canStartNow(j.scheduledAt),
+        })
       );
-      const jobsWithCanStart = jobs.map(({ flightSnapshot: _snap, ...j }) => ({
-        ...j,
-        canStart: ScheduledBookingService.canStartNow(j.scheduledAt),
-        flight: flights.get(j.id) ?? null,
-      }));
       return reply.send({ success: true, data: jobsWithCanStart });
     }
   );

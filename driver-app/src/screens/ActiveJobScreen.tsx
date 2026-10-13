@@ -74,7 +74,8 @@ export default function ActiveJobScreen({ route, navigation }: any) {
   const [booking, setBooking] = useState<any>(preloadedBooking ?? null);
   // Phase 2b: one-line live flight status (airport pickups only).
   const { flight } = useJobDetail(
-    booking?.flightNumber ? bookingId : undefined
+    booking?.flightNumber ? bookingId : undefined,
+    { withDistance: false } // driving: no distance lookups every refresh
   );
   const [loading, setLoading] = useState(!preloadedBooking);
   const [updating, setUpdating] = useState(false);

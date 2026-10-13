@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.orangeride.driver",
-      "buildNumber": "11",
+      "buildNumber": "12",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "OrangeRide Driver needs your location to show you to nearby passengers and navigate to pickups.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "OrangeRide Driver needs your location in the background to track active jobs and keep passengers updated.",
@@ -47,7 +47,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 19,
+      "versionCode": 20,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",

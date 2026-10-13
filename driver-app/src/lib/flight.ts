@@ -11,6 +11,7 @@ import { AppState } from "react-native";
 import { format } from "date-fns";
 import { api } from "./api";
 import { useSocket } from "./socket";
+import { coordsParams, JobDistance } from "./jobs";
 
 export type DriverFlight = {
   flightNumber: string;
@@ -81,22 +82,30 @@ export function useFlightUpdates(onUpdate: (bookingId: string) => void) {
   });
 }
 
-export function useJobDetail(bookingId: string | undefined) {
+export function useJobDetail(
+  bookingId: string | undefined,
+  opts: { withDistance?: boolean } = {}
+) {
+  const withDistance = opts.withDistance ?? true;
   const [job, setJob] = useState<any>(null);
   const [flight, setFlight] = useState<DriverFlight | null>(null);
+  const [distance, setDistance] = useState<JobDistance | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!bookingId) return;
     try {
-      const { data } = await api.get(`/drivers/jobs/${bookingId}/detail`);
+      const { data } = await api.get(`/drivers/jobs/${bookingId}/detail`, {
+        params: withDistance ? await coordsParams() : {},
+      });
       setJob(data.data.job);
       setFlight(data.data.flight ?? null);
+      setDistance(data.data.distance ?? null);
       setNotFound(false);
     } catch (err: any) {
       if (err?.response?.status === 404) setNotFound(true);
     }
-  }, [bookingId]);
+  }, [bookingId, withDistance]);
 
   useEffect(() => {
     refresh();
@@ -114,5 +123,5 @@ export function useJobDetail(bookingId: string | undefined) {
     if (id === bookingId) refresh();
   });
 
-  return { job, flight, notFound, refresh };
+  return { job, flight, distance, notFound, refresh };
 }
