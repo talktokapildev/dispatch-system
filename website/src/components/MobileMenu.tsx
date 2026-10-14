@@ -60,7 +60,7 @@ export default function MobileMenu() {
   }, [open, close]);
 
   return (
-    <div className="flex items-center gap-[10px] nav:hidden">
+    <div className="flex shrink-0 items-center gap-[10px] nav:hidden">
       <a
         href={PHONE_HREF}
         aria-label={`Call ${PHONE_DISPLAY}`}
@@ -74,7 +74,7 @@ export default function MobileMenu() {
         aria-expanded={open}
         aria-controls="mobile-menu"
         onClick={() => setOpen((o) => !o)}
-        className="relative z-50 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-[18px] py-[10px] font-bold text-white"
+        className="relative z-50 inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-full bg-ink px-[18px] py-[10px] font-bold text-white max-[359px]:px-3"
       >
         {open ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
@@ -85,7 +85,7 @@ export default function MobileMenu() {
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
         )}
-        {open ? "Close" : "Menu"}
+        <span className="max-[359px]:sr-only">{open ? "Close" : "Menu"}</span>
       </button>
 
       {open && (

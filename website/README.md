@@ -67,8 +67,8 @@ All are permanent. URLs with a trailing slash take two 308 hops (Next.js strips 
 
 - Only the TfL operating centre address appears on the site. Don't add a home address anywhere.
 - Accessibility changes from the canvas (agreed): a few text colours slightly darker to pass WCAG AA
-  contrast; every link and button is at least 44px tall to tap; the hero notification card sits in front
-  of the phone so it can be read; big-card padding scales down on phones.
+  contrast; every link and button is at least 44px tall to tap; the hero delay-notification card was removed
+  (that story is told in the flight-tracking section); big-card padding scales down on phones.
 - No share (Open Graph) image yet: one is being designed in the canvas. When it's approved, save it as
   `src/app/opengraph-image.png` (1200x630) and set `twitter.card` back to `summary_large_image` in
   `src/app/layout.tsx` and `src/lib/seo.ts`.

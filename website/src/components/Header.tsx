@@ -11,15 +11,15 @@ import MobileMenu from "./MobileMenu";
  */
 export default function Header() {
   return (
-    <header className="relative mx-auto flex max-w-site flex-wrap items-center justify-between gap-3 px-6 py-[18px] nav:gap-4">
-      <Link href="/" aria-label="OrangeRide home" className="flex min-h-[44px] items-center no-underline">
+    <header className="relative mx-auto flex max-w-site flex-nowrap items-center justify-between gap-3 px-6 py-[18px] nav:flex-wrap nav:gap-4">
+      <Link href="/" aria-label="OrangeRide home" className="flex min-h-[44px] min-w-0 shrink items-center no-underline">
         <Image
           src="/images/logo-wordmark.png"
           alt="OrangeRide"
           width={595}
           height={140}
           priority
-          className="block h-[44px] w-auto max-[399px]:h-[34px]"
+          className="block h-[44px] w-[187px] max-w-full object-contain object-left max-[399px]:h-[34px] max-[399px]:w-[145px]"
         />
       </Link>
 
