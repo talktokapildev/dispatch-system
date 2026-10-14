@@ -14,6 +14,9 @@ export const PASSENGER_ANDROID =
   "https://play.google.com/store/apps/details?id=com.orangeride.passenger";
 export const DRIVER_IOS = "https://apps.apple.com/gb/app/orangeride-driver/id6762009686";
 export const DRIVER_ANDROID = "https://play.google.com/store/apps/details?id=com.orangeride.driver";
+/** Driver application (Google Form, public link). */
+export const DRIVER_APPLY_URL =
+  "https://docs.google.com/forms/d/1MvbvmyebFUgcj5jkr4mKoOI8CLsiF4XmP6GSlmtEWqE/viewform";
 
 export const TFL_LICENCE = "11786";
 

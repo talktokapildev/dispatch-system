@@ -56,7 +56,7 @@ export default function Footer() {
             <Link href="/#gatwick" className={link}>
               Gatwick transfers
             </Link>
-            <Link href="/#drive" className={link}>
+            <Link href="/drivers" className={link}>
               Drive with us
             </Link>
             <a href={DRIVER_IOS} className={link}>

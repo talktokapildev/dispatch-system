@@ -193,6 +193,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
               <li>Cloudinary (storing driver documents and photos)</li>
               <li>Expo and Google Firebase (app notifications)</li>
               <li>Resend (emails such as receipts)</li>
+              <li>Google Workspace (our email, and the form drivers use to apply)</li>
               <li>Railway (hosting our servers and database)</li>
               <li>Google Ads (measuring how our adverts perform, only if you accept cookies)</li>
             </ul>

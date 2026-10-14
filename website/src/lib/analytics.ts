@@ -8,6 +8,8 @@ export const CONVERSIONS = {
   contact: "ryxiCPvVz9gcEPOzhbJE",
   /** "Website call tap" (Contact goal): taps on the phone number. Falls back to `contact` if emptied. */
   call: "JjmMCOrX6ZwdEPOzhbJE",
+  /** "Driver application click": taps on Apply (the Google Form). Empty until the action exists: tracked only. */
+  driverApply: "",
 };
 
 /** localStorage key holding the visitor's cookie choice: "granted" | "denied". */
@@ -46,22 +48,68 @@ export function saveConsent(choice: "granted" | "denied") {
   });
 }
 
-export type TapKind = "whatsapp" | "call" | "email" | "app_store" | "driver_app";
+export type TapKind =
+  | "whatsapp"
+  | "call"
+  | "email"
+  | "app_store"
+  | "driver_app"
+  | "driver_apply"
+  | "driver_question";
+
+/** Links can override how they're counted with data-tap="<kind>" (e.g. WhatsApp on the driver page). */
+export function isTapKind(v: string | undefined): v is TapKind {
+  return (
+    v === "whatsapp" ||
+    v === "call" ||
+    v === "email" ||
+    v === "app_store" ||
+    v === "driver_app" ||
+    v === "driver_apply" ||
+    v === "driver_question"
+  );
+}
 
 /** What a link is, judged by its href. */
 export function classifyHref(href: string): TapKind | null {
   if (href.startsWith("tel:")) return "call";
   if (href.startsWith("mailto:")) return "email";
+  if (href.includes("docs.google.com/forms") || href.includes("forms.gle/"))
+    return "driver_apply";
   if (href.includes("wa.me/")) return "whatsapp";
-  if (href.includes("orangeride-driver") || href.includes("com.orangeride.driver")) return "driver_app";
-  if (href.includes("apps.apple.com") || href.includes("play.google.com")) return "app_store";
+  if (
+    href.includes("orangeride-driver") ||
+    href.includes("com.orangeride.driver")
+  )
+    return "driver_app";
+  if (href.includes("apps.apple.com") || href.includes("play.google.com"))
+    return "app_store";
   return null;
 }
 
-/** Record a tap. Contact taps count as Google Ads conversions; driver-app taps are tracked only. */
+/**
+ * Record a tap. Passenger contact taps count as Google Ads conversions; Apply-to-drive taps count as
+ * the separate driver conversion (once its label is set); driver-app taps and driver questions
+ * (WhatsApp/call from the driver page) are tracked only, so they don't count as passenger leads.
+ */
 export function trackTap(kind: TapKind, href: string) {
   gtag("event", "contact_tap", { method: kind, link_url: href });
-  if (kind === "driver_app") return;
-  const label = kind === "call" ? CONVERSIONS.call || CONVERSIONS.contact : CONVERSIONS.contact;
-  gtag("event", "conversion", { send_to: `${GOOGLE_TAG_ID}/${label}`, method: kind });
+  if (kind === "driver_app" || kind === "driver_question") return;
+  if (kind === "driver_apply") {
+    if (CONVERSIONS.driverApply) {
+      gtag("event", "conversion", {
+        send_to: `${GOOGLE_TAG_ID}/${CONVERSIONS.driverApply}`,
+        method: kind,
+      });
+    }
+    return;
+  }
+  const label =
+    kind === "call"
+      ? CONVERSIONS.call || CONVERSIONS.contact
+      : CONVERSIONS.contact;
+  gtag("event", "conversion", {
+    send_to: `${GOOGLE_TAG_ID}/${label}`,
+    method: kind,
+  });
 }
