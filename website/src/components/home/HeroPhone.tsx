@@ -85,7 +85,7 @@ export default function HeroPhone() {
       {/* Notification card */}
       <div
         aria-hidden
-        className="mt-[90px] box-content flex w-[270px] max-w-[calc(100%-30px)] gap-3 self-start justify-self-start rounded-[20px] border border-line bg-white p-[14px] shadow-[0_24px_50px_-28px_rgba(46,50,56,0.5)] [grid-area:1/1]"
+        className="relative z-10 mt-[90px] box-content flex w-[270px] max-w-[calc(100%-30px)] gap-3 self-start justify-self-start rounded-[20px] border border-line bg-white p-[14px] shadow-[0_24px_50px_-28px_rgba(46,50,56,0.5)] [grid-area:1/1]"
       >
         <span className="grid h-[38px] w-[38px] flex-none place-items-center rounded-[11px] bg-[#fff3e3]">
           <Image src="/images/logo-pin.png" alt="" width={104} height={160} className="h-[28px] w-auto" />

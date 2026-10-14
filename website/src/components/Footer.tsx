@@ -13,7 +13,8 @@ import {
   WHATSAPP_HREF,
 } from "@/lib/site";
 
-const link = "-my-[5px] py-[5px] text-[#d1d5db] no-underline hover:text-white";
+const link =
+  "inline-flex min-h-[44px] items-center self-start text-[#d1d5db] no-underline hover:text-white";
 
 export default function Footer() {
   const year = new Date().getFullYear();
@@ -34,8 +35,8 @@ export default function Footer() {
               Horley.
             </span>
           </div>
-          <div className="flex flex-col gap-[10px]">
-            <strong className="text-white">Contact</strong>
+          <div className="flex flex-col gap-[2px]">
+            <strong className="pb-2 text-white">Contact</strong>
             <a href={PHONE_HREF} className={link}>
               Call {PHONE_DISPLAY}
             </a>
@@ -46,8 +47,8 @@ export default function Footer() {
               {EMAIL}
             </a>
           </div>
-          <div className="flex flex-col gap-[10px]">
-            <strong className="text-white">Explore</strong>
+          <div className="flex flex-col gap-[2px]">
+            <strong className="pb-2 text-white">Explore</strong>
             <Link href="/#arrivals" className={link}>
               Flight tracking
             </Link>
@@ -102,10 +103,10 @@ export default function Footer() {
             {TFL_LICENCE}
           </span>
           <span className="flex gap-5">
-            <Link href="/privacy" className="text-[#9ca3af] hover:text-white">
+            <Link href="/privacy" className="-my-3 inline-flex min-h-[44px] items-center text-[#9ca3af] hover:text-white">
               Privacy
             </Link>
-            <Link href="/terms" className="text-[#9ca3af] hover:text-white">
+            <Link href="/terms" className="-my-3 inline-flex min-h-[44px] items-center text-[#9ca3af] hover:text-white">
               Terms
             </Link>
           </span>

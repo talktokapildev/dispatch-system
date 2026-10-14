@@ -3,6 +3,10 @@ module.exports = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
+      screens: {
+        // Full desktop header from here; below it the header shows a Menu button.
+        nav: "1100px",
+      },
       colors: {
         // Colours from the approved canvas (Light-v4 / Privacy / Terms)
         page: "#f1f5f9", // page background

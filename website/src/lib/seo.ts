@@ -15,6 +15,6 @@ export function pageMetadata(path: string, title: string, description: string): 
       title: full,
       description,
     },
-    twitter: { card: "summary_large_image", title: full, description },
+    twitter: { card: "summary", title: full, description },
   };
 }

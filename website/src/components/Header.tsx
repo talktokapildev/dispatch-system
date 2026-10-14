@@ -1,30 +1,30 @@
 import Image from "next/image";
 import Link from "next/link";
+import { NAV } from "@/lib/nav";
 import { PHONE_DISPLAY, PHONE_HREF } from "@/lib/site";
 import { PhoneIcon } from "./Icons";
+import MobileMenu from "./MobileMenu";
 
-const NAV = [
-  { href: "/#arrivals", label: "Flight tracking" },
-  { href: "/#how", label: "How to book" },
-  { href: "/#gatwick", label: "Gatwick" },
-  { href: "/#drive", label: "Drive with us" },
-  { href: "/#faq", label: "FAQs" },
-];
-
+/**
+ * Desktop (>= 1100px): logo, five links and two buttons in one row, as in the canvas.
+ * Below 1100px: logo, a round call button and a Menu button that opens <MobileMenu>.
+ */
 export default function Header() {
   return (
-    <header className="mx-auto flex max-w-site flex-wrap items-center justify-between gap-4 px-6 py-[18px]">
-      <Link href="/" aria-label="OrangeRide home" className="flex items-center no-underline">
+    <header className="relative mx-auto flex max-w-site flex-wrap items-center justify-between gap-3 px-6 py-[18px] nav:gap-4">
+      <Link href="/" aria-label="OrangeRide home" className="flex min-h-[44px] items-center no-underline">
         <Image
           src="/images/logo-wordmark.png"
           alt="OrangeRide"
           width={595}
           height={140}
           priority
-          className="block h-[44px] w-auto"
+          className="block h-[44px] w-auto max-[399px]:h-[34px]"
         />
       </Link>
-      <nav aria-label="Main" className="flex flex-wrap gap-[2px] text-[15.5px] font-semibold">
+
+      {/* Desktop */}
+      <nav aria-label="Main" className="hidden flex-wrap gap-[2px] text-[15.5px] font-semibold nav:flex">
         {NAV.map((item) => (
           <Link
             key={item.href}
@@ -35,7 +35,7 @@ export default function Header() {
           </Link>
         ))}
       </nav>
-      <div className="flex flex-wrap gap-[10px]">
+      <div className="hidden flex-wrap gap-[10px] nav:flex">
         <a
           href={PHONE_HREF}
           className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-line bg-white px-4 py-[10px] font-bold text-ink no-underline hover:text-ink"
@@ -50,6 +50,9 @@ export default function Header() {
           Get the app
         </Link>
       </div>
+
+      {/* Phones and tablets */}
+      <MobileMenu />
     </header>
   );
 }

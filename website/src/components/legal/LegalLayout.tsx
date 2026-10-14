@@ -34,7 +34,7 @@ export default function LegalLayout({ title, intro, updated, other, summary, sec
           <span className="text-[#9ca3af]" aria-hidden>
             ·
           </span>
-          <Link href={other.href} className="text-accent-dark">
+          <Link href={other.href} className="-my-[11px] inline-flex min-h-[44px] items-center text-accent-dark">
             {other.label}
           </Link>
         </div>
@@ -64,7 +64,7 @@ export default function LegalLayout({ title, intro, updated, other, summary, sec
               <li key={s.id}>
                 <a
                   href={`#${s.id}`}
-                  className="block rounded-[10px] px-3 py-[7px] text-[15px] font-semibold text-soft no-underline hover:bg-page hover:text-ink"
+                  className="flex min-h-[44px] items-center rounded-[10px] px-3 py-[7px] text-[15px] font-semibold text-soft no-underline hover:bg-page hover:text-ink"
                 >
                   {i + 1}. {s.title}
                 </a>
