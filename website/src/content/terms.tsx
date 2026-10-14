@@ -4,7 +4,7 @@ import { EMAIL, EMAIL_HREF, OPERATING_CENTRE, PHONE_DISPLAY, PHONE_HREF } from "
 
 // Word for word from the approved Terms artboard (Terms.dc.html). Do not reword.
 
-export const TERMS_UPDATED = "12 October 2026";
+export const TERMS_UPDATED = "14 October 2026";
 
 export const TERMS_INTRO =
   "The terms for booking and travelling with OrangeRide, including fares, flight tracking, lost property and how to make a complaint.";
@@ -16,7 +16,7 @@ export const TERMS_SUMMARY = [
   },
   {
     title: "Bookings",
-    text: "Pre-booked only, at least 24 hours ahead, by app, WhatsApp, phone or email.",
+    text: "Pre-booked, usually at least 24 hours ahead, by app, WhatsApp, phone or email.",
   },
   {
     title: "Fares",
@@ -59,9 +59,9 @@ export const TERMS_SECTIONS: LegalSection[] = [
     body: (
       <ul>
         <li>
-          <strong>Pre-booked journeys only.</strong> At the moment we accept bookings made at least{" "}
-          <strong>24 hours</strong> before the pickup time. We can&apos;t take on-street hails or
-          immediate bookings.
+          <strong>Pre-booked journeys.</strong> We usually ask for at least{" "}
+          <strong>24 hours&apos; notice</strong>. Shorter-notice bookings may be possible by
+          arrangement. We can&apos;t take on-street hails.
         </li>
         <li>
           <strong>How to book:</strong> in the OrangeRide app, or by WhatsApp, phone or email.
