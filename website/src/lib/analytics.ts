@@ -8,8 +8,8 @@ export const CONVERSIONS = {
   contact: "ryxiCPvVz9gcEPOzhbJE",
   /** "Website call tap" (Contact goal): taps on the phone number. Falls back to `contact` if emptied. */
   call: "JjmMCOrX6ZwdEPOzhbJE",
-  /** "Driver application click": taps on Apply (the Google Form). Empty until the action exists: tracked only. */
-  driverApply: "",
+  /** "Driver application click" (Sign-up goal, Campaign #1 only): taps on Apply (the Google Form). */
+  driverApply: "eVgnCK2G95wdEPOzhbJE",
 };
 
 /** localStorage key holding the visitor's cookie choice: "granted" | "denied". */
