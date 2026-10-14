@@ -31,8 +31,8 @@ export default function Footer() {
               className="h-[40px] w-[170px] self-start"
             />
             <span className="text-[14.5px]">
-              Your private hire, sorted. Pre-booked, fixed-fare journeys for Gatwick, Crawley and
-              Horley.
+              Your private hire, sorted. Pre-booked, fixed-fare journeys for Gatwick, Crawley,
+              Horley and London.
             </span>
           </div>
           <div className="flex flex-col gap-[2px]">

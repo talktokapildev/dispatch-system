@@ -22,7 +22,7 @@ const body = Figtree({
 
 const TITLE = "OrangeRide | Pre-booked Gatwick airport transfers from Crawley & Horley";
 const DESCRIPTION =
-  "Fixed-fare, TfL-licensed private hire for Gatwick, Crawley and Horley. Book at least 24 hours ahead in the app or by WhatsApp, and we'll time your pickup to your flight's landing.";
+  "Fixed-fare, TfL-licensed private hire for Gatwick, Crawley and Horley, with London and Heathrow transfers. Book 24 hours ahead in the app or by WhatsApp, and we'll time your pickup to your flight's landing.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -63,6 +63,8 @@ const jsonLd = {
     { "@type": "Place", name: "Gatwick" },
     { "@type": "City", name: "Crawley" },
     { "@type": "City", name: "Horley" },
+    { "@type": "City", name: "London" },
+    { "@type": "Place", name: "Heathrow" },
   ],
   provider: {
     "@type": "LocalBusiness",
