@@ -28,7 +28,7 @@ export default function Footer() {
               alt="OrangeRide"
               width={595}
               height={140}
-              className="h-[40px] w-auto self-start"
+              className="h-[40px] w-[170px] self-start"
             />
             <span className="text-[14.5px]">
               Your private hire, sorted. Pre-booked, fixed-fare journeys for Gatwick, Crawley and

@@ -10,7 +10,7 @@ export default function HeroPhone() {
     <div
       role="img"
       aria-label="The OrangeRide app showing flight EZY8687 from Amsterdam landing at Gatwick North Terminal, with pickup at 22:05 at Car Park 6, Level 4."
-      className="box-content grid min-h-[700px] min-w-0 justify-items-center py-[10px]"
+      className="box-content grid min-h-[700px] min-w-0 grid-cols-[minmax(0,1fr)] justify-items-center py-[10px]"
     >
       <div
         aria-hidden
