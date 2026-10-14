@@ -2,14 +2,14 @@ import Image from "next/image";
 import { CheckIcon } from "../Icons";
 
 /**
- * Hero visual: a phone mirroring the passenger app's flight screen, with two floating cards.
+ * Hero visual: a phone mirroring the passenger app's flight screen, with a floating "Fixed fare" badge.
  * It's a picture of the app, so it is exposed to screen readers as one image with a description.
  */
 export default function HeroPhone() {
   return (
     <div
       role="img"
-      aria-label="The OrangeRide app showing flight EZY8687 from Amsterdam landing at Gatwick North Terminal, with pickup at 22:05 at Car Park 6, Level 4. A notification says the flight is delayed and the pickup has moved to 22:35."
+      aria-label="The OrangeRide app showing flight EZY8687 from Amsterdam landing at Gatwick North Terminal, with pickup at 22:05 at Car Park 6, Level 4."
       className="box-content grid min-h-[700px] min-w-0 justify-items-center py-[10px]"
     >
       <div
@@ -80,24 +80,6 @@ export default function HeroPhone() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Notification card */}
-      <div
-        aria-hidden
-        className="relative z-10 mt-[90px] box-content flex w-[270px] max-w-[calc(100%-30px)] gap-3 self-start justify-self-start rounded-[20px] border border-line bg-white p-[14px] shadow-[0_24px_50px_-28px_rgba(46,50,56,0.5)] [grid-area:1/1]"
-      >
-        <span className="grid h-[38px] w-[38px] flex-none place-items-center rounded-[11px] bg-[#fff3e3]">
-          <Image src="/images/logo-pin.png" alt="" width={104} height={160} className="h-[28px] w-auto" />
-        </span>
-        <span className="flex min-w-0 flex-col leading-[1.35]">
-          <span className="flex justify-between text-[12px] text-muted">
-            <span>OrangeRide</span>
-            <span>now</span>
-          </span>
-          <strong className="text-[14.5px] text-ink">EZY8687 delayed</strong>
-          <span className="text-[13.5px]">Pickup moved to 22:35 (+30 min).</span>
-        </span>
       </div>
 
       {/* Fixed-fare badge */}
