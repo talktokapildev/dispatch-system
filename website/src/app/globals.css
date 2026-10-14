@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+  body {
+    margin: 0;
+    background: #f1f5f9;
+    color: #4b5563;
+    font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  /* Links, as in the canvas */
+  a {
+    color: #b45309;
+    text-decoration: underline;
+  }
+  a:hover {
+    color: #92400e;
+  }
+  /* Anchored sections land below the top of the screen with a little room */
+  [id] {
+    scroll-margin-top: 16px;
+  }
+  /* Visible keyboard focus on every interactive element */
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible {
+    outline: 3px solid #e06800;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  /* FAQ: native <details>, custom marker */
+  details summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  details summary::-webkit-details-marker {
+    display: none;
+  }
+  details[open] .faq-plus {
+    transform: rotate(45deg);
+  }
+}
+
+@layer components {
+  .skip-link {
+    position: absolute;
+    left: 16px;
+    top: -100px;
+    z-index: 50;
+    background: #ffffff;
+    color: #2e3238;
+    font-weight: 700;
+    padding: 12px 16px;
+    border-radius: 12px;
+  }
+  .skip-link:focus {
+    top: 12px;
+  }
+
+  /* Legal article prose, copied from the Privacy / Terms artboards */
+  .legal h3 {
+    font-family: var(--font-heading), system-ui, sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    color: #2e3238;
+    margin: 26px 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .legal p {
+    margin: 0 0 14px;
+  }
+  .legal ul {
+    margin: 0 0 14px;
+    padding-left: 22px;
+    list-style: disc;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .legal ul ul {
+    margin: 8px 0 0;
+    list-style: circle;
+  }
+  .legal strong {
+    color: #2e3238;
+  }
+  .legal a {
+    color: #b45309;
+  }
+  .legal a:hover {
+    color: #92400e;
+  }
+}
