@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Familjen_Grotesk, Figtree } from "next/font/google";
+import CookieBanner from "@/components/CookieBanner";
 import Footer from "@/components/Footer";
+import GoogleTag from "@/components/GoogleTag";
 import Header from "@/components/Header";
 import PreBookedNotice from "@/components/PreBookedNotice";
 import { EMAIL, PHONE_E164, SITE_URL } from "@/lib/site";
@@ -80,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en-GB" className={`${heading.variable} ${body.variable}`}>
       <body className="min-h-screen bg-page font-sans text-body">
+        <GoogleTag />
         <a href="#main" className="skip-link">
           Skip to content
         </a>
@@ -87,6 +90,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Header />
         <main id="main">{children}</main>
         <Footer />
+        <CookieBanner />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
