@@ -6,8 +6,8 @@ export const GOOGLE_TAG_ID = "AW-18358557171";
 export const CONVERSIONS = {
   /** "Submit lead form" (Website contact tap): WhatsApp, email and passenger-app store taps. */
   contact: "ryxiCPvVz9gcEPOzhbJE",
-  /** "Website call tap": taps on the phone number. Empty until the action exists; falls back to `contact`. */
-  call: "",
+  /** "Website call tap" (Contact goal): taps on the phone number. Falls back to `contact` if emptied. */
+  call: "JjmMCOrX6ZwdEPOzhbJE",
 };
 
 /** localStorage key holding the visitor's cookie choice: "granted" | "denied". */
