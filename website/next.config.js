@@ -26,7 +26,16 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   async redirects() {
-    return OLD_TO_NEW.map(([source, destination]) => ({ source, destination, permanent: true }));
+    return [
+      // www.orangeride.co.uk -> orangeride.co.uk (the apex is the canonical address)
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.orangeride.co.uk" }],
+        destination: "https://orangeride.co.uk/:path*",
+        permanent: true,
+      },
+      ...OLD_TO_NEW.map(([source, destination]) => ({ source, destination, permanent: true })),
+    ];
   },
 };
 

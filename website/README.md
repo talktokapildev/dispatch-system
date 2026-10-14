@@ -58,6 +58,8 @@ state) and swap it into `src/app/page.tsx`, or replace the static example inside
 | `/wp-sitemap.xml`, `/wp-sitemap-*.xml`, `/sitemap_index.xml` | `/sitemap.xml` |
 | `/wp-admin/…`, `/wp-login.php` | `/` |
 
+`www.orangeride.co.uk/*` also redirects to `orangeride.co.uk/*` (the apex is the canonical address).
+
 All are permanent. URLs with a trailing slash take two 308 hops (Next.js strips the slash first).
 
 ## Notes
