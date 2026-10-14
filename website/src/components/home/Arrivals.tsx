@@ -1,17 +1,19 @@
 import { PinIcon, PlaneIcon } from "../Icons";
+import { PhoneText } from "../Responsive";
 
 /**
  * "Flying into Gatwick": static showcase of the app's flight tracking.
  * The example card (<figure>) can later be swapped for a live flight-lookup component.
  */
 
-type Step = { n: number; title: string; text: string; badge: string; active?: boolean };
+type Step = { n: number; title: string; text: string; short: string; badge: string; active?: boolean };
 
 const STEPS: Step[] = [
   {
     n: 1,
     title: "Enter your flight number and date",
     text: 'Choose a Gatwick terminal as your pickup and the app asks "Arriving on a flight?"',
+    short: "Pick a Gatwick terminal and add your flight.",
     badge: "bg-amber text-ink",
     active: true,
   },
@@ -19,18 +21,21 @@ const STEPS: Step[] = [
     n: 2,
     title: "We find it straight away",
     text: "You'll see the airline, where it's flying from, and the scheduled and expected arrival times.",
+    short: "We show the airline, origin and expected arrival.",
     badge: "bg-[#4a3a1c] text-[#fbbf24]",
   },
   {
     n: 3,
     title: "Choose your terminal and luggage",
     text: 'We\'ll show you the exact meeting point and set your pickup time after landing. Allow longer if you\'re collecting checked bags. Need longer still? Tap "Need more time?"',
+    short: "We show your meeting point and set your pickup time.",
     badge: "bg-[#4a3a1c] text-[#fbbf24]",
   },
   {
     n: 4,
     title: "We keep tracking until you land",
     text: "If you're delayed, your pickup moves later automatically. If you're early, it moves up to 15 minutes earlier, and we check with you before going further. You'll get a text when you land.",
+    short: "Delays move your pickup later automatically. You'll get a text when you land.",
     badge: "bg-[#24402a] text-[#86efac]",
   },
 ];
@@ -110,8 +115,10 @@ export default function Arrivals() {
             </h2>
           </div>
           <p className="m-0 text-[18px] text-[#d1d5db]">
-            When you book a Gatwick pickup in the OrangeRide app, just add your flight number.
-            Here&apos;s what you&apos;ll see, and what happens next.
+            <PhoneText
+              full="When you book a Gatwick pickup in the OrangeRide app, just add your flight number. Here's what you'll see, and what happens next."
+              short="Add your flight when you book. Here's what happens next."
+            />
           </p>
         </div>
 
@@ -131,7 +138,9 @@ export default function Arrivals() {
                 </span>
                 <span className="flex flex-col gap-[2px]">
                   <strong className="text-[18px] text-white">{s.title}</strong>
-                  <span>{s.text}</span>
+                  <span>
+                    <PhoneText full={s.text} short={s.short} />
+                  </span>
                 </span>
               </li>
             ))}
@@ -168,10 +177,12 @@ export default function Arrivals() {
             <div className={card}>
               <strong className="text-white">Cancelled or diverted</strong>
               <span className="text-[15px]">
-                We&apos;ll text you straight away and help rearrange. You won&apos;t be left waiting at a
-                car park.
+                <PhoneText
+                  full="We'll text you straight away and help rearrange. You won't be left waiting at a car park."
+                  short="We'll text you straight away and help rearrange."
+                />
               </span>
-              <span className="text-[14px] text-[#b4b9c0]">
+              <span className="hidden text-[14px] text-[#b4b9c0] sm:inline">
                 Flying out instead? Just choose a pickup time. Flight tracking is for arrivals.
               </span>
             </div>

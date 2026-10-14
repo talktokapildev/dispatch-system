@@ -1,3 +1,4 @@
+import { PhoneText } from "../Responsive";
 import { DRIVER_ANDROID, DRIVER_IOS, WHATSAPP_HREF } from "@/lib/site";
 
 const btn =
@@ -15,8 +16,10 @@ export default function DriveWithUs() {
             Got a PCO licence? Grow with us.
           </h2>
           <p className="m-0 text-[17px] text-soft">
-            We&apos;re adding drivers as bookings grow. Download the OrangeRide Driver app to apply and
-            upload your documents, or message us first with any questions.
+            <PhoneText
+              full="We're adding drivers as bookings grow. Download the OrangeRide Driver app to apply and upload your documents, or message us first with any questions."
+              short="We're adding drivers. Apply in the OrangeRide Driver app."
+            />
           </p>
         </div>
         <div className="flex flex-col items-start gap-4">

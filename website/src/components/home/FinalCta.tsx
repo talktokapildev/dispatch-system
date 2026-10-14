@@ -1,3 +1,4 @@
+import { PhoneText } from "../Responsive";
 import {
   EMAIL_HREF,
   PASSENGER_ANDROID,
@@ -22,7 +23,10 @@ export default function FinalCta() {
             Flying soon? Let&apos;s get your ride sorted.
           </h2>
           <p className="m-0 text-[18px] text-[#d1d5db]">
-            Message or call us, or book in the app at least 24 hours ahead.
+            <PhoneText
+              full="Message or call us, or book in the app at least 24 hours ahead."
+              short="Message, call or book in the app 24 hours ahead."
+            />
           </p>
         </div>
         <div className="flex flex-col items-start gap-3">

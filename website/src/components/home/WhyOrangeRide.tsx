@@ -1,4 +1,6 @@
-type Card = { tag: string; tagClass: string; title: string; text: string };
+import { PhoneText } from "../Responsive";
+
+type Card = { tag: string; tagClass: string; title: string; text: string; short: string };
 
 const CARDS: Card[] = [
   {
@@ -6,18 +8,21 @@ const CARDS: Card[] = [
     tagClass: "border border-[#fde7b0] bg-[#fffbeb] text-accent-dark",
     title: "Planned, not dispatched",
     text: "Every trip is booked at least 24 hours ahead, so it's planned before the day. You won't be refreshing an app hoping a car turns up.",
+    short: "Every trip is booked 24+ hours ahead and planned before the day.",
   },
   {
     tag: "FIXED FARE",
     tagClass: "border border-[#fde7b0] bg-[#fffbeb] text-accent-dark",
     title: "The price doesn't move",
     text: "You see the total before you book. Traffic, roadworks and flight delays won't change it.",
+    short: "You see the total before you book. It won't change.",
   },
   {
     tag: "CRAWLEY-BASED",
     tagClass: "bg-[#ecf6e4] text-[#2a5e15]",
     title: "Local and accountable",
     text: "We're a TfL-licensed operator ten minutes from Gatwick, with real people you can call or WhatsApp.",
+    short: "TfL-licensed, ten minutes from Gatwick. Real people to call or WhatsApp.",
   },
 ];
 
@@ -50,7 +55,9 @@ export default function WhyOrangeRide() {
               {c.tag}
             </span>
             <h3 className="m-0 text-[22px] font-extrabold text-ink">{c.title}</h3>
-            <p className="m-0">{c.text}</p>
+            <p className="m-0">
+              <PhoneText full={c.text} short={c.short} />
+            </p>
           </div>
         ))}
       </div>
