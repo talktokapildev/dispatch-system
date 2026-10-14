@@ -3,6 +3,6 @@ export const NAV = [
   { href: "/#arrivals", label: "Flight tracking" },
   { href: "/#how", label: "How to book" },
   { href: "/#gatwick", label: "Gatwick" },
-  { href: "/#drive", label: "Drive with us" },
+  { href: "/drivers", label: "Drive with us" },
   { href: "/#faq", label: "FAQs" },
 ];

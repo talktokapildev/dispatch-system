@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   OPEN_CONSENT_EVENT,
   classifyHref,
+  isTapKind,
   readConsent,
   saveConsent,
   trackTap,
@@ -27,7 +28,8 @@ export default function CookieBanner() {
       const a = (e.target as Element | null)?.closest?.("a");
       const href = a?.getAttribute("href");
       if (!href) return;
-      const kind = classifyHref(href);
+      const override = a?.getAttribute("data-tap") ?? undefined;
+      const kind = isTapKind(override) ? override : classifyHref(href);
       if (kind) trackTap(kind, href);
     };
     document.addEventListener("click", onClick, { capture: true });
@@ -54,7 +56,10 @@ export default function CookieBanner() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-5">
         <p className="m-0">
           We use cookies to measure how our ads perform.{" "}
-          <Link href="/privacy#cookies" className="font-semibold text-[#fbbf24] hover:text-[#fcd34d]">
+          <Link
+            href="/privacy#cookies"
+            className="font-semibold text-[#fbbf24] hover:text-[#fcd34d]"
+          >
             Learn more
           </Link>
         </p>

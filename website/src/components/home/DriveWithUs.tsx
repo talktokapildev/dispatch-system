@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { PhoneText } from "../Responsive";
-import { DRIVER_ANDROID, DRIVER_IOS, WHATSAPP_HREF } from "@/lib/site";
+import { WHATSAPP_HREF } from "@/lib/site";
 
 const btn =
   "inline-flex min-h-[52px] items-center rounded-[16px] py-[15px] font-bold no-underline";
@@ -17,8 +18,8 @@ export default function DriveWithUs() {
           </h2>
           <p className="m-0 text-[17px] text-soft">
             <PhoneText
-              full="We're adding drivers as bookings grow. Download the OrangeRide Driver app to apply and upload your documents, or message us first with any questions."
-              short="We're adding drivers. Apply in the OrangeRide Driver app."
+              full="We're adding drivers as bookings grow. See what you need and apply in a few minutes, or message us first with any questions."
+              short="We're adding drivers. See what you need and apply."
             />
           </p>
         </div>
@@ -29,12 +30,9 @@ export default function DriveWithUs() {
             <li>Job offers and earnings in one app</li>
           </ul>
           <div className="flex flex-wrap gap-[10px]">
-            <a href={DRIVER_IOS} className={`${btn} bg-ink px-5 text-white hover:text-white`}>
-              Driver app · App Store
-            </a>
-            <a href={DRIVER_ANDROID} className={`${btn} bg-ink px-5 text-white hover:text-white`}>
-              Driver app · Google Play
-            </a>
+            <Link href="/drivers" className={`${btn} bg-ink px-6 text-white hover:text-white`}>
+              Find out more and apply
+            </Link>
             <a href={WHATSAPP_HREF} className={`${btn} bg-white px-[22px] text-ink hover:text-ink`}>
               WhatsApp us
             </a>
