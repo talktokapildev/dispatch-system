@@ -23,6 +23,10 @@ export const FAQS: Item[] = [
     a: "At North Terminal, it's Car Park 6, Level 4. At South Terminal, it's Orange Car Park, Level 3. The app shows your meeting point when you choose your terminal, and it's in your landing text too.",
   },
   {
+    q: "Do you cover London and Heathrow?",
+    a: "Yes. We're licensed by Transport for London. We take pre-booked journeys between Gatwick and London, and between Heathrow and Gatwick, Crawley, Horley, Redhill, Reigate or Horsham. Message us for a fixed fare.",
+  },
+  {
     q: "Is the fare really fixed?",
     a: (
       <>

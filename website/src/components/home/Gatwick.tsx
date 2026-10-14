@@ -22,7 +22,7 @@ export default function Gatwick() {
           </h2>
           <p className="m-0 text-[18px]">
             <PhoneText
-              full="Gatwick is our home airport. Each terminal has its own meeting point, and the app shows it as soon as you choose your terminal."
+              full="Gatwick is our home airport, and we cover London and Heathrow too. Each terminal has its own meeting point, and the app shows it as soon as you choose your terminal."
               short="Each terminal has its own meeting point, shown in the app."
             />
           </p>
