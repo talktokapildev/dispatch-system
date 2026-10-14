@@ -3,7 +3,7 @@ import { EMAIL, EMAIL_HREF, OPERATING_CENTRE, PHONE_DISPLAY, PHONE_HREF } from "
 
 // Word for word from the approved Privacy artboard (Privacy.dc.html). Do not reword.
 
-export const PRIVACY_UPDATED = "12 October 2026";
+export const PRIVACY_UPDATED = "14 October 2026";
 
 export const PRIVACY_INTRO =
   "How OrangeRide collects, uses and protects your personal data when you book a ride, use our apps or drive with us.";
@@ -194,6 +194,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
               <li>Expo and Google Firebase (app notifications)</li>
               <li>Resend (emails such as receipts)</li>
               <li>Railway (hosting our servers and database)</li>
+              <li>Google Ads (measuring how our adverts perform, only if you accept cookies)</li>
             </ul>
           </li>
           <li>
@@ -276,6 +277,35 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
         need it. Data is encrypted in transit, and payment details are handled by Stripe rather
         than stored on our systems. Drivers can see only the details of the jobs assigned to them.
       </p>
+    ),
+  },
+  {
+    id: "cookies",
+    title: "Cookies and advertising",
+    body: (
+      <>
+        <p>
+          Our website advertises through Google Ads. If you choose <strong>Accept</strong> in the
+          cookie banner, Google sets cookies that tell us when someone who clicked one of our adverts
+          then contacts us, for example by tapping WhatsApp, call or email. This helps us see which
+          adverts work. Google receives your browser and device details, the pages you visit on our
+          site and which contact link you tap. It doesn&apos;t receive your name or phone number from
+          us.
+        </p>
+        <p>
+          If you choose <strong>Reject</strong>, we don&apos;t set these cookies. Google may still
+          receive basic, cookie-free signals that help it estimate how adverts perform overall.
+        </p>
+        <p>
+          We use these cookies only with your consent, and you can change your choice at any time
+          using <strong>Cookie settings</strong> at the bottom of every page. Our apps don&apos;t
+          use advertising cookies. Google&apos;s use of data is described at{" "}
+          <a href="https://policies.google.com/technologies/partner-sites">
+            policies.google.com/technologies/partner-sites
+          </a>
+          .
+        </p>
+      </>
     ),
   },
   {

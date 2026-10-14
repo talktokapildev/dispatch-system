@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import CookieSettingsButton from "./CookieSettingsButton";
 import {
   DRIVER_ANDROID,
   DRIVER_IOS,
@@ -109,6 +110,7 @@ export default function Footer() {
             <Link href="/terms" className="-my-3 inline-flex min-h-[44px] items-center text-[#9ca3af] hover:text-white">
               Terms
             </Link>
+            <CookieSettingsButton className="-my-3 inline-flex min-h-[44px] items-center text-[#9ca3af] underline hover:text-white" />
           </span>
         </div>
       </div>

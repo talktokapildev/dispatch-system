@@ -44,6 +44,7 @@ Every push to `master` that touches `website/` redeploys it.
 | `src/app/sitemap.ts`, `robots.ts` | `/sitemap.xml`, `/robots.txt` |
 | `src/app/icon.png`, `apple-icon.png` | Favicon and iOS icon (made from the pin logo) |
 | `next.config.js` | Permanent redirects from the old WordPress URLs |
+| `src/lib/analytics.ts`, `src/components/GoogleTag.tsx`, `CookieBanner.tsx` | Google Ads tag (`AW-18358557171`) with Consent Mode v2, cookie banner, and tap tracking. Conversion labels live in `CONVERSIONS` in `analytics.ts`. |
 
 **Adding interactive features later** (fare checker, flight lookup, quotes): each home section is a
 self-contained component with its own anchor id. Build the new component (with `"use client"` if it needs
