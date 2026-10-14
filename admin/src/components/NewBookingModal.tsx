@@ -102,6 +102,10 @@ export function NewBookingModal({ open, onClose }: Props) {
     }));
   };
 
+  // <input type="datetime-local"> gives "YYYY-MM-DDTHH:mm" in the browser's local time (UK);
+  // the API needs a full ISO timestamp, so convert before sending.
+  const toIso = (v: string) => (v ? new Date(v).toISOString() : undefined);
+
   const mutation = useMutation({
     mutationFn: () =>
       api.post("/admin/bookings", {
@@ -110,9 +114,9 @@ export function NewBookingModal({ open, onClose }: Props) {
         fixedPriceOverride: form.fixedPriceOverride
           ? parseFloat(form.fixedPriceOverride)
           : undefined,
-        scheduledAt: form.scheduledAt || undefined,
-        allocationTime: form.allocationTime || undefined,
-        flightArrivalTime: form.flightArrivalTime || undefined,
+        scheduledAt: toIso(form.scheduledAt),
+        allocationTime: toIso(form.allocationTime),
+        flightArrivalTime: toIso(form.flightArrivalTime),
       }),
     onSuccess: () => {
       toast.success("Booking created successfully");
