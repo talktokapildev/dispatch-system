@@ -1,3 +1,4 @@
+import { PhoneText } from "../Responsive";
 import Image from "next/image";
 import { WHATSAPP_HREF } from "@/lib/site";
 
@@ -20,8 +21,10 @@ export default function Gatwick() {
             Ten minutes from the runway. We know every kerb.
           </h2>
           <p className="m-0 text-[18px]">
-            Gatwick is our home airport. Each terminal has its own meeting point, and the app shows
-            it as soon as you choose your terminal.
+            <PhoneText
+              full="Gatwick is our home airport. Each terminal has its own meeting point, and the app shows it as soon as you choose your terminal."
+              short="Each terminal has its own meeting point, shown in the app."
+            />
           </p>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(180px,100%),1fr))] gap-[10px]">
             {SPOTS.map(([title, text]) => (

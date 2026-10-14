@@ -1,10 +1,23 @@
+import { PhoneText } from "../Responsive";
 import type { ReactNode } from "react";
 import { EMAIL_HREF, PHONE_HREF, WHATSAPP_HREF } from "@/lib/site";
 import StoreBadges from "../StoreBadges";
 
 /** "How to book": three steps plus a contact bar. Step 2's illustration can later become a fare checker. */
 
-function Step({ n, title, art, text }: { n: number; title: string; art: ReactNode; text: string }) {
+function Step({
+  n,
+  title,
+  art,
+  text,
+  short,
+}: {
+  n: number;
+  title: string;
+  art: ReactNode;
+  text: string;
+  short: string;
+}) {
   return (
     <li className="flex flex-col gap-4 rounded-[28px] border border-line bg-white p-[26px]">
       <div className="flex items-center gap-3">
@@ -14,7 +27,9 @@ function Step({ n, title, art, text }: { n: number; title: string; art: ReactNod
         <h3 className="m-0 text-[20px] font-extrabold text-ink">{title}</h3>
       </div>
       {art}
-      <p className="m-0">{text}</p>
+      <p className="m-0">
+        <PhoneText full={text} short={short} />
+      </p>
     </li>
   );
 }
@@ -101,24 +116,38 @@ export default function HowToBook() {
           title="Schedule your ride"
           art={ScheduleArt}
           text="In the app, choose a date and time at least 24 hours ahead. If you're arriving at Gatwick, add your flight number."
+          short="Pick a date and time 24+ hours ahead. Landing at Gatwick? Add your flight."
         />
         <Step
           n={2}
           title="See your fixed fare"
           art={FareArt}
           text="The total is shown before you confirm. Pay by card, Apple Pay, Google Pay or cash."
+          short="See the total before you confirm. Card, Apple Pay, Google Pay or cash."
         />
         <Step
           n={3}
           title="Track your driver"
           art={TrackArt}
           text="On the day, follow your driver on the map. You can manage or cancel the booking under Rides."
+          short="Follow your driver on the map on the day."
         />
       </ol>
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 rounded-[22px] border border-line bg-white px-[22px] py-[18px]">
         <span className="text-[17px]">
-          <strong className="text-ink">Prefer to talk to someone?</strong> WhatsApp, call or email
-          us and we&apos;ll book it for you.
+          <PhoneText
+            full={
+              <>
+                <strong className="text-ink">Prefer to talk to someone?</strong> WhatsApp, call or
+                email us and we&apos;ll book it for you.
+              </>
+            }
+            short={
+              <>
+                <strong className="text-ink">Prefer to talk?</strong> We&apos;ll book it for you.
+              </>
+            }
+          />
         </span>
         <span className="flex flex-wrap gap-[10px]">
           <a href={WHATSAPP_HREF} className={`${contactBtn} bg-amber font-extrabold`}>
