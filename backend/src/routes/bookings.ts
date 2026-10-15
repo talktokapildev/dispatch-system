@@ -11,6 +11,7 @@ import { PricingService } from "../services/pricing.service";
 import { DispatchService } from "../services/dispatch.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import { SocketEvent } from "../types";
+import { normalizePhone } from "../lib/phone";
 
 const createBookingSchema = z.object({
   type: z.nativeEnum(BookingType),
@@ -392,6 +393,18 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           operatorNotes: z.string().optional(),
         })
         .parse(request.body);
+
+      // Store passenger numbers in E.164 ("+966 56 598 8098" → "+966565988098", "07…" → "+447…"),
+      // the same format the passenger app signs in with, so admin and app bookings share one account.
+      if (body.passengerPhone) {
+        const parsedPhone = normalizePhone(body.passengerPhone);
+        if (!parsedPhone)
+          return reply.status(400).send({
+            success: false,
+            error: "Passenger phone number isn't valid. Include the country code, e.g. +966…",
+          });
+        body.passengerPhone = parsedPhone.e164;
+      }
 
       const adminUserId = request.user.userId; // TfL: record who created
 

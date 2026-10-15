@@ -34,6 +34,7 @@
     "fastify-plugin": "^4.5.1",
     "firebase-admin": "^12.3.0",
     "ioredis": "^5.4.1",
+    "libphonenumber-js": "^1.11.20",
     "pino": "^9.3.2",
     "pino-pretty": "^11.2.1",
     "resend": "^3.4.0",
