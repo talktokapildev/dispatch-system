@@ -6,6 +6,8 @@ import { Modal } from "@/components/ui";
 import { AddressPicker } from "@/components/AddressPicker";
 import toast from "react-hot-toast";
 import { PoundSterling, Plane, Clock, AlertCircle } from "lucide-react";
+import { PHONE_COUNTRY_OPTIONS, toE164 } from "@/lib/phone";
+import type { CountryCode } from "libphonenumber-js";
 
 const CAR_FEATURES = [
   "Baby Seat",
@@ -90,6 +92,10 @@ export function NewBookingModal({ open, onClose }: Props) {
 
   const set = (key: string, val: any) => setForm((f) => ({ ...f, [key]: val }));
 
+  // Phone: country picker + number as typed; sent to the API as E.164 (+447…, +966…).
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode>("GB");
+  const parsedPhone = toE164(phoneCountry, form.passengerPhone);
+
   const toggleFeature = (
     list: "requiredCarFeatures" | "requiredDriverFeatures",
     val: string
@@ -110,6 +116,7 @@ export function NewBookingModal({ open, onClose }: Props) {
     mutationFn: () =>
       api.post("/admin/bookings", {
         ...form,
+        passengerPhone: parsedPhone?.e164 ?? form.passengerPhone,
         passengerCount: parseInt(form.passengerCount),
         fixedPriceOverride: form.fixedPriceOverride
           ? parseFloat(form.fixedPriceOverride)
@@ -163,12 +170,38 @@ export function NewBookingModal({ open, onClose }: Props) {
               <label className="text-xs text-slate-400 block mb-1">
                 Phone Number *
               </label>
-              <input
-                className="input"
-                placeholder="+447123456789"
-                value={form.passengerPhone}
-                onChange={(e) => set("passengerPhone", e.target.value)}
-              />
+              <div className="flex gap-2">
+                <select
+                  className="input w-44 shrink-0"
+                  aria-label="Phone country"
+                  value={phoneCountry}
+                  onChange={(e) => setPhoneCountry(e.target.value as CountryCode)}
+                >
+                  {PHONE_COUNTRY_OPTIONS.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input flex-1"
+                  type="tel"
+                  placeholder={phoneCountry === "GB" ? "07123 456789" : "Mobile number, or paste +…"}
+                  value={form.passengerPhone}
+                  onChange={(e) => set("passengerPhone", e.target.value)}
+                />
+              </div>
+              {form.passengerPhone.trim() !== "" && (
+                <p
+                  className={`text-xs mt-1 ${
+                    parsedPhone ? "text-slate-400" : "text-red-400"
+                  }`}
+                >
+                  {parsedPhone
+                    ? `Saved as ${parsedPhone.pretty}`
+                    : "Not a valid number for this country. Check it, or paste the full number starting with +"}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -642,7 +675,7 @@ export function NewBookingModal({ open, onClose }: Props) {
                   mutation.isPending ||
                   !form.pickupAddress ||
                   !form.dropoffAddress ||
-                  !form.passengerPhone
+                  !parsedPhone
                 }
                 className="btn-primary px-6"
               >

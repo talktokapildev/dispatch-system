@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,29 +14,52 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { api, useAuthStore } from "../lib/api";
 import { FontSize, Spacing, Radius } from "../lib/theme";
 import { useTheme } from "../lib/ThemeContext";
+import CountryPicker from "../components/CountryPicker";
+import {
+  defaultPhoneCountry,
+  findCountry,
+  formatInternational,
+  rememberPhoneCountry,
+  toE164,
+  type PhoneCountry,
+  PHONE_COUNTRIES,
+} from "../lib/phoneCountries";
 
 type Step = "phone" | "otp";
 
 export default function LoginScreen() {
   const { Colors } = useTheme();
   const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("+44");
+  // Country picker defaults to: last country used on this phone → phone's region → UK.
+  const [country, setCountry] = useState<PhoneCountry>(PHONE_COUNTRIES[0]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [number, setNumber] = useState(""); // as typed, without the country code
+  const [phone, setPhone] = useState(""); // E.164 sent to the API, e.g. +447398341839
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const { setAuth } = useAuthStore();
   const otpRef = useRef<TextInput>(null);
 
+  useEffect(() => {
+    defaultPhoneCountry().then(setCountry);
+  }, []);
+
   const sendOtp = async () => {
-    if (phone.replace(/\s/g, "").length < 13) {
+    const parsed = toE164(country, number);
+    if (!parsed) {
       Alert.alert(
         "Invalid number",
-        "Please enter a valid UK phone number (+447...)"
+        `Please check your mobile number for ${country.name} (${country.dial}).`
       );
       return;
     }
+    // A pasted "+…" number may be from another country: show that flag from now on.
+    const typedCountry = findCountry(parsed.country);
+    if (typedCountry && typedCountry.code !== country.code) setCountry(typedCountry);
+    setPhone(parsed.e164);
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/otp/send", { phone });
+      const { data } = await api.post("/auth/otp/send", { phone: parsed.e164 });
       // if (data._devCode) Alert.alert('Dev Mode', `Your OTP is: ${data._devCode}`)
       if (data._devCode && process.env.APP_ENV !== "production")
         Alert.alert("Dev Mode", `Your OTP is: ${data._devCode}`);
@@ -62,6 +85,8 @@ export default function LoginScreen() {
         requestedRole: "PASSENGER",
       });
       const { token, user } = data.data;
+      // sendOtp already switched the flag to the number's country, so remember that one.
+      rememberPhoneCountry(country.code);
 
       if (user.role !== "PASSENGER") {
         Alert.alert("Access Denied", "This app is for passengers only.");
@@ -101,17 +126,33 @@ export default function LoginScreen() {
             <>
               <Text style={s.cardTitle}>Sign in</Text>
               <Text style={s.label}>Mobile number</Text>
-              <TextInput
-                style={s.input}
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                placeholder="+447123456789"
-                placeholderTextColor={Colors.muted}
-                autoFocus
-              />
+              <View style={s.phoneRow}>
+                <TouchableOpacity
+                  style={s.countryBtn}
+                  onPress={() => setPickerOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Country: ${country.name} ${country.dial}. Tap to change`}
+                >
+                  <Text style={s.countryFlag}>{country.flag}</Text>
+                  <Text style={s.countryDial}>{country.dial}</Text>
+                  <Text style={s.countryCaret}>▾</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={[s.input, s.phoneInput]}
+                  value={number}
+                  onChangeText={setNumber}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
+                  placeholder={country.code === "GB" ? "07123 456789" : "Mobile number"}
+                  placeholderTextColor={Colors.muted}
+                  autoFocus
+                />
+              </View>
               <Text style={s.hint}>
-                We'll send a verification code to this number
+                {country.code === "GB"
+                  ? "We'll text a verification code to this number"
+                  : "We'll text a verification code to this number. Texts abroad can take a minute to arrive."}
               </Text>
               <TouchableOpacity
                 style={[s.btn, loading && s.btnDisabled]}
@@ -128,7 +169,7 @@ export default function LoginScreen() {
           ) : (
             <>
               <Text style={s.cardTitle}>Enter your code</Text>
-              <Text style={s.phoneDisplay}>Sent to {phone}</Text>
+              <Text style={s.phoneDisplay}>Sent to {formatInternational(phone)}</Text>
               <TextInput
                 ref={otpRef}
                 style={[s.input, s.otpInput]}
@@ -163,6 +204,15 @@ export default function LoginScreen() {
           )}
         </View>
       </KeyboardAvoidingView>
+      <CountryPicker
+        visible={pickerOpen}
+        selected={country}
+        onSelect={(c) => {
+          setCountry(c);
+          setPickerOpen(false);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -218,6 +268,23 @@ const styles = (
       fontWeight: "700",
     },
     hint: { fontSize: FontSize.xs, color: C.muted, marginBottom: Spacing.md },
+    phoneRow: { flexDirection: "row", gap: Spacing.sm },
+    phoneInput: { flex: 1 },
+    countryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: 48,
+      backgroundColor: C.inputBg,
+      borderWidth: 1,
+      borderColor: C.border,
+      borderRadius: Radius.md,
+      paddingHorizontal: Spacing.md,
+      marginBottom: Spacing.sm,
+    },
+    countryFlag: { fontSize: 22 },
+    countryDial: { fontSize: FontSize.md, color: C.text, fontWeight: "600" },
+    countryCaret: { fontSize: FontSize.sm, color: C.muted },
     btn: {
       backgroundColor: C.brand,
       borderRadius: Radius.md,
