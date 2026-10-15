@@ -8,12 +8,49 @@ import { addMinutes } from "date-fns";
 import { sendSms, maskPhone } from "../services/sms.service";
 import { RedisKeys, RedisTTL } from "../plugins/redis";
 import { OTP_EXPIRY_MINUTES, OTP_LENGTH } from "../config";
+import { normalizePhone, otpAllowedCountries } from "../lib/phone";
 
+// Any country's mobile number (parsed and checked below), not just +44.
 const sendOtpSchema = z.object({
-  phone: z
-    .string()
-    .regex(/^\+44\d{10}$/, "Must be a valid UK phone number (+44...)"),
+  phone: z.string().min(5).max(32),
 });
+
+// ─── Sign-in code limits (SMS-pumping protection) ────────────────────────────
+const OTP_PER_PHONE_PER_HOUR = 3;
+const OTP_PER_IP_PER_HOUR = 10;
+/** Circuit breaker: total codes to non-UK numbers per hour across everyone. */
+const OTP_INTERNATIONAL_PER_HOUR = Number(process.env.OTP_INTERNATIONAL_PER_HOUR ?? 30);
+
+/**
+ * The visitor's IP. Requests reach us through Railway's proxy, so request.ip is the proxy's
+ * address; the client is the right-most X-Forwarded-For entry (added by the proxy, so it can't
+ * be spoofed by the client). Returns null when only a private/proxy address is known, so we
+ * never put every visitor in one shared bucket.
+ */
+function clientIp(request: { headers: Record<string, any>; ip: string }): string | null {
+  const xff = String(request.headers["x-forwarded-for"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ip = xff.length ? xff[xff.length - 1] : request.ip;
+  if (!ip) return null;
+  const v4 = ip.replace(/^::ffff:/, "");
+  if (
+    /^(10\.|127\.|192\.168\.|169\.254\.)/.test(v4) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(v4) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v4) || // carrier-grade NAT (Railway)
+    v4 === "::1" || /^f[cd]/i.test(v4)
+  )
+    return null;
+  return v4;
+}
+
+/** Count one hit in a 1-hour window; true if the limit is now exceeded. */
+async function overLimit(redis: any, key: string, max: number): Promise<boolean> {
+  const n = await redis.incr(key);
+  if (n === 1) await redis.expire(key, 60 * 60);
+  return n > max;
+}
 
 const verifyOtpSchema = z.object({
   phone: z.string(),
@@ -50,11 +87,47 @@ async function sendSmsOtp(to: string, code: string): Promise<void> {
 export async function authRoutes(fastify: FastifyInstance) {
   // ─── Send OTP ──────────────────────────────────────────────────────────────
   fastify.post("/auth/otp/send", async (request, reply) => {
-    const body = sendOtpSchema.parse(request.body);
+    const raw = sendOtpSchema.parse(request.body);
 
-    if (DEMO_PHONES.includes(body.phone)) {
-      fastify.log.info(`[Demo] OTP send skipped for demo number ${body.phone}`);
+    if (DEMO_PHONES.includes(raw.phone)) {
+      fastify.log.info(`[Demo] OTP send skipped for demo number ${raw.phone}`);
       return reply.send({ success: true, message: "OTP sent" });
+    }
+
+    const parsed = normalizePhone(raw.phone);
+    if (!parsed || !parsed.isMobile) {
+      return reply.status(400).send({
+        success: false,
+        error: "Please enter a valid mobile number, including the country code.",
+      });
+    }
+    if (!parsed.country || !otpAllowedCountries().has(parsed.country)) {
+      fastify.log.warn(`[OTP] Blocked country ${parsed.country ?? "?"} ${maskPhone(parsed.e164)}`);
+      return reply.status(400).send({
+        success: false,
+        error:
+          "We can't send sign-in codes to this country yet. Please call or WhatsApp us on +44 7398 341839 to book.",
+      });
+    }
+    const body = { phone: parsed.e164 };
+
+    // Limits: per number, per visitor IP, and an hourly cap on all non-UK codes.
+    const tooMany = () =>
+      reply.status(429).send({
+        success: false,
+        error: "Too many codes requested. Please wait a while and try again.",
+      });
+    if (await overLimit(fastify.redis, RedisKeys.rateLimit(`otp:phone:${body.phone}`), OTP_PER_PHONE_PER_HOUR))
+      return tooMany();
+    const ip = clientIp(request as any);
+    if (ip && (await overLimit(fastify.redis, RedisKeys.rateLimit(`otp:ip:${ip}`), OTP_PER_IP_PER_HOUR)))
+      return tooMany();
+    if (
+      parsed.country !== "GB" &&
+      (await overLimit(fastify.redis, RedisKeys.rateLimit("otp:intl"), OTP_INTERNATIONAL_PER_HOUR))
+    ) {
+      fastify.log.error(`[OTP] International hourly cap (${OTP_INTERNATIONAL_PER_HOUR}) reached`);
+      return tooMany();
     }
 
     const code = Math.random()
@@ -83,7 +156,11 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   // ─── Verify OTP ────────────────────────────────────────────────────────────
   fastify.post("/auth/otp/verify", async (request, reply) => {
-    const body = verifyOtpSchema.parse(request.body);
+    const input = verifyOtpSchema.parse(request.body);
+    // Same normalisation as /otp/send, so "+966 56…" and "+96656…" find the same code and user.
+    const body = DEMO_PHONES.includes(input.phone)
+      ? input
+      : { ...input, phone: normalizePhone(input.phone)?.e164 ?? input.phone };
 
     // ── Demo bypass ───────────────────────────────────────────────────────────
     if (DEMO_PHONES.includes(body.phone) && body.code !== DEMO_OTP) {

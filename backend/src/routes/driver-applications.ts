@@ -6,6 +6,7 @@
 // GET    /api/v1/driver-applications/:id                      — check own application status
 
 import { FastifyInstance } from "fastify";
+import { normalizePhone } from "../lib/phone";
 import {
   uploadToCloudinary,
   CloudinaryFolder,
@@ -37,7 +38,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
   // ─── POST /api/v1/driver-applications ──────────────────────────────────────
   // Submit a new application or re-submit a rejected one.
   fastify.post("/driver-applications", async (request, reply) => {
-    const {
+    // eslint-disable-next-line prefer-const
+    let {
       name,
       phone,
       email,
@@ -80,6 +82,15 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         .status(400)
         .send({ error: `Missing required fields: ${missing.join(", ")}` });
     }
+
+    // Drivers need a UK mobile (TfL licensing); store it in E.164 so it matches sign-in.
+    const parsedPhone = normalizePhone(phone);
+    if (!parsedPhone || parsedPhone.country !== "GB" || !parsedPhone.isMobile) {
+      return reply
+        .status(400)
+        .send({ error: "Please enter a valid UK mobile number (07…)." });
+    }
+    phone = parsedPhone.e164;
 
     // Check for existing application for this phone
     const existing = await fastify.prisma.driverApplication.findFirst({
