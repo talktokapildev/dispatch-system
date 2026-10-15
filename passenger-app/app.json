@@ -70,7 +70,8 @@
           "merchantIdentifier": "merchant.com.orangeride.passenger",
           "enableGooglePay": true
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "extra": {
       "eas": {
