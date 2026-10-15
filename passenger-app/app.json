@@ -3,7 +3,7 @@
     "name": "OrangeRide",
     "newArchEnabled": false,
     "slug": "orangeride-passenger",
-    "version": "1.0.11",
+    "version": "1.0.12",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -28,9 +28,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "OrangeRide uses your camera for profile photos and document verification if required.",
         "NSPhotoLibraryUsageDescription": "OrangeRide uses your photo library for profile photos and document verification if required.",
-        "UIBackgroundModes": [
-          "remote-notification"
-        ]
+        "UIBackgroundModes": ["remote-notification"]
       },
       "config": {
         "googleMapsApiKey": "AIzaSyAACxY0v2BlKtyW2BnNRjnGpuM1UjrRGWI"
