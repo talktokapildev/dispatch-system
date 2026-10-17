@@ -207,8 +207,15 @@ const check = (name: string, ok: boolean, info?: any) => {
     check("edit details → 200", r.statusCode === 200 && r.json().data.colour === "Black", r.json());
 
     // ── Detail + list extras ──
+    const cancelled = await mkBooking("CANCELLED", { vehicleId: carA.id, driverId: kapil.id });
+    const assigned = await mkBooking("DRIVER_ASSIGNED", { vehicleId: carA.id, driverId: other.id, scheduledAt: new Date(Date.now() + 86400_000) });
     r = await req("GET", `/admin/vehicles/${carA.id}`);
-    check("detail lists the car's bookings", r.json().data._count.bookings === 2 && r.json().data.bookings.length === 2, r.json().data._count);
+    const det = r.json().data;
+    check("cancelled bookings not listed", !det.recentTrips.concat(det.upcoming).some((t: any) => t.id === cancelled.id));
+    check("assigned job listed under upcoming", det.upcoming.length === 1 && det.upcoming[0].id === assigned.id, det.upcoming);
+    await prisma.booking.update({ where: { id: assigned.id }, data: { status: "CANCELLED" } });
+    check("detail lists the car's completed trips", det.completedCount === 2 && det.recentTrips.length === 2, det.completedCount);
+    check("trip with a completion time listed first", det.recentTrips[0].id === done.id, det.recentTrips.map((t: any) => t.reference));
     r = await req("GET", "/admin/vehicles");
     const rowA = r.json().data.items.find((v: any) => v.id === carA.id);
     check("list shows last trip date", !!rowA?.lastTripAt, rowA);
