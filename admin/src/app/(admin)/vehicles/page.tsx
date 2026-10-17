@@ -312,8 +312,11 @@ export default function VehiclesPage() {
                 </td>
                 <td className="px-4 py-3">
                   {v.archivedAt ? (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-500">
-                      RETIRED
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-500"
+                      title={`Ceased ${format(new Date(v.archivedAt), "dd MMM yyyy")}`}
+                    >
+                      RETIRED {format(new Date(v.archivedAt), "dd/MM/yy")}
                     </span>
                   ) : expiryState(v) === "expired" ? (
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">
@@ -410,6 +413,9 @@ export default function VehiclesPage() {
                 ["PHV licence", <span key="p" className="font-mono">{selected.phvLicenceNumber ?? "—"}</span>],
                 ["PHV expiry", <Expiry key="pe" date={selected.phvLicenceExpiry} />],
                 ["PHV disc", <span key="d" className="font-mono">{selected.phvDiscNumber ?? "—"}</span>],
+                ["Registered keeper", selected.keeperName ?? "—"],
+                ["Start date", selected.startDate ? format(new Date(selected.startDate), "dd MMM yyyy") : "—"],
+                ["Vehicle ceased", selected.archivedAt ? format(new Date(selected.archivedAt), "dd MMM yyyy") : "—"],
               ].map(([label, value]) => (
                 <div
                   key={label as string}
@@ -420,6 +426,12 @@ export default function VehiclesPage() {
                 </div>
               ))}
             </div>
+            {selected.keeperAddress && (
+              <p className="text-xs text-slate-400 whitespace-pre-wrap">
+                <span className="text-slate-500">Keeper address: </span>
+                {selected.keeperAddress}
+              </p>
+            )}
             {selected.notes && (
               <p className="text-xs text-slate-400 whitespace-pre-wrap">
                 <span className="text-slate-500">Notes: </span>

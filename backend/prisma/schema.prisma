@@ -306,8 +306,12 @@ model Vehicle {
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
-  archivedAt       DateTime?
+  archivedAt       DateTime? // retired = "vehicle ceased" on TfL's vehicle record
   notes            String?
+  // TfL vehicle record
+  keeperName       String? // registered keeper (V5C)
+  keeperAddress    String?
+  startDate        DateTime  @default(now()) // started working for OrangeRide
 
   driver   Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
   bookings Booking[]

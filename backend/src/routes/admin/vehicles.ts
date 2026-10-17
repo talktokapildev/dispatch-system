@@ -51,6 +51,15 @@ const fields = {
   emissionStandard: optText,
   isUlezCompliant: z.boolean().default(false),
   notes: z.string().trim().max(1000).nullable().optional(),
+  keeperName: optText,
+  keeperAddress: z
+    .string()
+    .trim()
+    .max(500)
+    .nullable()
+    .optional()
+    .transform((s) => (s === undefined ? undefined : s || null)),
+  startDate: dateStr.optional(),
 };
 const createSchema = z.object({ ...fields, driverId: z.string().min(1).nullable().optional() });
 const updateSchema = z.object(fields).partial();
@@ -59,9 +68,10 @@ const toDate = (s: string | null | undefined) =>
   s === undefined ? undefined : s === null ? null : new Date(s);
 
 function vehicleData(body: Partial<z.infer<typeof updateSchema>>) {
-  const { motExpiry, insuranceExpiry, phvLicenceExpiry, licensePlate, ...rest } = body;
+  const { motExpiry, insuranceExpiry, phvLicenceExpiry, licensePlate, startDate, ...rest } = body;
   return {
     ...rest,
+    ...(startDate !== undefined && { startDate: new Date(startDate) }),
     ...(licensePlate !== undefined && { licensePlate: normalisePlate(licensePlate) }),
     ...(motExpiry !== undefined && { motExpiry: new Date(motExpiry) }),
     ...(insuranceExpiry !== undefined && { insuranceExpiry: new Date(insuranceExpiry) }),

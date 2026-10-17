@@ -3,6 +3,11 @@
 -- Vehicle: driver becomes optional (still at most one current vehicle per driver)
 ALTER TABLE "Vehicle" ALTER COLUMN "driverId" DROP NOT NULL;
 ALTER TABLE "Vehicle" ADD COLUMN "notes" TEXT;
+-- TfL vehicle record: keeper and the date the car started working for us
+ALTER TABLE "Vehicle" ADD COLUMN "keeperName" TEXT;
+ALTER TABLE "Vehicle" ADD COLUMN "keeperAddress" TEXT;
+ALTER TABLE "Vehicle" ADD COLUMN "startDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+UPDATE "Vehicle" SET "startDate" = "createdAt";
 ALTER TABLE "Vehicle" DROP CONSTRAINT "Vehicle_driverId_fkey";
 ALTER TABLE "Vehicle" ADD CONSTRAINT "Vehicle_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Driver"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 

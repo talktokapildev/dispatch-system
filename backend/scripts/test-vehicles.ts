@@ -94,16 +94,20 @@ const check = (name: string, ok: boolean, info?: any) => {
 
   try {
     // ── Add + assign ──
-    let r = await addVehicle(plate("A"), { driverId: kapil.id });
+    let r = await addVehicle(plate("A"), {
+      driverId: kapil.id, keeperName: "Kapil Dev", keeperAddress: "1 Test Road\nCrawley RH10 1AA", startDate: "2025-03-01",
+    });
     check("add vehicle with driver → 201", r.statusCode === 201, r.json());
     const carA = r.json().data;
     check("new vehicle assigned to driver", carA.driver?.id === kapil.id, carA.driver);
+    check("keeper + start date saved", carA.keeperName === "Kapil Dev" && carA.keeperAddress.includes("RH10") && carA.startDate.startsWith("2025-03-01"), carA);
 
     r = await addVehicle(` ${plate("A").toLowerCase().replace(/(.{3})/, "$1 ")} `);
     check("same reg with different spacing/case → 409", r.statusCode === 409, r.json());
 
     r = await addVehicle(plate("B"));
     check("add vehicle unassigned → 201", r.statusCode === 201 && !r.json().data.driver, r.json());
+    check("start date defaults to today", r.json().data.startDate.slice(0, 10) === new Date().toISOString().slice(0, 10), r.json().data.startDate);
     const carB = r.json().data;
 
     r = await req("POST", "/admin/vehicles", { ...vBody(plate("X")), motExpiry: "not-a-date" });

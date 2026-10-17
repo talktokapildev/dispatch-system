@@ -21,6 +21,9 @@ export const EMPTY_VEHICLE_FORM = {
   emissionStandard: "",
   isUlezCompliant: "false",
   notes: "",
+  keeperName: "",
+  keeperAddress: "",
+  startDate: "", // "" on a new vehicle = today
 };
 export type VehicleForm = typeof EMPTY_VEHICLE_FORM;
 
@@ -43,6 +46,9 @@ export function vehicleFormFrom(v: any): VehicleForm {
     emissionStandard: v.emissionStandard ?? "",
     isUlezCompliant: v.isUlezCompliant ? "true" : "false",
     notes: v.notes ?? "",
+    keeperName: v.keeperName ?? "",
+    keeperAddress: v.keeperAddress ?? "",
+    startDate: day(v.startDate),
   };
 }
 
@@ -63,6 +69,9 @@ export function vehiclePayload(f: VehicleForm) {
     emissionStandard: f.emissionStandard || null,
     isUlezCompliant: f.isUlezCompliant === "true",
     notes: f.notes.trim() || null,
+    keeperName: f.keeperName.trim() || null,
+    keeperAddress: f.keeperAddress.trim() || null,
+    ...(f.startDate && { startDate: f.startDate }),
   };
 }
 
@@ -153,6 +162,27 @@ export function VehicleFormFields({
             </select>
           </div>
         </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">TfL vehicle record</p>
+        <div className="grid grid-cols-2 gap-3">
+          {text("keeperName", "Registered keeper (V5C)", "Kapil Dev")}
+          {text("startDate", "Start date (with OrangeRide)", "", { type: "date" })}
+          <div className="col-span-2">
+            <Label>Keeper address</Label>
+            <textarea
+              className="input w-full"
+              rows={2}
+              placeholder="As on the V5C logbook"
+              value={form.keeperAddress}
+              onChange={set("keeperAddress")}
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-600 mt-2">
+          Start date defaults to today. The ceased date is set when you retire the vehicle.
+        </p>
       </div>
 
       <div>
