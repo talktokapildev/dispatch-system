@@ -645,6 +645,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
           passenger: { include: { user: true } },
           driver: { include: { user: true, vehicle: true } },
           dispatchedByUser: dispatcherInclude,
+          recordedByUser: { select: { firstName: true, lastName: true } },
+          receipt: { select: { billTo: true, issuedAt: true, receiptNumber: true } },
           meetingPoint: { select: { name: true, terminal: true } },
           flightWatch: {
             select: {

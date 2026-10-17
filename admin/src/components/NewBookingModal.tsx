@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/ui";
 import { AddressPicker } from "@/components/AddressPicker";
 import toast from "react-hot-toast";
-import { PoundSterling, Plane, Clock, AlertCircle } from "lucide-react";
+import { PoundSterling, Plane, Clock, AlertCircle, History } from "lucide-react";
 import { PHONE_COUNTRY_OPTIONS, toE164 } from "@/lib/phone";
 import type { CountryCode } from "libphonenumber-js";
 
@@ -112,6 +112,27 @@ export function NewBookingModal({ open, onClose }: Props) {
   // the API needs a full ISO timestamp, so convert before sending.
   const toIso = (v: string) => (v ? new Date(v).toISOString() : undefined);
 
+  // "This trip has already happened": record a past trip straight as COMPLETED (no dispatch,
+  // no messages to passenger or driver). Needs pickup time, driver and the fare charged.
+  const [pastTrip, setPastTrip] = useState(false);
+  const [past, setPast] = useState({
+    driverId: "",
+    dropoffAt: "",
+    noCommission: false,
+    bookedVia: "WHATSAPP",
+    bookedAt: "",
+  });
+  const setP = (key: keyof typeof past, val: any) => setPast((p) => ({ ...p, [key]: val }));
+  const { data: driversData } = useQuery({
+    queryKey: ["drivers-for-past-trip"],
+    queryFn: () => api.get("/admin/drivers", { params: { limit: 200 } }).then((r) => r.data.data),
+    enabled: open && pastTrip,
+  });
+  const drivers: any[] = driversData?.items ?? [];
+  const pastFare = parseFloat(form.fixedPriceOverride);
+  const pastReady =
+    !pastTrip || (!!form.scheduledAt && !!past.driverId && pastFare > 0);
+
   const mutation = useMutation({
     mutationFn: () =>
       api.post("/admin/bookings", {
@@ -122,11 +143,22 @@ export function NewBookingModal({ open, onClose }: Props) {
           ? parseFloat(form.fixedPriceOverride)
           : undefined,
         scheduledAt: toIso(form.scheduledAt),
-        allocationTime: toIso(form.allocationTime),
+        allocationTime: pastTrip ? undefined : toIso(form.allocationTime),
+        isOnHold: pastTrip ? false : form.isOnHold,
         flightArrivalTime: toIso(form.flightArrivalTime),
+        ...(pastTrip && {
+          bookedVia: past.bookedVia,
+          bookedAt: toIso(past.bookedAt),
+          pastTrip: {
+            driverId: past.driverId,
+            completedAt: toIso(past.dropoffAt),
+            fare: pastFare,
+            noCommission: past.noCommission,
+          },
+        }),
       }),
     onSuccess: () => {
-      toast.success("Booking created successfully");
+      toast.success(pastTrip ? "Trip recorded as completed" : "Booking created successfully");
       qc.invalidateQueries({ queryKey: ["bookings"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       onClose();
@@ -272,6 +304,34 @@ export function NewBookingModal({ open, onClose }: Props) {
               Trip Details
             </p>
 
+            {/* Past trip switch */}
+            <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-[var(--border)] hover:border-brand-500/30 transition-all">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={pastTrip}
+                onClick={() => setPastTrip((v) => !v)}
+                className={`w-10 h-5 rounded-full transition-all relative shrink-0 ${
+                  pastTrip ? "bg-brand-500" : "bg-white/10"
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all ${
+                    pastTrip ? "left-5" : "left-0.5"
+                  }`}
+                />
+              </button>
+              <div>
+                <p className="text-xs text-[var(--text)] font-medium flex items-center gap-1">
+                  <History size={11} /> This trip has already happened
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  Saved as completed with the real times. No dispatch, no texts or
+                  notifications.
+                </p>
+              </div>
+            </label>
+
             <div>
               <label className="text-xs text-slate-400 block mb-1">
                 Booking Type *
@@ -355,7 +415,9 @@ export function NewBookingModal({ open, onClose }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-400 block mb-1">
-                  {form.type === "ASAP"
+                  {pastTrip
+                    ? "Pickup time *"
+                    : form.type === "ASAP"
                     ? "Scheduled At (leave blank = now)"
                     : "Pickup Date & Time *"}
                 </label>
@@ -366,20 +428,94 @@ export function NewBookingModal({ open, onClose }: Props) {
                   onChange={(e) => set("scheduledAt", e.target.value)}
                 />
               </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1 flex items-center gap-1">
-                  <Clock size={10} /> Allocation Time (delay dispatch)
-                </label>
-                <input
-                  className="input"
-                  type="datetime-local"
-                  value={form.allocationTime}
-                  onChange={(e) => set("allocationTime", e.target.value)}
-                />
-              </div>
+              {pastTrip ? (
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">
+                    Drop-off time
+                  </label>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={past.dropoffAt}
+                    onChange={(e) => setP("dropoffAt", e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1 flex items-center gap-1">
+                    <Clock size={10} /> Allocation Time (delay dispatch)
+                  </label>
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    value={form.allocationTime}
+                    onChange={(e) => set("allocationTime", e.target.value)}
+                  />
+                </div>
+              )}
             </div>
 
+            {pastTrip && (
+              <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] space-y-3">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Driver *</label>
+                  <select
+                    className="input"
+                    value={past.driverId}
+                    onChange={(e) => setP("driverId", e.target.value)}
+                  >
+                    <option value="">Choose the driver…</option>
+                    {drivers.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.user?.firstName} {d.user?.lastName}
+                        {d.vehicle
+                          ? ` · ${d.vehicle.make} ${d.vehicle.model} ${d.vehicle.licensePlate}`
+                          : " · no vehicle"}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-2 mt-2 text-xs text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-brand-500"
+                      checked={past.noCommission}
+                      onChange={(e) => setP("noCommission", e.target.checked)}
+                    />
+                    No commission (operator drove)
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">How was it booked?</label>
+                    <select
+                      className="input"
+                      value={past.bookedVia}
+                      onChange={(e) => setP("bookedVia", e.target.value)}
+                    >
+                      <option value="WHATSAPP">WhatsApp</option>
+                      <option value="PHONE">Phone call</option>
+                      <option value="EMAIL">Email</option>
+                      <option value="IN_PERSON">In person</option>
+                      <option value="APP">App</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">
+                      When did the request come in?
+                    </label>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={past.bookedAt}
+                      onChange={(e) => setP("bookedAt", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* On Hold */}
+            {!pastTrip && (
             <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-[var(--border)] hover:border-brand-500/30 transition-all">
               <div
                 onClick={() => set("isOnHold", !form.isOnHold)}
@@ -402,6 +538,7 @@ export function NewBookingModal({ open, onClose }: Props) {
                 </p>
               </div>
             </label>
+            )}
 
             {/* Airport fields */}
             {isAirport && (
@@ -492,8 +629,10 @@ export function NewBookingModal({ open, onClose }: Props) {
 
             <div>
               <label className="text-xs text-slate-400 block mb-1 flex items-center gap-1">
-                <PoundSterling size={10} /> Fixed Price Override (leave blank to
-                use calculated fare)
+                <PoundSterling size={10} />{" "}
+                {pastTrip
+                  ? "Fare charged *"
+                  : "Fixed Price Override (leave blank to use calculated fare)"}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
@@ -510,9 +649,9 @@ export function NewBookingModal({ open, onClose }: Props) {
               </div>
               {form.fixedPriceOverride && (
                 <p className="text-xs text-brand-400 mt-1">
-                  ✓ Fixed price of £
-                  {parseFloat(form.fixedPriceOverride).toFixed(2)} will be
-                  charged
+                  ✓ {pastTrip ? "Fare of" : "Fixed price of"} £
+                  {parseFloat(form.fixedPriceOverride).toFixed(2)}{" "}
+                  {pastTrip ? "recorded" : "will be charged"}
                 </p>
               )}
             </div>
@@ -656,15 +795,35 @@ export function NewBookingModal({ open, onClose }: Props) {
                       )} (fixed)`
                     : "Auto-calculated"}
                 </span>
-                {form.isOnHold && (
+                {pastTrip ? (
                   <>
                     <span className="text-slate-500">Status</span>
-                    <span className="text-yellow-400">On Hold</span>
+                    <span className="text-green-400">Completed (recorded after the trip)</span>
                   </>
+                ) : (
+                  form.isOnHold && (
+                    <>
+                      <span className="text-slate-500">Status</span>
+                      <span className="text-yellow-400">On Hold</span>
+                    </>
+                  )
                 )}
               </div>
             </div>
 
+            {pastTrip && !pastReady && (
+              <p className="text-xs text-amber-400">
+                To record the trip, add the{" "}
+                {[
+                  !form.scheduledAt && "pickup time (Trip)",
+                  !past.driverId && "driver (Trip)",
+                  !(pastFare > 0) && "fare charged (Pricing)",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+                .
+              </p>
+            )}
             <div className="flex justify-between pt-2">
               <button onClick={() => setStep(3)} className="btn-ghost">
                 ← Back
@@ -675,11 +834,16 @@ export function NewBookingModal({ open, onClose }: Props) {
                   mutation.isPending ||
                   !form.pickupAddress ||
                   !form.dropoffAddress ||
-                  !parsedPhone
+                  !parsedPhone ||
+                  !pastReady
                 }
                 className="btn-primary px-6"
               >
-                {mutation.isPending ? "Creating…" : "✓ Create Booking"}
+                {mutation.isPending
+                  ? "Saving…"
+                  : pastTrip
+                  ? "✓ Record Completed Trip"
+                  : "✓ Create Booking"}
               </button>
             </div>
           </div>

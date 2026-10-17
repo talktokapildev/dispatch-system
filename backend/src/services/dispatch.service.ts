@@ -417,42 +417,10 @@ export class DispatchService {
         //   platformFee = (21.53 - 8) × 0.15 = £2.03
         //   driverNet   = 21.53 - 2.03        = £19.50
         // Actual commission rate is read live below.
-        let surchargeAmount = 0;
-        try {
-          const zones = await (this.prisma as any).surchargeZone.findMany({
-            where: { isActive: true },
-          });
-          const dLat = completedBooking.dropoffLatitude;
-          const dLng = completedBooking.dropoffLongitude;
-          const pLat = completedBooking.pickupLatitude;
-          const pLng = completedBooking.pickupLongitude;
-          for (const zone of zones) {
-            const poly =
-              Array.isArray(zone.polygon) && zone.polygon.length >= 3
-                ? (zone.polygon as { lat: number; lng: number }[])
-                : null;
-            if (poly) {
-              if (dispatchPointInPolygon(dLat, dLng, poly))
-                surchargeAmount += zone.dropoffFee ?? 0;
-              if (dispatchPointInPolygon(pLat, pLng, poly))
-                surchargeAmount += zone.pickupFee ?? 0;
-            } else if (zone.latitude && zone.longitude && zone.radiusMeters) {
-              if (
-                dispatchHaversine(dLat, dLng, zone.latitude, zone.longitude) <=
-                zone.radiusMeters
-              )
-                surchargeAmount += zone.dropoffFee ?? 0;
-              if (
-                dispatchHaversine(pLat, pLng, zone.latitude, zone.longitude) <=
-                zone.radiusMeters
-              )
-                surchargeAmount += zone.pickupFee ?? 0;
-            }
-          }
-        } catch {
-          // Zone detection failed — fall back to 0 surcharge (full fare commissionable)
-        }
-
+        const surchargeAmount = await tripSurchargeAmount(
+          this.prisma,
+          completedBooking
+        );
         const baseFare = Math.max(0, r2(fare - surchargeAmount));
         // Read the live, admin-configured commission rate rather than a
         // hardcoded value — this previously stayed at 15% even after the
@@ -734,6 +702,58 @@ interface AvailableDriver {
 // ─── Local geo helpers (mirrors pricing.service.ts) ────────────────────────
 // Used for surcharge zone detection at earnings time — avoids importing the
 // full PricingService just for polygon/radius lookups.
+
+/**
+ * Airport/zone supplements on a trip (pickup + drop-off fees of active surcharge zones).
+ * Commission is charged on the fare minus this amount. Returns 0 if zone lookup fails.
+ * Shared by trip completion and admin "Record completed trip".
+ */
+export async function tripSurchargeAmount(
+  prisma: PrismaClient,
+  trip: {
+    pickupLatitude: number;
+    pickupLongitude: number;
+    dropoffLatitude: number;
+    dropoffLongitude: number;
+  }
+): Promise<number> {
+  let surchargeAmount = 0;
+  try {
+    const zones = await (prisma as any).surchargeZone.findMany({
+      where: { isActive: true },
+    });
+    const dLat = trip.dropoffLatitude;
+    const dLng = trip.dropoffLongitude;
+    const pLat = trip.pickupLatitude;
+    const pLng = trip.pickupLongitude;
+    for (const zone of zones) {
+      const poly =
+        Array.isArray(zone.polygon) && zone.polygon.length >= 3
+          ? (zone.polygon as { lat: number; lng: number }[])
+          : null;
+      if (poly) {
+        if (dispatchPointInPolygon(dLat, dLng, poly))
+          surchargeAmount += zone.dropoffFee ?? 0;
+        if (dispatchPointInPolygon(pLat, pLng, poly))
+          surchargeAmount += zone.pickupFee ?? 0;
+      } else if (zone.latitude && zone.longitude && zone.radiusMeters) {
+        if (
+          dispatchHaversine(dLat, dLng, zone.latitude, zone.longitude) <=
+          zone.radiusMeters
+        )
+          surchargeAmount += zone.dropoffFee ?? 0;
+        if (
+          dispatchHaversine(pLat, pLng, zone.latitude, zone.longitude) <=
+          zone.radiusMeters
+        )
+          surchargeAmount += zone.pickupFee ?? 0;
+      }
+    }
+  } catch {
+    // Zone detection failed — fall back to 0 surcharge (full fare commissionable)
+  }
+  return surchargeAmount;
+}
 
 function dispatchPointInPolygon(
   lat: number,

@@ -36,10 +36,10 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     // Apply defaults for any keys not yet in the DB
     const defaults: Record<string, string> = {
       companyName: "OrangeRide",
-      licenceNumber: "II786",
+      licenceNumber: "11786",
       contactPhone: "+447398341839",
       contactEmail: "admin@orangeride.co.uk",
-      businessAddress: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+      businessAddress: "Unit 2, 12 Deer Park Road, South Wimbledon, London SW19 3TL",
     };
     for (const key of PUBLIC_KEYS) {
       if (!map[key]) map[key] = defaults[key] ?? "";

@@ -274,7 +274,7 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={s.card}>
           <Text style={s.cardTitle}>App</Text>
           <InfoRow label="Version" value="1.0.0" />
-          <InfoRow label="Operator" value="OrangeRide (Licence II786)" />
+          <InfoRow label="Operator" value="OrangeRide (Licence 11786)" />
         </View>
 
         {/* Logout */}

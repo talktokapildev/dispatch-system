@@ -31,6 +31,7 @@ const DOT_COLOR: Record<string, string> = {
   started: "bg-blue-400",
   completed: "bg-green-500",
   ended: "bg-red-500",
+  recorded: "bg-slate-400",
 };
 
 function formatMinutes(mins: number): string {

@@ -268,7 +268,7 @@ export default function RideHistoryScreen({ navigation }: any) {
           <body>
             <div class="header">
               <div class="brand"><span class="orange">Orange</span><span class="green">Ride</span></div>
-              <div class="licence">TfL Private Hire Operator Licence: II786</div>
+              <div class="licence">TfL Private Hire Operator Licence: 11786</div>
             </div>
 
             <div class="receipt-title">Receipt — ${b.reference}</div>

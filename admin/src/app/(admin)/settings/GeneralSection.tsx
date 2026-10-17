@@ -20,10 +20,10 @@ interface GeneralSettings {
 
 const DEFAULTS: GeneralSettings = {
   companyName: "OrangeRide",
-  licenceNumber: "II786",
+  licenceNumber: "11786",
   contactEmail: "admin@orangeride.co.uk",
   contactPhone: "+447398341839",
-  businessAddress: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+  businessAddress: "Unit 2, 12 Deer Park Road, South Wimbledon, London SW19 3TL",
 };
 
 export function GeneralSection() {

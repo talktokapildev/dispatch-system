@@ -60,6 +60,8 @@ export async function adminBookingTripRoutes(fastify: FastifyInstance) {
         select: {
           status: true,
           createdAt: true,
+          bookedAt: true,
+          recordedAfterTrip: true,
           scheduledAt: true,
           claimedAt: true,
           dispatchedAt: true,
@@ -89,7 +91,13 @@ export async function adminBookingTripRoutes(fastify: FastifyInstance) {
 
       const ended = booking.statusHistory[0];
       const events: { key: string; label: string; at: Date | null }[] = [
-        { key: "booked", label: "Booked", at: booking.createdAt },
+        // A trip recorded afterwards was booked when the request came in (bookedAt), not when it
+        // was entered in the system; that moment is shown last as "Recorded in system".
+        {
+          key: "booked",
+          label: "Booked",
+          at: booking.recordedAfterTrip ? booking.bookedAt : booking.createdAt,
+        },
         {
           key: "claimed",
           label: "Claimed from job board",
@@ -113,6 +121,11 @@ export async function adminBookingTripRoutes(fastify: FastifyInstance) {
           label:
             ended?.status === BookingStatus.NO_SHOW ? "No show" : "Cancelled",
           at: ended?.createdAt ?? null,
+        },
+        {
+          key: "recorded",
+          label: "Recorded in system (after the trip)",
+          at: booking.recordedAfterTrip ? booking.createdAt : null,
         },
       ];
 

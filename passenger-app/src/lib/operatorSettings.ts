@@ -27,8 +27,8 @@ const DEFAULTS: OperatorSettings = {
   contactPhone: "+447398341839",
   contactEmail: "admin@orangeride.co.uk",
   companyName: "OrangeRide",
-  licenceNumber: "II786",
-  businessAddress: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+  licenceNumber: "11786",
+  businessAddress: "Unit 2, 12 Deer Park Road, South Wimbledon, London SW19 3TL",
 };
 
 export const useOperatorSettings = create<OperatorSettingsStore>()(

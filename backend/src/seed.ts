@@ -107,12 +107,12 @@ async function main() {
   // ─── Default system settings ───────────────────────────────────────────────
   const defaultSettings = [
     { key: "companyName", value: "OrangeRide" },
-    { key: "licenceNumber", value: "II786" },
+    { key: "licenceNumber", value: "11786" },
     { key: "contactEmail", value: "admin@orangeride.co.uk" },
     { key: "contactPhone", value: "+447398341839" },
     {
       key: "businessAddress",
-      value: "Regus, One Elmfield Park, Bromley, BR1 1LU",
+      value: "Unit 2, 12 Deer Park Road, South Wimbledon, London SW19 3TL",
     },
   ];
 
