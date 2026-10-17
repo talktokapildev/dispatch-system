@@ -28,16 +28,6 @@ import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 
 const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE", "ARCHIVED"];
-const VEHICLE_CLASSES = ["STANDARD", "EXECUTIVE", "MPV", "MINIBUS"];
-const EMISSION_STANDARDS = [
-  "",
-  "Euro 4",
-  "Euro 5",
-  "Euro 6",
-  "Electric",
-  "Hybrid",
-  "Plug-in Hybrid",
-];
 
 const DOC_LABELS: Record<string, string> = {
   PCO_LICENSE: "PCO Badge",
@@ -60,20 +50,7 @@ const EMPTY_FORM = {
   pcoBadgeNumber: "",
   pcoLicenseExpiry: "",
   drivingLicenseNumber: "",
-  make: "",
-  model: "",
-  year: "",
-  colour: "",
-  licensePlate: "",
-  vehicleClass: "STANDARD",
-  seats: "4",
-  motExpiry: "",
-  insuranceExpiry: "",
-  phvLicenceNumber: "",
-  phvLicenceExpiry: "",
-  phvDiscNumber: "",
-  emissionStandard: "",
-  isUlezCompliant: "false",
+  vehicleId: "", // car from the Vehicles page ("" = none)
 };
 
 export default function DriversPage() {
@@ -255,6 +232,37 @@ export default function DriversPage() {
     refetchInterval: 15_000,
   });
 
+  // Cars on the fleet, for the vehicle pickers
+  const { data: fleetData } = useQuery({
+    queryKey: ["vehicles", "active"],
+    queryFn: () =>
+      api
+        .get("/admin/vehicles", { params: { status: "active" } })
+        .then((r) => r.data.data),
+  });
+  const fleetVehicles: any[] = fleetData?.items ?? [];
+  // Free cars first, then the ones other drivers have
+  const vehicleOptions = (driverId?: string) =>
+    [...fleetVehicles].sort(
+      (a, b) =>
+        Number(!!a.driver && a.driver.id !== driverId) -
+          Number(!!b.driver && b.driver.id !== driverId) ||
+        a.licensePlate.localeCompare(b.licensePlate)
+    );
+
+  const changeVehicle = useMutation({
+    mutationFn: ({ driverId, vehicleId }: { driverId: string; vehicleId: string | null }) =>
+      api.put(`/admin/drivers/${driverId}`, { vehicleId }),
+    onSuccess: (res) => {
+      toast.success("Vehicle changed");
+      setSelected((s: any) => (s ? { ...s, vehicle: res.data.data.vehicle } : s));
+      queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error ?? "Could not change the vehicle"),
+  });
+
   const { data: expiringDocs } = useQuery({
     queryKey: ["expiring-docs"],
     queryFn: () =>
@@ -310,6 +318,7 @@ export default function DriversPage() {
     mutationFn: (payload: any) => api.post("/admin/drivers", payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       setShowAdd(false);
       setForm(EMPTY_FORM);
       setFormError("");
@@ -324,6 +333,7 @@ export default function DriversPage() {
       api.put(`/admin/drivers/${id}`, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drivers"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       setShowAdd(false);
       setEditing(null);
       setForm(EMPTY_FORM);
@@ -353,20 +363,7 @@ export default function DriversPage() {
       pcoBadgeNumber: d.pcoBadgeNumber,
       pcoLicenseExpiry: d.pcoLicenseExpiry?.split("T")[0] ?? "",
       drivingLicenseNumber: d.drivingLicenseNumber ?? "",
-      make: d.vehicle?.make ?? "",
-      model: d.vehicle?.model ?? "",
-      year: d.vehicle?.year?.toString() ?? "",
-      colour: d.vehicle?.colour ?? "",
-      licensePlate: d.vehicle?.licensePlate ?? "",
-      vehicleClass: d.vehicle?.class ?? "STANDARD",
-      seats: d.vehicle?.seats?.toString() ?? "4",
-      motExpiry: d.vehicle?.motExpiry?.split("T")[0] ?? "",
-      insuranceExpiry: d.vehicle?.insuranceExpiry?.split("T")[0] ?? "",
-      phvLicenceNumber: d.vehicle?.phvLicenceNumber ?? "",
-      phvLicenceExpiry: d.vehicle?.phvLicenceExpiry?.split("T")[0] ?? "",
-      phvDiscNumber: d.vehicle?.phvDiscNumber ?? "",
-      emissionStandard: d.vehicle?.emissionStandard ?? "",
-      isUlezCompliant: d.vehicle?.isUlezCompliant ? "true" : "false",
+      vehicleId: d.vehicle?.id ?? "",
     });
     setFormError("");
     setShowAdd(true);
@@ -388,11 +385,6 @@ export default function DriversPage() {
         "pcoBadgeNumber",
         "pcoLicenseExpiry",
         "drivingLicenseNumber",
-        "make",
-        "model",
-        "licensePlate",
-        "motExpiry",
-        "insuranceExpiry",
       ];
       const missing = required.find(
         (k) => !form[k as keyof typeof form].trim()
@@ -411,22 +403,7 @@ export default function DriversPage() {
       pcoBadgeNumber: form.pcoBadgeNumber.trim(),
       pcoLicenseExpiry: form.pcoLicenseExpiry,
       drivingLicenseNumber: form.drivingLicenseNumber.trim(),
-      vehicle: {
-        make: form.make.trim(),
-        model: form.model.trim(),
-        year: parseInt(form.year) || new Date().getFullYear(),
-        colour: form.colour.trim(),
-        licensePlate: form.licensePlate.trim().toUpperCase(),
-        class: form.vehicleClass,
-        seats: parseInt(form.seats) || 4,
-        motExpiry: form.motExpiry,
-        insuranceExpiry: form.insuranceExpiry,
-        phvLicenceNumber: form.phvLicenceNumber.trim() || undefined,
-        phvLicenceExpiry: form.phvLicenceExpiry || undefined,
-        phvDiscNumber: form.phvDiscNumber.trim() || undefined,
-        emissionStandard: form.emissionStandard || undefined,
-        isUlezCompliant: form.isUlezCompliant === "true",
-      },
+      vehicleId: form.vehicleId || null,
     };
 
     if (editing) {
@@ -437,10 +414,7 @@ export default function DriversPage() {
   };
 
   const drivers: any[] = data?.items ?? data ?? [];
-  const TFL_CAP = 20;
   const activeDriverCount = drivers.filter((d: any) => !d.archivedAt).length;
-  const atCap = activeDriverCount >= TFL_CAP;
-  const nearCap = activeDriverCount >= 18 && !atCap;
   const filtered = search
     ? drivers.filter(
         (d) =>
@@ -456,18 +430,13 @@ export default function DriversPage() {
     <div className="space-y-5 animate-fade-in">
       <SectionHeader
         title="Drivers"
-        subtitle={`${
-          drivers.filter((d: any) => !d.archivedAt).length
-        } / ${TFL_CAP} vehicles (TfL licence limit)`}
+        subtitle={`${activeDriverCount} driver${activeDriverCount === 1 ? "" : "s"} · vehicles and the TfL 20-vehicle limit are on the Vehicles page`}
         action={
           <button
             onClick={() => {
-              if (atCap) return;
               setShowAdd(true);
               setFormError("");
             }}
-            disabled={atCap}
-            title={atCap ? "TfL vehicle cap reached (20/20)" : undefined}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-40 disabled:cursor-not-allowed text-black text-sm font-semibold transition-colors"
           >
             <UserPlus size={15} />
@@ -506,38 +475,6 @@ export default function DriversPage() {
               </p>
             )}
           </div>
-        </div>
-      )}
-
-      {/* TfL vehicle cap banner */}
-      {atCap && (
-        <div className="card p-4 border-red-500/30 bg-red-500/5">
-          <div className="flex items-center gap-2 text-red-400">
-            <AlertTriangle size={14} />
-            <span className="text-sm font-medium">
-              TfL vehicle cap reached — {activeDriverCount}/{TFL_CAP} vehicles
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 ml-5">
-            Your Tier 11-20 licence permits a maximum of 20 vehicles. You must
-            remove an existing driver before adding a new one.
-          </p>
-        </div>
-      )}
-      {nearCap && (
-        <div className="card p-4 border-yellow-500/20 bg-yellow-500/5">
-          <div className="flex items-center gap-2 text-yellow-400">
-            <AlertTriangle size={14} />
-            <span className="text-sm font-medium">
-              Approaching TfL vehicle cap — {activeDriverCount}/{TFL_CAP}{" "}
-              vehicles
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 ml-5">
-            You can add {TFL_CAP - activeDriverCount} more vehicle
-            {TFL_CAP - activeDriverCount === 1 ? "" : "s"} before reaching your
-            Tier 11-20 licence limit.
-          </p>
         </div>
       )}
 
@@ -810,186 +747,27 @@ export default function DriversPage() {
             <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">
               Vehicle
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Make <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  placeholder="Toyota"
-                  value={form.make}
-                  onChange={set("make")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Model <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  placeholder="Prius"
-                  value={form.model}
-                  onChange={set("model")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Year
-                </label>
-                <input
-                  className="input w-full"
-                  placeholder="2022"
-                  value={form.year}
-                  onChange={set("year")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Colour
-                </label>
-                <input
-                  className="input w-full"
-                  placeholder="Black"
-                  value={form.colour}
-                  onChange={set("colour")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Licence Plate <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full font-mono uppercase"
-                  placeholder="AB12 CDE"
-                  value={form.licensePlate}
-                  onChange={set("licensePlate")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Class
-                </label>
-                <select
-                  className="input w-full"
-                  value={form.vehicleClass}
-                  onChange={set("vehicleClass")}
-                >
-                  {VEHICLE_CLASSES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Seats
-                </label>
-                <input
-                  className="input w-full"
-                  placeholder="4"
-                  value={form.seats}
-                  onChange={set("seats")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  MOT Expiry <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.motExpiry}
-                  onChange={set("motExpiry")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Insurance Expiry <span className="text-red-400">*</span>
-                </label>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.insuranceExpiry}
-                  onChange={set("insuranceExpiry")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  PHV Licence No.
-                </label>
-                <input
-                  className="input w-full font-mono"
-                  placeholder="452689"
-                  value={form.phvLicenceNumber}
-                  onChange={set("phvLicenceNumber")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  PHV Licence Expiry
-                </label>
-                <input
-                  className="input w-full"
-                  type="date"
-                  value={form.phvLicenceExpiry}
-                  onChange={set("phvLicenceExpiry")}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  PHV Disc No.
-                </label>
-                <input
-                  className="input w-full font-mono"
-                  placeholder="1087796"
-                  value={form.phvDiscNumber}
-                  onChange={set("phvDiscNumber")}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* TfL Item 5: ULEZ / Emission */}
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">
-              Emissions & ULEZ
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  Emission Standard
-                </label>
-                <select
-                  className="input w-full"
-                  value={form.emissionStandard}
-                  onChange={set("emissionStandard")}
-                >
-                  {EMISSION_STANDARDS.map((s) => (
-                    <option key={s} value={s}>
-                      {s || "Not specified"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">
-                  ULEZ Compliant
-                </label>
-                <select
-                  className="input w-full"
-                  value={form.isUlezCompliant}
-                  onChange={set("isUlezCompliant")}
-                >
-                  <option value="false">No</option>
-                  <option value="true">Yes</option>
-                </select>
-              </div>
-            </div>
+            <select
+              className="input w-full"
+              value={form.vehicleId}
+              onChange={set("vehicleId")}
+            >
+              <option value="">No vehicle (assign later)</option>
+              {vehicleOptions(editing?.id).map((v: any) => (
+                <option key={v.id} value={v.id}>
+                  {v.licensePlate} — {v.make} {v.model}
+                  {v.driver && v.driver.id !== editing?.id
+                    ? ` (currently ${v.driver.user.firstName} ${v.driver.user.lastName ?? ""})`
+                    : ""}
+                </option>
+              ))}
+            </select>
             <p className="text-[10px] text-slate-600 mt-2">
-              ULEZ compliance required for vehicles operating in the London
-              Ultra Low Emission Zone.
+              New car? Add it on the{" "}
+              <a href="/vehicles" className="text-brand-400 hover:text-brand-300">
+                Vehicles page
+              </a>{" "}
+              first, then pick it here. Vehicle details are edited there too.
             </p>
           </div>
         </div>
@@ -1364,11 +1142,56 @@ export default function DriversPage() {
             </div>
 
             {/* Vehicle */}
-            {selected.vehicle && (
-              <div>
-                <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">
                   Vehicle
                 </p>
+                {selected.vehicle && (
+                  <a
+                    href={`/vehicles?id=${selected.vehicle.id}`}
+                    className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
+                  >
+                    Edit on Vehicles page
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+              {!selected.archivedAt && (
+                <div className="flex items-center gap-2 mb-2">
+                  <select
+                    className="input flex-1 text-xs"
+                    value={selected.vehicle?.id ?? ""}
+                    disabled={changeVehicle.isPending}
+                    onChange={(e) =>
+                      changeVehicle.mutate({
+                        driverId: selected.id,
+                        vehicleId: e.target.value || null,
+                      })
+                    }
+                    aria-label="Change vehicle"
+                  >
+                    <option value="">No vehicle</option>
+                    {vehicleOptions(selected.id).map((v: any) => (
+                      <option key={v.id} value={v.id}>
+                        {v.licensePlate} — {v.make} {v.model}
+                        {v.driver && v.driver.id !== selected.id
+                          ? ` (currently ${v.driver.user.firstName} ${v.driver.user.lastName ?? ""})`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {changeVehicle.isPending && <Spinner size={14} />}
+                </div>
+              )}
+              {!selected.vehicle && (
+                <p className="text-xs text-slate-500">
+                  No vehicle assigned — this driver won't receive jobs until they have one.
+                </p>
+              )}
+            </div>
+            {selected.vehicle && (
+              <div>
                 <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] space-y-3">
                   <div>
                     <p className="text-sm text-[var(--text)] font-medium">

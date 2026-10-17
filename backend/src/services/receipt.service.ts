@@ -59,6 +59,7 @@ export async function saveReceipt(
     include: {
       passenger: { include: { user: true } },
       driver: { include: { user: true, vehicle: true } },
+      vehicle: true,
       receipt: true,
     },
   });
@@ -71,7 +72,7 @@ export async function saveReceipt(
   const tip = booking.tipAmount ?? 0;
   const cash = booking.paymentMethod === "CASH" ? booking.actualCashCollected : null;
   const walletCredit = cash !== null && cash !== undefined ? Math.max(0, fare - cash) : 0;
-  const v = booking.driver?.vehicle;
+  const v = booking.vehicle ?? booking.driver?.vehicle; // the car that did the trip
   const passengerName = [booking.passenger?.user?.firstName, booking.passenger?.user?.lastName]
     .map((s) => (s ?? "").trim())
     .filter(Boolean)

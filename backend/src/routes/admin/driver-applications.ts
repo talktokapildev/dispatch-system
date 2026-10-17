@@ -11,6 +11,13 @@ import { FastifyInstance } from "fastify";
 // Add near the top with the other imports:
 import { getFaceCroppedUrl } from "../../utils/cloudinaryFaceCrop";
 import {
+  VehicleError,
+  assertUnderCap,
+  findPlateClash,
+  normalisePlate,
+  setDriverVehicle,
+} from "../../services/vehicle.service";
+import {
   sendSms as sendSmsShared,
   maskPhone,
   normaliseUkPhone,
@@ -166,11 +173,25 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
-      const vehicleCount = await fastify.prisma.driver.count();
-      if (vehicleCount >= 20) {
+      // The applicant's car: reuse it if it's already on the fleet and free, else add it.
+      // TfL cap applies to cars joining (or rejoining) the fleet.
+      const plateClash = await findPlateClash(fastify.prisma, application.vehicleReg);
+      const existingVehicle = plateClash
+        ? await fastify.prisma.vehicle.findUnique({ where: { id: plateClash.id } })
+        : null;
+      if (existingVehicle?.driverId) {
         return reply.status(409).send({
-          error: `TfL vehicle cap reached (${vehicleCount}/20). Remove an existing driver before approving.`,
+          error: `${existingVehicle.licensePlate} is already assigned to another driver. Unassign it on the Vehicles page first.`,
         });
+      }
+      if (!existingVehicle || existingVehicle.archivedAt) {
+        try {
+          await assertUnderCap(fastify.prisma);
+        } catch (err) {
+          if (err instanceof VehicleError)
+            return reply.status(err.statusCode).send({ error: err.message });
+          throw err;
+        }
       }
 
       const v5cUrls = application.docV5c as string[];
@@ -215,26 +236,35 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           },
         });
 
-        await tx.vehicle.create({
-          data: {
-            driverId: driver.id,
-            make: application.vehicleMake,
-            model: application.vehicleModel,
-            licensePlate: application.vehicleReg,
-            year: application.vehicleYear,
-            colour: application.vehicleColour,
-            class: (application.vehicleClass as any) ?? "STANDARD",
-            seats: application.vehicleSeats ?? 4,
-            motExpiry: application.docMotExpiry ?? new Date("2099-01-01"),
-            insuranceExpiry:
-              application.docInsuranceExpiry ?? new Date("2099-01-01"),
-            phvLicenceNumber: application.vehiclePhvLicenceNumber ?? null,
-            phvLicenceExpiry: application.vehiclePhvLicenceExpiry ?? null,
-            phvDiscNumber: application.vehiclePhvDiscNumber ?? null,
-            emissionStandard: application.vehicleEmissionStandard ?? null,
-            isUlezCompliant: application.vehicleIsUlezCompliant ?? false,
-          },
-        });
+        const vehicleId = existingVehicle
+          ? (
+              await tx.vehicle.update({
+                where: { id: existingVehicle.id },
+                data: { archivedAt: null, isActive: true },
+              })
+            ).id
+          : (
+              await tx.vehicle.create({
+                data: {
+                  make: application.vehicleMake,
+                  model: application.vehicleModel,
+                  licensePlate: normalisePlate(application.vehicleReg),
+                  year: application.vehicleYear,
+                  colour: application.vehicleColour,
+                  class: (application.vehicleClass as any) ?? "STANDARD",
+                  seats: application.vehicleSeats ?? 4,
+                  motExpiry: application.docMotExpiry ?? new Date("2099-01-01"),
+                  insuranceExpiry:
+                    application.docInsuranceExpiry ?? new Date("2099-01-01"),
+                  phvLicenceNumber: application.vehiclePhvLicenceNumber ?? null,
+                  phvLicenceExpiry: application.vehiclePhvLicenceExpiry ?? null,
+                  phvDiscNumber: application.vehiclePhvDiscNumber ?? null,
+                  emissionStandard: application.vehicleEmissionStandard ?? null,
+                  isUlezCompliant: application.vehicleIsUlezCompliant ?? false,
+                },
+              })
+            ).id;
+        await setDriverVehicle(tx, driver.id, vehicleId);
 
         type DocEntry = {
           url: string | null;
@@ -433,9 +463,10 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
                 status: "OFFLINE",
               },
             });
+            // Their car stays on the fleet, unassigned — retire it on the Vehicles page if it's leaving
             await tx.vehicle.updateMany({
               where: { driverId: user.driver.id },
-              data: { archivedAt: now },
+              data: { driverId: null },
             });
             await tx.driverDocument.updateMany({
               where: { driverId: user.driver.id },
@@ -514,7 +545,8 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           await tx.driverBreak.deleteMany({ where: { driverId } });
           await tx.driverDocument.deleteMany({ where: { driverId } });
           await tx.teslaIntegration.deleteMany({ where: { driverId } });
-          await tx.vehicle.deleteMany({ where: { driverId } });
+          // Their car stays on the fleet, unassigned (and on the bookings it did)
+          await tx.vehicle.updateMany({ where: { driverId }, data: { driverId: null } });
           await tx.driver.delete({ where: { id: driverId } });
 
           // Handle user: remove DRIVER role or delete if driver-only

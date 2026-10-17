@@ -19,7 +19,7 @@ import {
 import { SocketEvent } from "../types";
 import {
   resolveDispatcher,
-  getDriverPhvLicenceNumber,
+  getDriverVehicleStamp,
 } from "../utils/bookingRecord";
 
 // TODO: move these two into ../config alongside DRIVER_ACCEPT_TIMEOUT_MS etc.
@@ -141,10 +141,11 @@ export class ScheduledBookingService {
         this.prisma,
         booking.dispatchedBy
       );
-      const driverPhvLicenceNumber = await getDriverPhvLicenceNumber(
+      const { vehicleId, driverPhvLicenceNumber } = await getDriverVehicleStamp(
         this.prisma,
         driverId
       );
+      if (!vehicleId) return { success: false, reason: "no_vehicle" };
 
       const updateResult = await this.prisma.booking.updateMany({
         where: { id: bookingId, status: BookingStatus.SCHEDULED_OPEN },
@@ -154,6 +155,7 @@ export class ScheduledBookingService {
           claimedAt: new Date(),
           dispatchedAt: new Date(),
           driverPhvLicenceNumber,
+          vehicleId,
           ...(dispatchedBy && { dispatchedBy }),
         },
       });
@@ -231,6 +233,7 @@ export class ScheduledBookingService {
           dispatchedAt: null,
           dispatchedBy: null,
           driverPhvLicenceNumber: null,
+          vehicleId: null,
         },
       }),
       this.prisma.bookingStatusHistory.create({

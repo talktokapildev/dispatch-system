@@ -6,6 +6,7 @@ import { DispatchService } from "../services/dispatch.service";
 import { MapsService } from "../services/maps.service";
 import bcrypt from "bcryptjs";
 import { earliestPickupAt } from "../services/flightUpdate.service";
+import { withTripVehicle } from "../utils/bookingRecord";
 
 const corporateSchema = z.object({
   name: z.string().min(2),
@@ -198,14 +199,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
     "/admin/reports/tfl-export",
     { preHandler: [fastify.authenticateAdmin] },
     async (_request, reply) => {
-      const drivers = await fastify.prisma.driver.findMany({
-        include: {
-          user: { select: { firstName: true, lastName: true } },
-          vehicle: {
-            select: { licensePlate: true, make: true, phvLicenceNumber: true },
-          },
-        },
-      });
+      const [drivers, vehicles] = await Promise.all([
+        fastify.prisma.driver.findMany({
+          include: { user: { select: { firstName: true, lastName: true } } },
+        }),
+        // Every licensed vehicle on the fleet (not retired), assigned or not
+        fastify.prisma.vehicle.findMany({
+          where: { archivedAt: null },
+          select: { licensePlate: true, make: true, phvLicenceNumber: true },
+          orderBy: { licensePlate: "asc" },
+        }),
+      ]);
 
       return reply.send({
         success: true,
@@ -215,13 +219,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
             firstName: d.user.firstName,
             lastName: d.user.lastName,
           })),
-          vehicles: drivers
-            .filter((d) => d.vehicle)
-            .map((d) => ({
-              licensePlate: d.vehicle!.licensePlate,
-              make: d.vehicle!.make,
-              phvLicenceNumber: d.vehicle!.phvLicenceNumber ?? "",
-            })),
+          vehicles: vehicles.map((v) => ({
+            licensePlate: v.licensePlate,
+            make: v.make,
+            phvLicenceNumber: v.phvLicenceNumber ?? "",
+          })),
           generatedAt: new Date().toISOString(),
           weekEnding: new Date().toISOString().split("T")[0],
         },
@@ -644,6 +646,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         include: {
           passenger: { include: { user: true } },
           driver: { include: { user: true, vehicle: true } },
+          vehicle: true,
           dispatchedByUser: dispatcherInclude,
           recordedByUser: { select: { firstName: true, lastName: true } },
           receipt: { select: { billTo: true, issuedAt: true, receiptNumber: true } },
@@ -669,7 +672,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       const earliestAt = earliestPickupAt(booking, booking.flightWatch);
       return reply.send({
         success: true,
-        data: { ...booking, earlierPickup: earliestAt ? { earliestAt } : null },
+        data: { ...withTripVehicle(booking), earlierPickup: earliestAt ? { earliestAt } : null },
       });
     }
   );

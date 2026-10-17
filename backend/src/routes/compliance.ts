@@ -153,7 +153,7 @@ async function runAutomatedChecks(
 
   // Run all DB queries in parallel
   const [
-    driverCount,
+    fleet,
     contactPhone,
     staffList,
     lastUploadSetting,
@@ -171,8 +171,8 @@ async function runAutomatedChecks(
     recentWithDriver,
     recentWithDispatcher,
   ] = await Promise.all([
-    // 1. Vehicle cap
-    prisma.driver.count(),
+    // 1. Vehicle cap — vehicles on the fleet (not retired)
+    prisma.vehicle.count({ where: { archivedAt: null } }),
 
     // 2. Contact phone
     prisma.systemSetting.findUnique({ where: { key: "contactPhone" } }),
@@ -261,19 +261,17 @@ async function runAutomatedChecks(
     id: "vehicle_cap",
     condition: 11,
     title: "Vehicle Cap (Max 20)",
-    status: driverCount >= 20 ? "FAIL" : driverCount >= 18 ? "WARN" : "PASS",
-    value: `${driverCount} / 20`,
-    detail: `${driverCount} active driver${
-      driverCount !== 1 ? "s" : ""
-    } registered`,
+    status: fleet >= 20 ? "FAIL" : fleet >= 18 ? "WARN" : "PASS",
+    value: `${fleet} / 20`,
+    detail: `${fleet} vehicle${fleet !== 1 ? "s" : ""} on the fleet (retired vehicles not counted)`,
     requirement:
       "Must not exceed 20 PHVs available at all operating centres at any time (Tier 11-20 licence). Exceeding this is a breach and may result in licence suspension.",
     howToFix:
-      driverCount >= 20
-        ? "You have reached the maximum. Remove a driver before registering new ones."
-        : driverCount >= 18
-        ? `You can add ${20 - driverCount} more driver${
-            20 - driverCount === 1 ? "" : "s"
+      fleet >= 20
+        ? "You have reached the maximum. Retire a vehicle on the Vehicles page before adding another."
+        : fleet >= 18
+        ? `You can add ${20 - fleet} more vehicle${
+            20 - fleet === 1 ? "" : "s"
           } before reaching the cap.`
         : undefined,
   };
@@ -433,13 +431,13 @@ async function runAutomatedChecks(
         : undefined,
   };
 
-  // Condition 22 — Vehicle reg on bookings (check via drivers having vehicles)
-  const driversWithVehicle = await prisma.driver.count({
-    where: { vehicle: { isNot: null } },
+  // Condition 22 — Vehicle reg on bookings: completed trips with the vehicle recorded
+  const completedWithVehicle = await prisma.booking.count({
+    where: { status: "COMPLETED", driverId: { not: null }, vehicleId: { not: null } },
   });
   const vehicleRegPct =
-    driverCount > 0
-      ? Math.round((driversWithVehicle / driverCount) * 100)
+    completedBookings > 0
+      ? Math.round((completedWithVehicle / completedBookings) * 100)
       : 100;
   const vehicleRegCheck: AutomatedCheck = {
     id: "vehicle_reg_on_bookings",
@@ -447,15 +445,13 @@ async function runAutomatedChecks(
     title: "Vehicle Reg on Booking Records",
     status:
       vehicleRegPct === 100 ? "PASS" : vehicleRegPct >= 90 ? "WARN" : "FAIL",
-    value: `${driversWithVehicle} / ${driverCount} drivers`,
-    detail: `${driversWithVehicle} of ${driverCount} driver${
-      driverCount !== 1 ? "s" : ""
-    } have a vehicle with registration plate registered`,
+    value: `${vehicleRegPct}% (${completedWithVehicle} / ${completedBookings})`,
+    detail: `${completedWithVehicle} of ${completedBookings} completed bookings have the vehicle recorded`,
     requirement:
       "From 1 July 2024, each booking record must include the vehicle registration mark.",
     howToFix:
       vehicleRegPct < 100
-        ? "Some drivers have no vehicle registered. Add vehicle details via Drivers → Edit."
+        ? "Some completed bookings have no vehicle recorded — usually trips by a driver who had no vehicle assigned. Assign vehicles to drivers on the Vehicles page."
         : undefined,
   };
 

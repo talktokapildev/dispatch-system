@@ -17,6 +17,7 @@ import {
   MAX_DISPATCH_ATTEMPTS,
   MAX_DRIVER_SEARCH_RADIUS_KM,
 } from "../config";
+import { getDriverVehicleStamp, type VehicleStamp } from "../utils/bookingRecord";
 
 // All 8 document types a driver must have APPROVED (and not expired)
 // before they can receive any dispatch offer — auto or manual.
@@ -223,14 +224,12 @@ export class DispatchService {
     }
 
     // TfL booking record requirement (from 1 July 2024):
-    // Store PHV licence number directly on the booking at assignment time,
-    // so it is preserved even if the vehicle is later re-licensed or replaced.
-    const driverWithVehicle = await this.prisma.driver.findUnique({
-      where: { id: driverId },
-      include: { vehicle: true },
-    });
-    const driverPhvLicenceNumber =
-      driverWithVehicle?.vehicle?.phvLicenceNumber ?? null;
+    // Store the vehicle and its PHV licence number on the booking at assignment time,
+    // so they are preserved even if the vehicle is later re-licensed or replaced.
+    const { vehicleId, driverPhvLicenceNumber } = await getDriverVehicleStamp(
+      this.prisma,
+      driverId
+    );
 
     // TfL Condition 23: the booking respondent must be recorded.
     // For auto-dispatched bookings (no human dispatcher), stamp the primary
@@ -254,6 +253,7 @@ export class DispatchService {
           driverAcceptedAt: new Date(),
           dispatchedAt: new Date(),
           driverPhvLicenceNumber,
+          vehicleId,
           ...(dispatchedBy && { dispatchedBy }),
         },
       }),
@@ -533,10 +533,29 @@ export class DispatchService {
       }
     }
 
+    // TfL: the booking records the vehicle that actually does the trip. Stamp it when the driver
+    // sets off (their car may have changed since a job-board claim days earlier), and fill it in
+    // later if it is somehow still missing.
+    let vehicleStamp: Partial<VehicleStamp> = {};
+    if (
+      status === BookingStatus.DRIVER_EN_ROUTE ||
+      status === BookingStatus.DRIVER_ARRIVED ||
+      status === BookingStatus.IN_PROGRESS
+    ) {
+      const current = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: { vehicleId: true },
+      });
+      if (status === BookingStatus.DRIVER_EN_ROUTE || !current?.vehicleId) {
+        const stamp = await getDriverVehicleStamp(this.prisma, driverId);
+        if (stamp.vehicleId) vehicleStamp = stamp;
+      }
+    }
+
     await this.prisma.$transaction([
       this.prisma.booking.update({
         where: { id: bookingId },
-        data: { status, ...updates },
+        data: { status, ...updates, ...vehicleStamp },
       }),
       this.prisma.bookingStatusHistory.create({ data: { bookingId, status } }),
     ]);
@@ -595,7 +614,7 @@ export class DispatchService {
   async manualAssign(bookingId: string, driverId: string): Promise<void> {
     const driver = await this.prisma.driver.findUnique({
       where: { id: driverId },
-      include: { documents: true },
+      include: { documents: true, vehicle: { select: { id: true } } },
     });
 
     if (!driver || driver.status !== DriverStatus.AVAILABLE) {
@@ -606,6 +625,12 @@ export class DispatchService {
       throw new Error(
         "Driver does not have all required documents approved. " +
           "Check the Documents page before manually assigning this driver."
+      );
+    }
+
+    if (!driver.vehicle) {
+      throw new Error(
+        "Driver has no vehicle assigned. Assign one on the Vehicles page first."
       );
     }
 
@@ -654,6 +679,7 @@ export class DispatchService {
         status: DriverStatus.AVAILABLE,
         currentLatitude: { not: null },
         currentLongitude: { not: null },
+        vehicle: { isNot: null }, // no car, no job
       },
       include: {
         vehicle: true,

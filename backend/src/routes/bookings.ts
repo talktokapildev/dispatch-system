@@ -13,6 +13,7 @@ import { DispatchService, tripSurchargeAmount } from "../services/dispatch.servi
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import { SocketEvent } from "../types";
 import { normalizePhone } from "../lib/phone";
+import { withTripVehicle } from "../utils/bookingRecord";
 
 const createBookingSchema = z.object({
   type: z.nativeEnum(BookingType),
@@ -78,7 +79,13 @@ async function recordCompletedTrip(
       bookedVia?: (typeof BOOKED_VIA)[number];
       bookedAt?: string;
     };
-    pastTrip: { driverId: string; completedAt?: string; fare: number; noCommission: boolean };
+    pastTrip: {
+      driverId: string;
+      vehicleId?: string;
+      completedAt?: string;
+      fare: number;
+      noCommission: boolean;
+    };
     passengerId: string | null;
     adminUserId: string;
   }
@@ -102,6 +109,11 @@ async function recordCompletedTrip(
     include: { vehicle: true },
   });
   if (!driver) return { error: "Driver not found." };
+  // The car used: the one chosen (it may be an older or retired car), else the driver's current one.
+  const vehicle = pastTrip.vehicleId
+    ? await fastify.prisma.vehicle.findUnique({ where: { id: pastTrip.vehicleId } })
+    : driver.vehicle;
+  if (pastTrip.vehicleId && !vehicle) return { error: "Vehicle not found." };
 
   const fare = r2(pastTrip.fare);
   let platformFee = 0;
@@ -151,7 +163,8 @@ async function recordCompletedTrip(
         notes: body.notes,
         operatorNotes: body.operatorNotes,
         department: body.department,
-        driverPhvLicenceNumber: driver.vehicle?.phvLicenceNumber ?? null,
+        driverPhvLicenceNumber: vehicle?.phvLicenceNumber ?? null,
+        vehicleId: vehicle?.id ?? null,
         bookedVia: body.bookedVia,
         bookedAt,
         recordedAfterTrip: true,
@@ -319,6 +332,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         where: { id },
         include: {
           driver: { include: { user: true, vehicle: true } },
+          vehicle: true,
           passenger: { include: { user: true } },
           statusHistory: { orderBy: { createdAt: "asc" } },
           receipt: true,
@@ -330,7 +344,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Booking not found" });
 
-      return reply.send({ success: true, data: booking });
+      return reply.send({ success: true, data: withTripVehicle(booking) });
     }
   );
 
@@ -362,6 +376,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           where,
           include: {
             driver: { include: { user: true, vehicle: true } },
+            vehicle: true,
             receipt: true,
           },
           orderBy: { createdAt: "desc" },
@@ -374,7 +389,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          items,
+          items: items.map(withTripVehicle),
           total,
           page: parseInt(page),
           limit: parseInt(limit),
@@ -473,6 +488,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           include: {
             passenger: { include: { user: true } },
             driver: { include: { user: true, vehicle: true } },
+            vehicle: true,
             dispatchedByUser: {
               // TfL: dispatcher record
               select: {
@@ -496,7 +512,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          items,
+          items: items.map(withTripVehicle),
           total,
           page: parseInt(page),
           limit: parseInt(limit),
@@ -533,6 +549,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           pastTrip: z
             .object({
               driverId: z.string().min(1),
+              vehicleId: z.string().min(1).optional(),
               completedAt: z.string().datetime().optional(),
               fare: z.number().positive(),
               noCommission: z.boolean().optional().default(false),

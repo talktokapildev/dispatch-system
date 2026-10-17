@@ -283,9 +283,12 @@ model Driver {
   @@index([status])
 }
 
+// A vehicle exists on its own. A driver has at most one current vehicle (driverId is unique, null
+// when unassigned). Retired vehicles have archivedAt set, isActive false and no driver; they stay
+// on the bookings they did. Bookings record the vehicle used (Booking.vehicleId).
 model Vehicle {
   id               String       @id @default(uuid())
-  driverId         String       @unique
+  driverId         String?      @unique
   make             String
   model            String
   year             Int
@@ -303,9 +306,15 @@ model Vehicle {
   isActive         Boolean      @default(true)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
-  archivedAt       DateTime?
+  archivedAt       DateTime? // retired = "vehicle ceased" on TfL's vehicle record
+  notes            String?
+  // TfL vehicle record
+  keeperName       String? // registered keeper (V5C)
+  keeperAddress    String?
+  startDate        DateTime  @default(now()) // started working for OrangeRide
 
-  driver Driver @relation(fields: [driverId], references: [id])
+  driver   Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  bookings Booking[]
 }
 
 model DriverDocument {
@@ -448,6 +457,7 @@ model Booking {
 
   // TfL Compliance: PHV licence number at time of booking (Condition — booking record requirement)
   driverPhvLicenceNumber String?
+  vehicleId              String? // TfL: the vehicle that did (or will do) the trip
 
   // Pricing
   pricingType     PricingType @default(FIXED)
@@ -520,6 +530,7 @@ model Booking {
 
   passenger        Passenger?             @relation(fields: [passengerId], references: [id])
   driver           Driver?                @relation(fields: [driverId], references: [id])
+  vehicle          Vehicle?               @relation(fields: [vehicleId], references: [id])
   corporateAccount CorporateAccount?      @relation(fields: [corporateAccountId], references: [id])
   corporateInvoice CorporateInvoice?      @relation(fields: [corporateInvoiceId], references: [id])
   statusHistory    BookingStatusHistory[]
@@ -539,6 +550,7 @@ model Booking {
 
   @@index([passengerId])
   @@index([driverId])
+  @@index([vehicleId])
   @@index([status])
   @@index([scheduledAt])
   @@index([reference])
