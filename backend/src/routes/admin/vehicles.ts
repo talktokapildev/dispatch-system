@@ -146,29 +146,41 @@ export async function adminVehicleRoutes(fastify: FastifyInstance) {
   // ─── One vehicle ───
   fastify.get("/admin/vehicles/:id", { preHandler: [fastify.authenticateAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id },
-      include: {
-        ...listInclude,
-        bookings: {
-          orderBy: [{ completedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
-          take: 10,
-          select: {
-            id: true,
-            reference: true,
-            status: true,
-            pickupAddress: true,
-            dropoffAddress: true,
-            scheduledAt: true,
-            completedAt: true,
-            createdAt: true,
-            driver: { select: { user: { select: { firstName: true, lastName: true } } } },
-          },
-        },
-      },
-    });
+    const vehicle = await prisma.vehicle.findUnique({ where: { id }, include: listInclude });
     if (!vehicle) return reply.status(404).send({ success: false, error: "Vehicle not found" });
-    return reply.send({ success: true, data: vehicle });
+    const tripSelect = {
+      id: true,
+      reference: true,
+      status: true,
+      pickupAddress: true,
+      dropoffAddress: true,
+      scheduledAt: true,
+      completedAt: true,
+      createdAt: true,
+      driver: { select: { user: { select: { firstName: true, lastName: true } } } },
+    } as const;
+    // Completed trips, newest first; plus jobs still to do. Cancelled / no-shows aren't listed.
+    const [recentTrips, upcoming, completedCount] = await Promise.all([
+      prisma.booking.findMany({
+        where: { vehicleId: id, status: "COMPLETED" },
+        orderBy: { completedAt: { sort: "desc", nulls: "last" } },
+        take: 10,
+        select: tripSelect,
+      }),
+      prisma.booking.findMany({
+        where: {
+          vehicleId: id,
+          status: { in: ["DRIVER_ASSIGNED", "DRIVER_EN_ROUTE", "DRIVER_ARRIVED", "IN_PROGRESS"] },
+        },
+        orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
+        select: tripSelect,
+      }),
+      prisma.booking.count({ where: { vehicleId: id, status: "COMPLETED" } }),
+    ]);
+    return reply.send({
+      success: true,
+      data: { ...vehicle, recentTrips, upcoming, completedCount },
+    });
   });
 
   // ─── Add ───

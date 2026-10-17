@@ -46,6 +46,53 @@ function expiryState(v: any): "expired" | "soon" | null {
   return null;
 }
 
+function TripList({
+  title,
+  trips,
+  upcoming,
+  empty,
+}: {
+  title: string;
+  trips: any[];
+  upcoming?: boolean;
+  empty?: string;
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">{title}</p>
+      {trips.length === 0 ? (
+        <p className="text-xs text-slate-600">{empty}</p>
+      ) : (
+        <div className="space-y-1">
+          {trips.map((b) => (
+            <a
+              key={b.id}
+              href={`/bookings?open=${b.id}`}
+              className="flex items-center justify-between gap-3 text-xs p-2 rounded-lg hover:bg-[var(--card-hover)]"
+            >
+              <span className="font-mono text-slate-300 shrink-0">{b.reference}</span>
+              <span className="text-slate-400 truncate flex-1">
+                {b.pickupAddress} → {b.dropoffAddress}
+              </span>
+              <span className="text-slate-500 shrink-0">
+                {[
+                  driverName(b.driver),
+                  format(
+                    new Date((upcoming ? b.scheduledAt : b.completedAt) ?? b.createdAt),
+                    upcoming ? "dd MMM, HH:mm" : "dd MMM yyyy"
+                  ),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VehiclesPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<Filter>("active");
@@ -440,33 +487,14 @@ export default function VehiclesPage() {
             )}
 
             {/* Trips */}
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
-                Recent bookings ({selected._count.bookings} in total)
-              </p>
-              {selected.bookings.length === 0 ? (
-                <p className="text-xs text-slate-600">No bookings yet.</p>
-              ) : (
-                <div className="space-y-1">
-                  {selected.bookings.map((b: any) => (
-                    <a
-                      key={b.id}
-                      href={`/bookings?open=${b.id}`}
-                      className="flex items-center justify-between gap-3 text-xs p-2 rounded-lg hover:bg-[var(--card-hover)]"
-                    >
-                      <span className="font-mono text-slate-300 shrink-0">{b.reference}</span>
-                      <span className="text-slate-400 truncate flex-1">
-                        {b.pickupAddress} → {b.dropoffAddress}
-                      </span>
-                      <span className="text-slate-500 shrink-0">
-                        {driverName(b.driver)} ·{" "}
-                        {format(new Date(b.completedAt ?? b.scheduledAt ?? b.createdAt), "dd MMM yyyy")}
-                      </span>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
+            {selected.upcoming?.length > 0 && (
+              <TripList title="Assigned jobs" trips={selected.upcoming} upcoming />
+            )}
+            <TripList
+              title={`Recent trips (${selected.completedCount} completed)`}
+              trips={selected.recentTrips ?? []}
+              empty="No completed trips yet."
+            />
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--border)]">
