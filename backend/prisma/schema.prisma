@@ -178,6 +178,7 @@ model User {
   otpCodes           OtpCode[]
   refreshTokens      RefreshToken[]
   dispatchedBookings Booking[]      @relation("BookingDispatcher")
+  recordedBookings   Booking[]      @relation("BookingRecorder")
 
   @@index([phone])
   @@index([email])
@@ -435,6 +436,13 @@ model Booking {
   // TfL Compliance: dispatcher record (Condition 6)
   dispatchedBy String?
 
+  // How/when the passenger made the booking (e.g. WHATSAPP at 14 Oct 15:40), and whether the
+  // trip was entered in the system after it happened (admin "Record completed trip").
+  bookedVia         String? // APP | WHATSAPP | PHONE | EMAIL | IN_PERSON
+  bookedAt          DateTime?
+  recordedAfterTrip Boolean   @default(false)
+  recordedBy        String?
+
   // Scheduled job-board (added for advance-booking driver claim flow)
   claimedAt DateTime? // set when a driver claims this from the open job board
 
@@ -517,6 +525,7 @@ model Booking {
   statusHistory    BookingStatusHistory[]
   receipt          Receipt?
   dispatchedByUser User?                  @relation("BookingDispatcher", fields: [dispatchedBy], references: [id])
+  recordedByUser   User?                  @relation("BookingRecorder", fields: [recordedBy], references: [id])
 
   // Care home
   careHomeId         String?
@@ -534,6 +543,7 @@ model Booking {
   @@index([scheduledAt])
   @@index([reference])
   @@index([dispatchedBy])
+  @@index([recordedBy])
   @@index([status, scheduledAt]) // job board queries: open jobs sorted by pickup time
   @@index([flightSnapshotFetchedAt])
   @@index([flightWatchId])
@@ -569,6 +579,13 @@ model Receipt {
   totalAmount           Float
   paymentMethod         String
   issuedAt              DateTime @default(now())
+  // Added with admin receipts (all optional so older rows stay valid)
+  passengerName         String?
+  billTo                String? // optional company name for expense claims
+  operatorAddress       String?
+  pickupAt              DateTime?
+  dropoffAt             DateTime?
+  updatedAt             DateTime? @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id])
 }

@@ -4,11 +4,12 @@ import {
   BookingType,
   BookingStatus,
   PaymentMethod,
+  PaymentStatus,
   PricingType,
 } from "@prisma/client";
 import { MapsService } from "../services/maps.service";
 import { PricingService } from "../services/pricing.service";
-import { DispatchService } from "../services/dispatch.service";
+import { DispatchService, tripSurchargeAmount } from "../services/dispatch.service";
 import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import { SocketEvent } from "../types";
 import { normalizePhone } from "../lib/phone";
@@ -41,6 +42,140 @@ const createBookingSchema = z.object({
   notes: z.string().max(500).optional(),
   vehicleClass: z.string().optional(),
 });
+
+export const BOOKED_VIA = ["APP", "WHATSAPP", "PHONE", "EMAIL", "IN_PERSON"] as const;
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Admin "Record completed trip": saves a trip that already happened, straight as COMPLETED with
+ * its real times. Skips dispatch, SMS/push, Stripe, wallet settlement and welcome bonus — the
+ * trip is over and was paid outside the app. Creates the driver earnings record (commission on
+ * fare minus airport surcharges, or none if the operator drove) so driver reports stay complete.
+ */
+async function recordCompletedTrip(
+  fastify: FastifyInstance,
+  args: {
+    body: {
+      type: BookingType;
+      pickupAddress: string;
+      pickupLatitude: number;
+      pickupLongitude: number;
+      dropoffAddress: string;
+      dropoffLatitude: number;
+      dropoffLongitude: number;
+      stops: { address: string; latitude: number; longitude: number }[];
+      scheduledAt?: string;
+      paymentMethod: PaymentMethod;
+      passengerCount: number;
+      flightNumber?: string;
+      terminal?: string;
+      notes?: string;
+      operatorNotes?: string;
+      department?: string;
+      pickupZone?: string;
+      dropoffZone?: string;
+      bookedVia?: (typeof BOOKED_VIA)[number];
+      bookedAt?: string;
+    };
+    pastTrip: { driverId: string; completedAt?: string; fare: number; noCommission: boolean };
+    passengerId: string | null;
+    adminUserId: string;
+  }
+): Promise<{ booking: any } | { error: string }> {
+  const { body, pastTrip, passengerId, adminUserId } = args;
+  const now = Date.now();
+
+  if (!body.scheduledAt) return { error: "Enter the pickup time of the trip." };
+  const pickupAt = new Date(body.scheduledAt);
+  if (pickupAt.getTime() > now) return { error: "The pickup time must be in the past." };
+  const completedAt = pastTrip.completedAt ? new Date(pastTrip.completedAt) : pickupAt;
+  if (completedAt.getTime() < pickupAt.getTime())
+    return { error: "The drop-off time must be after the pickup time." };
+  if (completedAt.getTime() > now) return { error: "The drop-off time must be in the past." };
+  const bookedAt = body.bookedAt ? new Date(body.bookedAt) : null;
+  if (bookedAt && bookedAt.getTime() > pickupAt.getTime())
+    return { error: "'Booked at' must be before the pickup time." };
+
+  const driver = await fastify.prisma.driver.findUnique({
+    where: { id: pastTrip.driverId },
+    include: { vehicle: true },
+  });
+  if (!driver) return { error: "Driver not found." };
+
+  const fare = r2(pastTrip.fare);
+  let platformFee = 0;
+  if (!pastTrip.noCommission) {
+    const pricing = new PricingService(fastify.prisma);
+    const commissionRate = (await pricing.getConfig()).platformCommission ?? 0.15;
+    const surcharge = await tripSurchargeAmount(fastify.prisma, body);
+    platformFee = r2(Math.max(0, fare - surcharge) * commissionRate);
+  }
+  const net = r2(fare - platformFee);
+  const note = `Recorded after the trip by admin${
+    body.bookedVia ? ` (booked via ${body.bookedVia.replace("_", " ").toLowerCase()})` : ""
+  }`;
+
+  const booking = await fastify.prisma.$transaction(async (tx) => {
+    const created = await tx.booking.create({
+      data: {
+        reference: generateRef(),
+        passengerId,
+        driverId: driver.id,
+        type: body.type,
+        status: BookingStatus.COMPLETED,
+        pickupAddress: body.pickupAddress,
+        pickupLatitude: body.pickupLatitude,
+        pickupLongitude: body.pickupLongitude,
+        pickupZone: body.pickupZone,
+        dropoffAddress: body.dropoffAddress,
+        dropoffLatitude: body.dropoffLatitude,
+        dropoffLongitude: body.dropoffLongitude,
+        dropoffZone: body.dropoffZone,
+        stops: body.stops,
+        scheduledAt: pickupAt,
+        tripStartedAt: pickupAt,
+        completedAt,
+        paymentMethod: body.paymentMethod,
+        paymentStatus:
+          body.paymentMethod === "CASH" ? PaymentStatus.CASH : PaymentStatus.PENDING,
+        pricingType: PricingType.FIXED,
+        estimatedFare: fare,
+        fixedPriceOverride: fare,
+        actualFare: fare,
+        driverEarning: net,
+        platformFee,
+        passengerCount: body.passengerCount,
+        flightNumber: body.flightNumber,
+        terminal: body.terminal,
+        notes: body.notes,
+        operatorNotes: body.operatorNotes,
+        department: body.department,
+        driverPhvLicenceNumber: driver.vehicle?.phvLicenceNumber ?? null,
+        bookedVia: body.bookedVia,
+        bookedAt,
+        recordedAfterTrip: true,
+        recordedBy: adminUserId,
+        dispatchedBy: adminUserId,
+      },
+    });
+    await tx.bookingStatusHistory.create({
+      data: { bookingId: created.id, status: BookingStatus.COMPLETED, note },
+    });
+    await tx.driverEarning.create({
+      data: {
+        driverId: driver.id,
+        bookingId: created.id,
+        grossAmount: fare,
+        platformFee,
+        netAmount: net,
+      },
+    });
+    return created;
+  });
+
+  return { booking };
+}
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -391,6 +526,18 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           requiredDriverFeatures: z.array(z.string()).optional().default([]),
           department: z.string().optional(),
           operatorNotes: z.string().optional(),
+          // How/when the passenger booked (shown on the TfL booking record)
+          bookedVia: z.enum(BOOKED_VIA).optional(),
+          bookedAt: z.string().datetime().optional(),
+          // "This trip has already happened": saved straight as COMPLETED, no dispatch/messages
+          pastTrip: z
+            .object({
+              driverId: z.string().min(1),
+              completedAt: z.string().datetime().optional(),
+              fare: z.number().positive(),
+              noCommission: z.boolean().optional().default(false),
+            })
+            .optional(),
         })
         .parse(request.body);
 
@@ -457,6 +604,30 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           .status(400)
           .send({ success: false, error: "Passenger not found" });
 
+      // ── Record a trip that has already happened ─────────────────────────
+      if (body.pastTrip) {
+        const result = await recordCompletedTrip(fastify, {
+          body,
+          pastTrip: body.pastTrip,
+          passengerId: passenger?.id ?? null,
+          adminUserId,
+        });
+        if ("error" in result)
+          return reply.status(400).send({ success: false, error: result.error });
+        fastify.io
+          .to("admin")
+          .emit(SocketEvent.ADMIN_BOOKING_CREATED, result.booking);
+        return reply.status(201).send({ success: true, data: result.booking });
+      }
+
+      // A pickup time in the past only makes sense for a recorded trip.
+      if (body.scheduledAt && new Date(body.scheduledAt).getTime() < Date.now() - 5 * 60_000)
+        return reply.status(400).send({
+          success: false,
+          error:
+            "That pickup time has passed. To log a trip that already happened, switch on 'This trip has already happened'.",
+        });
+
       const directions = await maps.getDirections(
         { lat: body.pickupLatitude, lng: body.pickupLongitude },
         { lat: body.dropoffLatitude, lng: body.dropoffLongitude }
@@ -472,17 +643,15 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : new Date(),
       });
 
-      // Same SCHEDULED_OPEN branch as the passenger route.
+      // Scheduled bookings with 2+ hours' notice go to the drivers' job board (SCHEDULED_OPEN),
+      // as in the passenger app. Admin may also book at shorter notice: those stay CONFIRMED
+      // (not auto-dispatched) for the operator to dispatch or assign from the booking.
       let initialStatus: BookingStatus = BookingStatus.CONFIRMED;
       if (body.scheduledAt) {
         const scheduledDate = new Date(body.scheduledAt);
-        if (!ScheduledBookingService.hasMinimumLeadTime(scheduledDate)) {
-          return reply.status(400).send({
-            success: false,
-            error: "Scheduled bookings require at least 2 hours' notice",
-          });
+        if (ScheduledBookingService.hasMinimumLeadTime(scheduledDate)) {
+          initialStatus = BookingStatus.SCHEDULED_OPEN;
         }
-        initialStatus = BookingStatus.SCHEDULED_OPEN;
       }
 
       const booking = await fastify.prisma.booking.create({
@@ -520,6 +689,8 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           requiredCarFeatures: body.requiredCarFeatures ?? [],
           requiredDriverFeatures: body.requiredDriverFeatures ?? [],
           department: body.department,
+          bookedVia: body.bookedVia,
+          bookedAt: body.bookedAt ? new Date(body.bookedAt) : undefined,
           // TfL: record admin who created this booking
           dispatchedBy: adminUserId,
           dispatchedAt: new Date(),

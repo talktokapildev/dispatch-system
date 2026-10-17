@@ -16,6 +16,7 @@ import toast from "react-hot-toast";
 import { NewBookingModal } from "@/components/NewBookingModal";
 import { BookingTripDetails } from "@/components/BookingTripDetails";
 import { BookingFlightDetails } from "@/components/BookingFlightDetails";
+import { BookingReceipt } from "@/components/BookingReceipt";
 
 const STATUSES = [
   "",
@@ -43,6 +44,14 @@ const EDITABLE_STATUSES = [
 ];
 
 const PAYMENT_METHODS = ["CARD", "CASH", "APPLE_PAY", "GOOGLE_PAY", "ACCOUNT"];
+
+const BOOKED_VIA_LABEL: Record<string, string> = {
+  APP: "the app",
+  WHATSAPP: "WhatsApp",
+  PHONE: "phone",
+  EMAIL: "email",
+  IN_PERSON: "in person",
+};
 
 function getDispatcherName(booking: any): string {
   const u = booking.dispatchedByUser;
@@ -521,7 +530,31 @@ export default function BookingsPage() {
                   </p>
                 </div>
               </div>
+              {selected.recordedAfterTrip && (
+                <p className="mt-2 text-[11px]" style={{ color: "var(--text)" }}>
+                  📝 Recorded after the trip
+                  {selected.recordedByUser
+                    ? ` by ${selected.recordedByUser.firstName} ${selected.recordedByUser.lastName ?? ""}`.trimEnd()
+                    : ""}{" "}
+                  on {format(new Date(selected.createdAt), "dd MMM yyyy HH:mm")}
+                  {selected.bookedVia
+                    ? ` · booked via ${BOOKED_VIA_LABEL[selected.bookedVia] ?? selected.bookedVia}`
+                    : ""}
+                  {selected.bookedAt
+                    ? ` on ${format(new Date(selected.bookedAt), "dd MMM yyyy HH:mm")}`
+                    : ""}
+                </p>
+              )}
+              {!selected.recordedAfterTrip && selected.bookedVia && (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Booked via {BOOKED_VIA_LABEL[selected.bookedVia] ?? selected.bookedVia}
+                  {selected.bookedAt
+                    ? ` on ${format(new Date(selected.bookedAt), "dd MMM yyyy HH:mm")}`
+                    : ""}
+                </p>
+              )}
               {!selected.dispatchedByUser &&
+                !selected.recordedAfterTrip &&
                 [
                   "DISPATCHED",
                   "DRIVER_ASSIGNED",
@@ -535,6 +568,8 @@ export default function BookingsPage() {
                   </p>
                 )}
             </div>
+
+            {selected.status === "COMPLETED" && <BookingReceipt booking={selected} />}
 
             <div className="space-y-2 pt-1">
               {["PENDING", "CONFIRMED"].includes(selected.status) && (

@@ -363,7 +363,7 @@ export default function CompliancePage() {
     <div className="space-y-6 animate-fade-in">
       <SectionHeader
         title="TfL Compliance"
-        subtitle={`Licence II786 · Tier 11-20 · ${
+        subtitle={`Licence 11786 · Tier 11-20 · ${
           data?.checkedAt
             ? `Last checked ${format(
                 new Date(data.checkedAt),

@@ -36,6 +36,7 @@ import { flightRoutes } from "./routes/flights";
 import { runFlightWatchCycle } from "./services/flightWatch.service";
 import { flightWebhookRoutes } from "./routes/flightWebhooks";
 import { adminBookingFlightRoutes } from "./routes/admin/booking-flight";
+import { adminBookingReceiptRoutes } from "./routes/admin/booking-receipt";
 import { twilioWebhookRoutes } from "./routes/twilioWebhooks";
 import { driverFlightRoutes } from "./routes/driverFlight";
 import { enableSmsTracking } from "./services/sms.service";
@@ -81,6 +82,40 @@ async function buildServer() {
   // Record every SMS + request Twilio delivery-status callbacks (backlog A).
   enableSmsTracking(fastify.prisma);
 
+  // Error handlers must be set BEFORE routes are registered: Fastify only applies them to
+  // routes registered afterwards (before this, auth/booking/admin routes fell back to the
+  // default handler and returned 500 for validation errors).
+  fastify.setNotFoundHandler((request, reply) => {
+    reply.status(404).send({
+      success: false,
+      error: `Route ${request.method} ${request.url} not found`,
+    });
+  });
+
+  fastify.setErrorHandler((error, request, reply) => {
+    fastify.log.error(error);
+
+    if (error.name === "ZodError") {
+      const issues = JSON.parse(error.message) as { path?: (string | number)[]; message?: string }[];
+      const first = issues[0];
+      const where = first?.path?.length ? `${first.path.join(".")}: ` : "";
+      return reply.status(400).send({
+        success: false,
+        error: first ? `Invalid input — ${where}${first.message}` : "Validation error",
+        details: issues,
+      });
+    }
+
+    if (error.statusCode) {
+      return reply
+        .status(error.statusCode)
+        .send({ success: false, error: error.message });
+    }
+
+    reply.status(500).send({ success: false, error: "Internal server error" });
+  });
+
+
   // ─── Routes ───
   const prefix = config.API_PREFIX;
   await fastify.register(authRoutes, { prefix });
@@ -105,6 +140,7 @@ async function buildServer() {
   fastify.register(flightRoutes, { prefix });
   fastify.register(driverFlightRoutes, { prefix });
   fastify.register(adminBookingFlightRoutes, { prefix });
+  fastify.register(adminBookingReceiptRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
@@ -126,33 +162,6 @@ async function buildServer() {
         .send(process.env.TESLA_PUBLIC_KEY!);
     }
   );
-
-  fastify.setNotFoundHandler((request, reply) => {
-    reply.status(404).send({
-      success: false,
-      error: `Route ${request.method} ${request.url} not found`,
-    });
-  });
-
-  fastify.setErrorHandler((error, request, reply) => {
-    fastify.log.error(error);
-
-    if (error.name === "ZodError") {
-      return reply.status(400).send({
-        success: false,
-        error: "Validation error",
-        details: JSON.parse(error.message),
-      });
-    }
-
-    if (error.statusCode) {
-      return reply
-        .status(error.statusCode)
-        .send({ success: false, error: error.message });
-    }
-
-    reply.status(500).send({ success: false, error: "Internal server error" });
-  });
 
   return fastify;
 }
