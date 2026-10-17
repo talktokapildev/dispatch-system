@@ -10,6 +10,7 @@ import {
 import { MapsService } from "../services/maps.service";
 import { PricingService } from "../services/pricing.service";
 import { DispatchService } from "../services/dispatch.service";
+import { withTripVehicle } from "../utils/bookingRecord";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -322,7 +323,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
       const [items, total] = await Promise.all([
         fastify.prisma.booking.findMany({
           where,
-          include: { driver: { include: { user: true, vehicle: true } } },
+          include: { driver: { include: { user: true, vehicle: true } }, vehicle: true },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),
           take: parseInt(limit),
@@ -333,7 +334,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          items,
+          items: items.map(withTripVehicle),
           total,
           page: parseInt(page),
           totalPages: Math.ceil(total / parseInt(limit)),
@@ -358,6 +359,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
         where: { id },
         include: {
           driver: { include: { user: true, vehicle: true } },
+          vehicle: true,
           statusHistory: { orderBy: { createdAt: "asc" } },
         },
       });
@@ -370,7 +372,7 @@ export async function corporateRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "Access denied" });
       }
 
-      return reply.send({ success: true, data: booking });
+      return reply.send({ success: true, data: withTripVehicle(booking) });
     }
   );
 

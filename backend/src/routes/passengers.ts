@@ -14,6 +14,7 @@ import {
   airportPickupSchema,
   resolveAirportPickup,
 } from "../services/airportBooking.service";
+import { withTripVehicle } from "../utils/bookingRecord";
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -237,6 +238,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
                 vehicle: true,
               },
             },
+            vehicle: true,
             lostProperties: true,
           },
           orderBy: { createdAt: "desc" },
@@ -249,7 +251,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          items,
+          items: items.map(withTripVehicle),
           total,
           page: parseInt(page),
           limit: parseInt(limit),
@@ -284,6 +286,7 @@ export async function passengerRoutes(fastify: FastifyInstance) {
               vehicle: true,
             },
           },
+          vehicle: true,
           passenger: { include: { user: true } },
           statusHistory: { orderBy: { createdAt: "asc" } },
           meetingPoint: {
@@ -304,10 +307,10 @@ export async function passengerRoutes(fastify: FastifyInstance) {
 
       // Attach driver's current location directly on the response so the
       // passenger app can immediately show the driver pin without a separate call
-      const enriched: any = { ...booking };
+      const enriched: any = withTripVehicle(booking);
       if (booking.driver) {
         enriched.driver = {
-          ...booking.driver,
+          ...enriched.driver,
           lastLatitude: booking.driver.currentLatitude,
           lastLongitude: booking.driver.currentLongitude,
         };
@@ -1197,16 +1200,17 @@ export async function passengerRoutes(fastify: FastifyInstance) {
               vehicle: true,
             },
           },
+          vehicle: true,
         },
         orderBy: { createdAt: "desc" },
       });
 
       if (!booking) return reply.send({ success: true, data: null });
 
-      const enriched: any = { ...booking };
+      const enriched: any = withTripVehicle(booking);
       if (booking.driver) {
         enriched.driver = {
-          ...booking.driver,
+          ...enriched.driver,
           lastLatitude: booking.driver.currentLatitude,
           lastLongitude: booking.driver.currentLongitude,
         };

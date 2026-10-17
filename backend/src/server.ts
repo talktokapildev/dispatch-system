@@ -37,6 +37,7 @@ import { runFlightWatchCycle } from "./services/flightWatch.service";
 import { flightWebhookRoutes } from "./routes/flightWebhooks";
 import { adminBookingFlightRoutes } from "./routes/admin/booking-flight";
 import { adminBookingReceiptRoutes } from "./routes/admin/booking-receipt";
+import { adminVehicleRoutes } from "./routes/admin/vehicles";
 import { twilioWebhookRoutes } from "./routes/twilioWebhooks";
 import { driverFlightRoutes } from "./routes/driverFlight";
 import { enableSmsTracking } from "./services/sms.service";
@@ -141,6 +142,7 @@ async function buildServer() {
   fastify.register(driverFlightRoutes, { prefix });
   fastify.register(adminBookingFlightRoutes, { prefix });
   fastify.register(adminBookingReceiptRoutes, { prefix });
+  fastify.register(adminVehicleRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)

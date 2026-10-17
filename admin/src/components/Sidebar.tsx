@@ -7,6 +7,7 @@ import {
   BookOpen,
   Users,
   Car,
+  CarFront,
   Building2,
   BarChart3,
   LogOut,
@@ -42,6 +43,7 @@ const nav: NavItem[] = [
   { href: "/dispatch", label: "Live Dispatch", icon: MapPin },
   { href: "/bookings", label: "Bookings", icon: BookOpen },
   { href: "/drivers", label: "Drivers", icon: Car },
+  { href: "/vehicles", label: "Vehicles", icon: CarFront },
   {
     href: "/applications",
     label: "Applications",

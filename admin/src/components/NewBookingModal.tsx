@@ -117,6 +117,7 @@ export function NewBookingModal({ open, onClose }: Props) {
   const [pastTrip, setPastTrip] = useState(false);
   const [past, setPast] = useState({
     driverId: "",
+    vehicleId: "", // "" = the driver's current car
     dropoffAt: "",
     noCommission: false,
     bookedVia: "WHATSAPP",
@@ -129,6 +130,14 @@ export function NewBookingModal({ open, onClose }: Props) {
     enabled: open && pastTrip,
   });
   const drivers: any[] = driversData?.items ?? [];
+  // Any car ever on the fleet (incl. retired) — a past trip may have been in an older car
+  const { data: allVehicles } = useQuery({
+    queryKey: ["vehicles", "all"],
+    queryFn: () =>
+      api.get("/admin/vehicles", { params: { status: "all" } }).then((r) => r.data.data.items),
+    enabled: open && pastTrip,
+  });
+  const pastDriver = drivers.find((d) => d.id === past.driverId);
   const pastFare = parseFloat(form.fixedPriceOverride);
   const pastReady =
     !pastTrip || (!!form.scheduledAt && !!past.driverId && pastFare > 0);
@@ -151,6 +160,7 @@ export function NewBookingModal({ open, onClose }: Props) {
           bookedAt: toIso(past.bookedAt),
           pastTrip: {
             driverId: past.driverId,
+            vehicleId: past.vehicleId || undefined,
             completedAt: toIso(past.dropoffAt),
             fare: pastFare,
             noCommission: past.noCommission,
@@ -462,7 +472,7 @@ export function NewBookingModal({ open, onClose }: Props) {
                   <select
                     className="input"
                     value={past.driverId}
-                    onChange={(e) => setP("driverId", e.target.value)}
+                    onChange={(e) => setPast((p) => ({ ...p, driverId: e.target.value, vehicleId: "" }))}
                   >
                     <option value="">Choose the driver…</option>
                     {drivers.map((d) => (
@@ -484,6 +494,30 @@ export function NewBookingModal({ open, onClose }: Props) {
                     No commission (operator drove)
                   </label>
                 </div>
+                {past.driverId && (
+                  <div>
+                    <label className="text-xs text-slate-400 block mb-1">Vehicle used</label>
+                    <select
+                      className="input"
+                      value={past.vehicleId}
+                      onChange={(e) => setP("vehicleId", e.target.value)}
+                    >
+                      <option value="">
+                        {pastDriver?.vehicle
+                          ? `Their current car · ${pastDriver.vehicle.licensePlate}`
+                          : "No vehicle recorded"}
+                      </option>
+                      {(allVehicles ?? [])
+                        .filter((v: any) => v.id !== pastDriver?.vehicle?.id)
+                        .map((v: any) => (
+                          <option key={v.id} value={v.id}>
+                            {v.licensePlate} — {v.make} {v.model}
+                            {v.archivedAt ? " (retired)" : ""}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-slate-400 block mb-1">How was it booked?</label>

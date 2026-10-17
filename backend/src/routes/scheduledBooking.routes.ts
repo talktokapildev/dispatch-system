@@ -137,6 +137,7 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
           already_claimed: 409,
           lock_contended: 409,
           eta_infeasible: 422,
+          no_vehicle: 409,
         };
         return reply.status(statusMap[result.reason] ?? 400).send({
           success: false,

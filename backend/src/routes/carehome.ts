@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { withTripVehicle } from "../utils/bookingRecord";
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET ?? "changeme";
@@ -176,10 +177,11 @@ export default async function careHomeRoutes(fastify: FastifyInstance) {
         include: {
           resident: true,
           driver: { include: { user: true, vehicle: true } },
+          vehicle: true,
         },
         orderBy: { scheduledAt: "desc" },
       });
-      return bookings;
+      return bookings.map(withTripVehicle);
     }
   );
 
@@ -265,10 +267,11 @@ export default async function careHomeRoutes(fastify: FastifyInstance) {
         include: {
           resident: true,
           driver: { include: { user: true, vehicle: true } },
+          vehicle: true,
         },
       });
       if (!booking) return reply.status(404).send({ error: "Not found" });
-      return booking;
+      return withTripVehicle(booking);
     }
   );
 

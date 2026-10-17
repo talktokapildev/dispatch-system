@@ -18,6 +18,7 @@ import { PricingService } from "../services/pricing.service";
 import { uploadToCloudinary } from "../services/cloudinary.service";
 import { SocketEvent } from "../types";
 import { isValidEncodedPolyline } from "../utils/polyline";
+import { VehicleError, setDriverVehicle } from "../services/vehicle.service";
 
 const locationSchema = z.object({
   latitude: z.number().min(-90).max(90),
@@ -354,6 +355,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
             driverId: null,
             driverAcceptedAt: null,
             dispatchedAt: null,
+            driverPhvLicenceNumber: null,
+            vehicleId: null,
           },
         }),
         fastify.prisma.bookingStatusHistory.create({
@@ -820,38 +823,13 @@ export async function driverRoutes(fastify: FastifyInstance) {
           pcoBadgeNumber: z.string().min(1),
           pcoLicenseExpiry: z.string(),
           drivingLicenseNumber: z.string().min(1),
-          vehicle: z.object({
-            make: z.string().min(1),
-            model: z.string().min(1),
-            year: z.number().int(),
-            colour: z.string().default(""),
-            licensePlate: z.string().min(1),
-            class: z.nativeEnum(VehicleClass).default(VehicleClass.STANDARD),
-            seats: z.number().int().default(4),
-            motExpiry: z.string(),
-            insuranceExpiry: z.string(),
-            phvLicenceNumber: z.string().optional(),
-            phvLicenceExpiry: z.string().optional(),
-            phvDiscNumber: z.string().optional(),
-            emissionStandard: z.string().optional(),
-            isUlezCompliant: z.boolean().default(false),
-          }),
+          // Car from the Vehicles page (optional — can be assigned later)
+          vehicleId: z.string().min(1).nullable().optional(),
         })
         .parse(request.body);
 
-      // ── TfL Licence Condition 11: 20-vehicle cap ──────────────────────────
-      // Tier 11-20 licence: must not exceed 20 PHVs available to carry out
-      // bookings at all operating centres at any time.
-      const TFL_VEHICLE_CAP = 20;
-      const currentVehicleCount = await fastify.prisma.driver.count({
-        where: { archivedAt: null }, // archived drivers don't count toward TfL cap
-      });
-      if (currentVehicleCount >= TFL_VEHICLE_CAP) {
-        return reply.status(409).send({
-          success: false,
-          error: `TfL vehicle cap reached (${currentVehicleCount}/${TFL_VEHICLE_CAP}). Your Tier 11-20 licence permits a maximum of 20 vehicles. Remove an existing driver before adding a new one.`,
-        });
-      }
+      // TfL Licence Condition 11 (20-vehicle cap) is enforced when vehicles are added on the
+      // Vehicles page, not here: a driver is not a vehicle.
 
       try {
         const result = await fastify.prisma.$transaction(async (tx) => {
@@ -907,32 +885,15 @@ export async function driverRoutes(fastify: FastifyInstance) {
               onboardingComplete: false,
             },
           });
-          const vehicle = await tx.vehicle.create({
-            data: {
-              driverId: driver.id,
-              make: body.vehicle.make,
-              model: body.vehicle.model,
-              year: body.vehicle.year,
-              colour: body.vehicle.colour,
-              licensePlate: body.vehicle.licensePlate.toUpperCase(),
-              class: body.vehicle.class,
-              seats: body.vehicle.seats,
-              motExpiry: new Date(body.vehicle.motExpiry),
-              insuranceExpiry: new Date(body.vehicle.insuranceExpiry),
-              phvLicenceNumber: body.vehicle.phvLicenceNumber ?? null,
-              phvLicenceExpiry: body.vehicle.phvLicenceExpiry
-                ? new Date(body.vehicle.phvLicenceExpiry)
-                : null,
-              phvDiscNumber: body.vehicle.phvDiscNumber ?? null,
-              emissionStandard: body.vehicle.emissionStandard ?? null,
-              isUlezCompliant: body.vehicle.isUlezCompliant ?? false,
-            },
-          });
+          if (body.vehicleId) await setDriverVehicle(tx, driver.id, body.vehicleId);
+          const vehicle = await tx.vehicle.findUnique({ where: { driverId: driver.id } });
           return { user, driver, vehicle };
         });
 
         return reply.status(201).send({ success: true, data: result });
       } catch (err: any) {
+        if (err instanceof VehicleError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
         if (err.code === "P2002") {
           const field = err.meta?.target?.[0] ?? "field";
           return reply.status(409).send({
@@ -960,24 +921,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
           pcoBadgeNumber: z.string().optional(),
           pcoLicenseExpiry: z.string().optional(),
           drivingLicenseNumber: z.string().optional(),
-          vehicle: z
-            .object({
-              make: z.string().optional(),
-              model: z.string().optional(),
-              year: z.number().int().optional(),
-              colour: z.string().optional(),
-              licensePlate: z.string().optional(),
-              class: z.nativeEnum(VehicleClass).optional(),
-              seats: z.number().int().optional(),
-              motExpiry: z.string().optional(),
-              insuranceExpiry: z.string().optional(),
-              phvLicenceNumber: z.string().optional().nullable(),
-              phvLicenceExpiry: z.string().optional().nullable(),
-              phvDiscNumber: z.string().optional().nullable(),
-              emissionStandard: z.string().optional().nullable(),
-              isUlezCompliant: z.boolean().optional(),
-            })
-            .optional(),
+          // undefined = leave as is, null = take their car away, id = give them that car
+          vehicleId: z.string().min(1).nullable().optional(),
         })
         .parse(request.body);
 
@@ -990,77 +935,44 @@ export async function driverRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Driver not found" });
 
-      await fastify.prisma.$transaction(async (tx) => {
-        if (
-          body.firstName ||
-          body.lastName ||
-          body.phone ||
-          body.email !== undefined
-        ) {
-          await tx.user.update({
-            where: { id: driver.userId },
+      try {
+        await fastify.prisma.$transaction(async (tx) => {
+          if (
+            body.firstName ||
+            body.lastName ||
+            body.phone ||
+            body.email !== undefined
+          ) {
+            await tx.user.update({
+              where: { id: driver.userId },
+              data: {
+                ...(body.firstName && { firstName: body.firstName }),
+                ...(body.lastName && { lastName: body.lastName }),
+                ...(body.phone && { phone: body.phone }),
+                ...(body.email !== undefined && { email: body.email }),
+              },
+            });
+          }
+          await tx.driver.update({
+            where: { id: driverId },
             data: {
-              ...(body.firstName && { firstName: body.firstName }),
-              ...(body.lastName && { lastName: body.lastName }),
-              ...(body.phone && { phone: body.phone }),
-              ...(body.email !== undefined && { email: body.email }),
+              ...(body.pcoBadgeNumber && { pcoBadgeNumber: body.pcoBadgeNumber }),
+              ...(body.pcoLicenseExpiry && {
+                pcoLicenseExpiry: new Date(body.pcoLicenseExpiry),
+              }),
+              ...(body.drivingLicenseNumber && {
+                drivingLicenseNumber: body.drivingLicenseNumber,
+              }),
             },
           });
-        }
-        await tx.driver.update({
-          where: { id: driverId },
-          data: {
-            ...(body.pcoBadgeNumber && { pcoBadgeNumber: body.pcoBadgeNumber }),
-            ...(body.pcoLicenseExpiry && {
-              pcoLicenseExpiry: new Date(body.pcoLicenseExpiry),
-            }),
-            ...(body.drivingLicenseNumber && {
-              drivingLicenseNumber: body.drivingLicenseNumber,
-            }),
-          },
+          if (body.vehicleId !== undefined)
+            await setDriverVehicle(tx, driverId, body.vehicleId);
         });
-        if (body.vehicle && driver.vehicle) {
-          await tx.vehicle.update({
-            where: { driverId },
-            data: {
-              ...(body.vehicle.make && { make: body.vehicle.make }),
-              ...(body.vehicle.model && { model: body.vehicle.model }),
-              ...(body.vehicle.year && { year: body.vehicle.year }),
-              ...(body.vehicle.colour !== undefined && {
-                colour: body.vehicle.colour,
-              }),
-              ...(body.vehicle.licensePlate && {
-                licensePlate: body.vehicle.licensePlate.toUpperCase(),
-              }),
-              ...(body.vehicle.class && { class: body.vehicle.class }),
-              ...(body.vehicle.seats && { seats: body.vehicle.seats }),
-              ...(body.vehicle.motExpiry && {
-                motExpiry: new Date(body.vehicle.motExpiry),
-              }),
-              ...(body.vehicle.insuranceExpiry && {
-                insuranceExpiry: new Date(body.vehicle.insuranceExpiry),
-              }),
-              ...(body.vehicle.phvLicenceNumber !== undefined && {
-                phvLicenceNumber: body.vehicle.phvLicenceNumber,
-              }),
-              ...(body.vehicle.phvLicenceExpiry !== undefined && {
-                phvLicenceExpiry: body.vehicle.phvLicenceExpiry
-                  ? new Date(body.vehicle.phvLicenceExpiry)
-                  : null,
-              }),
-              ...(body.vehicle.phvDiscNumber !== undefined && {
-                phvDiscNumber: body.vehicle.phvDiscNumber,
-              }),
-              ...(body.vehicle.emissionStandard !== undefined && {
-                emissionStandard: body.vehicle.emissionStandard,
-              }),
-              ...(body.vehicle.isUlezCompliant !== undefined && {
-                isUlezCompliant: body.vehicle.isUlezCompliant,
-              }),
-            },
-          });
-        }
-      });
+      } catch (err) {
+        if (err instanceof VehicleError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
+      }
 
       const updated = await fastify.prisma.driver.findUnique({
         where: { id: driverId },
@@ -1093,7 +1005,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
         });
         await tx.driverEarning.deleteMany({ where: { driverId } });
         await tx.driverDocument.deleteMany({ where: { driverId } });
-        await tx.vehicle.deleteMany({ where: { driverId } });
+        // Their car stays on the fleet, unassigned (and on the bookings it did)
+        await tx.vehicle.updateMany({ where: { driverId }, data: { driverId: null } });
         await tx.driver.delete({ where: { id: driverId } });
         await tx.pushToken.deleteMany({ where: { userId: driver.userId } });
         await tx.otpCode.deleteMany({ where: { userId: driver.userId } });
