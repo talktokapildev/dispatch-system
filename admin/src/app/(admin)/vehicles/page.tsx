@@ -9,6 +9,7 @@ import { AlertTriangle, Archive, CarFront, Pencil, Plus, RotateCcw, Search, Tras
 import { api } from "@/lib/api";
 import { Modal, SectionHeader, Spinner, Table } from "@/components/ui";
 import { DocumentsPanel } from "@/components/Documents";
+import { VehicleDriverHistory } from "@/components/VehicleHistory";
 import {
   EMPTY_VEHICLE_FORM,
   VehicleFormFields,
@@ -486,6 +487,20 @@ export default function VehiclesPage() {
                 {selected.notes}
               </p>
             )}
+
+            {/* Driver history */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">Driver history</p>
+                <a
+                  href={`/tfl-records?vehicle=${selected.id}`}
+                  className="text-[10px] text-brand-400 hover:text-brand-300"
+                >
+                  TfL vehicle record →
+                </a>
+              </div>
+              <VehicleDriverHistory vehicleId={selected.id} />
+            </div>
 
             {/* Documents */}
             <div>

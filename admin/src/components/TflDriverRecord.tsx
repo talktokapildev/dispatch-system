@@ -153,7 +153,7 @@ function Line({ label, value, tall }: { label: string; value: string | null | un
   );
 }
 
-const TFL_STYLES = `
+export const TFL_STYLES = `
         .tfl { font-family: Arial, Helvetica, sans-serif; color: #000; background: #e5e5e5; padding: 16px 0 24px; border-radius: 12px; overflow-x: auto; }
         .tfl .sheet { background: #fff; width: 210mm; min-height: 297mm; margin: 0 auto 16px; padding: 12mm 16mm 10mm; box-sizing: border-box; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
         .tfl h1 { text-align: center; font-size: 20px; font-weight: bold; text-decoration: underline; margin: 0 0 8px; }

@@ -25,6 +25,7 @@ import {
   Modal,
 } from "@/components/ui";
 import { DocumentsPanel } from "@/components/Documents";
+import { DriverVehicleHistory } from "@/components/VehicleHistory";
 import {
   ArchiveDriverModal,
   DeleteDriverModal,
@@ -1403,6 +1404,14 @@ export default function DriversPage() {
                 </div>
               </div>
             )}
+
+            {/* Vehicle history */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                Vehicle history
+              </p>
+              <DriverVehicleHistory driverId={selected.id} />
+            </div>
 
             {/* Documents */}
             <div>

@@ -7,11 +7,15 @@
 //   node --env-file=.env -r ts-node/register scripts/test-vehicles.ts
 //
 // Expect: all PASS, 0 failed.
+import type {} from "../src/plugins/database";
+import type {} from "../src/plugins/auth";
+import type {} from "../src/plugins/socket";
 import Fastify from "fastify";
 import { PrismaClient as NativePrismaClient } from "@prisma/client";
 import { bookingRoutes } from "../src/routes/bookings";
 import { driverRoutes } from "../src/routes/drivers";
 import { adminVehicleRoutes } from "../src/routes/admin/vehicles";
+import { adminDriverRegisterRoutes } from "../src/routes/admin/driverRegister";
 import { MapsService } from "../src/services/maps.service";
 import { saveReceipt } from "../src/services/receipt.service";
 import { TFL_VEHICLE_CAP } from "../src/services/vehicle.service";
@@ -65,7 +69,7 @@ const check = (name: string, ok: boolean, info?: any) => {
   const f = Fastify();
   f.decorate("prisma", prisma);
   f.decorate("redis", redisStub);
-  f.decorate("io", { to: () => ({ emit: () => {} }) } as any);
+  f.decorate("io", { to: () => ({ emit: () => {} }), in: () => ({ disconnectSockets: () => {} }) } as any);
   f.decorate("authenticateAdmin", async (req: any) => { req.user = { userId: admin.id }; });
   f.decorate("authenticate", async (req: any) => { req.user = { userId: admin.id }; });
   f.decorate("authenticatePassenger", async () => {});
@@ -78,6 +82,7 @@ const check = (name: string, ok: boolean, info?: any) => {
     reply.status(error.statusCode ?? 500).send({ success: false, error: error.message });
   });
   await f.register(bookingRoutes, { prefix: "/api/v1" });
+  await f.register(adminDriverRegisterRoutes, { prefix: "/api/v1" });
   await f.register(driverRoutes, { prefix: "/api/v1" });
   await f.register(adminVehicleRoutes, { prefix: "/api/v1" });
   const req = (method: any, url: string, payload?: any) => f.inject({ method, url: `/api/v1${url}`, payload });
@@ -253,10 +258,13 @@ const check = (name: string, ok: boolean, info?: any) => {
     for (const id of fillers) await req("DELETE", `/admin/vehicles/${id}`);
     created.vehicles = created.vehicles.filter((id) => !fillers.includes(id));
 
-    // ── Deleting a driver keeps their car ──
-    r = await req("DELETE", `/admin/drivers/${kapil.id}`);
-    check("delete driver → 200", r.statusCode === 200, r.json());
-    created.drivers = created.drivers.filter((id) => id !== kapil.id);
+    // ── A driver leaving (Archive) keeps their car ── (permanent delete is only allowed
+    // 12 months after leaving: see test-driver-register.ts)
+    r = await req("POST", `/admin/drivers/${kapil.id}/archive`, {
+      leftOn: new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date()),
+      reason: "Test",
+    });
+    check("driver leaves (archive) → 200", r.statusCode === 200, r.json());
     const aAfter = await prisma.vehicle.findUnique({ where: { id: carA.id } });
     check("their car survives, unassigned", !!aAfter && aAfter.driverId === null, aAfter);
     b = await prisma.booking.findUnique({ where: { id: done.id } });
@@ -271,6 +279,7 @@ const check = (name: string, ok: boolean, info?: any) => {
     await prisma.driverEarning.deleteMany({ where: { bookingId: { in: created.bookings } } });
     await prisma.booking.deleteMany({ where: { id: { in: created.bookings } } });
     await prisma.vehicle.deleteMany({ where: { id: { in: created.vehicles } } });
+    await prisma.refreshToken.deleteMany({ where: { userId: { in: created.users } } });
     await prisma.driver.deleteMany({ where: { id: { in: created.drivers } } });
     await prisma.passenger.deleteMany({ where: { userId: { in: created.users } } });
     await prisma.user.deleteMany({ where: { id: { in: created.users } } });
