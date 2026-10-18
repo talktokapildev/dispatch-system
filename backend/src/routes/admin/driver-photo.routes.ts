@@ -2,15 +2,37 @@
 // Admin-only routes for confirming a driver's passenger-facing profile photo.
 // GET   /api/v1/admin/drivers/:driverId/suggested-photo
 // PATCH /api/v1/admin/drivers/:driverId/photo
+//
+// The PCO badge is a private document: the admin site gets a short-lived link to it
+// (badgeUrl), crops the face in the browser and sends the result back as { image }.
+// The confirmed photo is stored PUBLIC (passengers see it).
 
 import { FastifyInstance } from "fastify";
-import { uploadToCloudinary } from "../../services/cloudinary.service";
-import { getFaceCroppedUrl } from "../../utils/cloudinaryFaceCrop";
+import { decodeDataUri, isRef, uploadPublicImage } from "../../services/fileStorage";
+import { fileLinker } from "../../services/fileLinks";
+
+/** A profile photo URL we accept as-is: a public Cloudinary image of ours, nothing private. */
+function acceptablePhotoUrl(url: string): boolean {
+  if (isRef(url) || url.includes("/files/")) return false;
+  try {
+    const u = new URL(url);
+    const cloud = (process.env.CLOUDINARY_CLOUD_NAME ?? "").trim();
+    return (
+      u.protocol === "https:" &&
+      u.hostname === "res.cloudinary.com" &&
+      !!cloud &&
+      u.pathname.startsWith(`/${cloud}/image/upload/`)
+    );
+  } catch {
+    return false;
+  }
+}
 
 export async function adminDriverPhotoRoutes(fastify: FastifyInstance) {
   // ─── GET /admin/drivers/:driverId/suggested-photo ──────────────────────────
-  // Looks up the driver's approved PCO badge document and returns a
-  // face-cropped candidate URL, for admin review before confirming.
+  // Looks up the driver's latest PCO badge document and returns a short-lived link to it
+  // (badgeUrl) for the in-browser cropper. suggestedPhotoUrl is no longer produced (the badge
+  // is private, so Cloudinary can't crop it publicly) and is always null.
   fastify.get(
     "/admin/drivers/:driverId/suggested-photo",
     { preHandler: [fastify.authenticateAdmin] },
@@ -28,23 +50,16 @@ export async function adminDriverPhotoRoutes(fastify: FastifyInstance) {
           .send({ error: "No PCO badge document found for this driver" });
       }
 
-      const suggestedPhotoUrl = getFaceCroppedUrl(badgeDoc.fileUrl);
-      if (!suggestedPhotoUrl) {
-        return reply.status(422).send({
-          error: "Could not generate a suggested crop from this document",
-        });
-      }
-
-      return reply
-        .status(200)
-        .send({ badgeUrl: badgeDoc.fileUrl, suggestedPhotoUrl });
+      const files = fileLinker(request, { kind: "admin", id: request.user.userId });
+      const badgeUrl = files.link(badgeDoc.fileUrl, `doc:${badgeDoc.id}`, 1);
+      return reply.status(200).send({ badgeUrl, suggestedPhotoUrl: null });
     }
   );
 
   // ─── PATCH /admin/drivers/:driverId/photo ───────────────────────────────────
   // Confirms the driver's profile photo. Accepts EITHER:
-  //   { photoUrl }  — confirm a URL directly (e.g. the suggested crop above)
-  //   { image }     — base64 data URI, uploaded fresh (manual replacement)
+  //   { photoUrl }  — keep an existing PUBLIC Cloudinary image URL of ours
+  //   { image }     — base64 data URI (the browser crop, or a manual upload)
   fastify.patch(
     "/admin/drivers/:driverId/photo",
     { preHandler: [fastify.authenticateAdmin] },
@@ -65,14 +80,11 @@ export async function adminDriverPhotoRoutes(fastify: FastifyInstance) {
 
       if (image) {
         try {
-          // NOTE: check CloudinaryFolder type in cloudinary.service.ts —
-          // "drivers/profile-photos" may need adding to that union type.
-          const uploadResult = await uploadToCloudinary(
-            image,
+          finalUrl = await uploadPublicImage(
+            decodeDataUri(image),
             "drivers/profile-photos",
             driverId
           );
-          finalUrl = uploadResult.url;
         } catch (err: any) {
           fastify.log.error(
             { err },
@@ -83,6 +95,10 @@ export async function adminDriverPhotoRoutes(fastify: FastifyInstance) {
             .send({ error: "Photo upload failed. Please try again." });
         }
       } else if (photoUrl) {
+        if (!acceptablePhotoUrl(photoUrl))
+          return reply
+            .status(400)
+            .send({ error: "This photo can't be used. Please upload the image instead." });
         finalUrl = photoUrl;
       } else {
         return reply

@@ -9,7 +9,7 @@
 // POST /admin/documents                                    upload for a driver/car (multipart: type,
 //                                                          driverId|vehicleId, expiryDate, approve, notes, files)
 // POST /admin/documents/:id/review {decision, expiryDate, rejectionReason, notes}
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
@@ -38,6 +38,9 @@ import {
   reviewDocument,
 } from "../../services/documentReview.service";
 import { readDocumentUpload } from "../../services/documentUpload";
+import { fileLinker } from "../../services/fileLinks";
+
+type Files = ReturnType<typeof fileLinker>;
 
 const userSelect = { select: { id: true, firstName: true, lastName: true, phone: true } } as const;
 const listInclude = {
@@ -61,16 +64,16 @@ type ListRow = Prisma.DriverDocumentGetPayload<{ include: typeof listInclude }>;
 const fullName = (u?: { firstName: string; lastName: string | null } | null) =>
   u ? `${u.firstName} ${u.lastName ?? ""}`.trim() : null;
 
-/** Admin row: the document plus who it belongs to and how long it has left. */
-function present(doc: ListRow, now: Date) {
+/** Admin row: the document plus who it belongs to and how long it has left.
+ *  File references are replaced by short-lived links (fileUrl, pageUrls, pages). */
+function present(doc: ListRow, now: Date, files: Files) {
   const isVehicle = !!doc.vehicleId;
   const ownerDriver = isVehicle ? doc.vehicle?.driver ?? null : doc.driver;
   return {
-    ...doc,
+    ...files.doc(doc),
     label: DOC_LABELS[doc.type as DocType] ?? doc.type,
     expiryRequired: EXPIRY_REQUIRED.has(doc.type as DocType),
     multiPage: MULTI_PAGE.has(doc.type as DocType),
-    pages: [doc.fileUrl, ...(doc.pageUrls ?? [])],
     daysLeft: doc.expiryDate ? daysUntil(doc.expiryDate, now) : null,
     owner: {
       kind: isVehicle ? "vehicle" : "driver",
@@ -105,14 +108,21 @@ const reviewSchema = z.object({
 export async function adminDocumentRoutes(fastify: FastifyInstance) {
   const auth = { preHandler: [fastify.authenticateAdmin] };
 
-  async function list(where: Prisma.DriverDocumentWhereInput, orderBy: Prisma.DriverDocumentOrderByWithRelationInput) {
+  const linksFor = (request: FastifyRequest) =>
+    fileLinker(request, { kind: "admin", id: request.user.userId });
+
+  async function list(
+    files: Files,
+    where: Prisma.DriverDocumentWhereInput,
+    orderBy: Prisma.DriverDocumentOrderByWithRelationInput
+  ) {
     const now = new Date();
     const rows = await fastify.prisma.driverDocument.findMany({
       where: { AND: [activeOwners, where] },
       include: listInclude,
       orderBy,
     });
-    return rows.map((r) => present(r, now));
+    return rows.map((r) => present(r, now, files));
   }
 
   function viewWhere(view: string, days: number): Prisma.DriverDocumentWhereInput {
@@ -153,6 +163,7 @@ export async function adminDocumentRoutes(fastify: FastifyInstance) {
       where.OR = [{ driverId: q.driverId, vehicleId: null }, ...(v ? [{ vehicleId: v.id }] : [])];
     }
     let rows = await list(
+      linksFor(request),
       where,
       view === "expiring" || view === "expired" ? { expiryDate: "asc" } : { createdAt: "desc" }
     );
@@ -187,6 +198,7 @@ export async function adminDocumentRoutes(fastify: FastifyInstance) {
     const { days = "60" } = request.query as Record<string, string>;
     const n = Math.min(Math.max(parseInt(days) || 60, 1), 365);
     const rows = await list(
+      linksFor(request),
       { status: "APPROVED", expiryDate: { not: null, lte: new Date(Date.now() + (n + 1) * 86_400_000) } },
       { expiryDate: "asc" }
     );
@@ -230,7 +242,8 @@ export async function adminDocumentRoutes(fastify: FastifyInstance) {
       include: listInclude,
       orderBy: { createdAt: "desc" },
     });
-    const presented = rows.map((r) => present(r, now));
+    const files = linksFor(request);
+    const presented = rows.map((r) => present(r, now, files));
     const byId = new Map(presented.map((p) => [p.id, p]));
     const ruleRows = rows as unknown as DocRuleRow[];
 
@@ -298,7 +311,7 @@ export async function adminDocumentRoutes(fastify: FastifyInstance) {
         });
         notifyReview(fastify.prisma, result);
       }
-      return reply.status(201).send({ success: true, data: result });
+      return reply.status(201).send({ success: true, data: linksFor(request).doc(result) });
     } catch (err) {
       if (err instanceof DocumentError)
         return reply.status(err.statusCode).send({ success: false, error: err.message });
@@ -324,7 +337,7 @@ export async function adminDocumentRoutes(fastify: FastifyInstance) {
         adminUserId: request.user.userId,
       });
       notifyReview(fastify.prisma, doc);
-      return reply.send({ success: true, data: doc });
+      return reply.send({ success: true, data: linksFor(request).doc(doc) });
     } catch (err) {
       if (err instanceof DocumentError)
         return reply.status(err.statusCode).send({ success: false, error: err.message });
