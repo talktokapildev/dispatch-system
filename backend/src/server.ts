@@ -46,6 +46,7 @@ import { enableSmsTracking } from "./services/sms.service";
 import { fileRoutes } from "./routes/files";
 import { adminDriverRegisterRoutes } from "./routes/admin/driverRegister";
 import { adminVehicleRecordRoutes } from "./routes/admin/vehicleRecord";
+import { adminLostPropertyRoutes } from "./routes/admin/lostProperty";
 import { missingStorageConfig } from "./services/fileStorage";
 import { fileTokenSecretSet } from "./services/fileLinks";
 
@@ -155,6 +156,7 @@ async function buildServer() {
   fastify.register(fileRoutes, { prefix });
   fastify.register(adminDriverRegisterRoutes, { prefix });
   fastify.register(adminVehicleRecordRoutes, { prefix });
+  fastify.register(adminLostPropertyRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)

@@ -1023,70 +1023,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ═══════════════════════════════════════════════════════
-  // ADD TO: backend/src/routes/admin.ts
-  // Paste just before the closing } of adminRoutes
-  // ═══════════════════════════════════════════════════════
+  // Lost property (TfL Condition 9): see routes/admin/lostProperty.ts
 
-  // ─── GET /admin/lost-property ───
-  // TfL Condition 9: lost property log
-  fastify.get(
-    "/admin/lost-property",
-    { preHandler: [fastify.authenticateAdmin] },
-    async (request, reply) => {
-      const { status } = request.query as { status?: string };
-
-      const reports = await fastify.prisma.lostProperty.findMany({
-        where: status ? { status: status as any } : undefined,
-        include: {
-          booking: {
-            select: {
-              reference: true,
-              pickupAddress: true,
-              dropoffAddress: true,
-              completedAt: true,
-            },
-          },
-          passenger: {
-            include: {
-              user: {
-                select: { firstName: true, lastName: true, phone: true },
-              },
-            },
-          },
-        },
-        orderBy: { reportedAt: "desc" },
-      });
-
-      return reply.send({ success: true, data: reports });
-    }
-  );
-
-  // ─── PATCH /admin/lost-property/:id ───
-  fastify.patch(
-    "/admin/lost-property/:id",
-    { preHandler: [fastify.authenticateAdmin] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      const { status, adminNotes } = request.body as {
-        status?: "REPORTED" | "FOUND" | "RETURNED" | "CLOSED";
-        adminNotes?: string;
-      };
-
-      const resolved = status === "RETURNED" || status === "CLOSED";
-
-      const report = await fastify.prisma.lostProperty.update({
-        where: { id },
-        data: {
-          ...(status && { status }),
-          ...(adminNotes !== undefined && { adminNotes }),
-          ...(resolved && { resolvedAt: new Date() }),
-        },
-      });
-
-      return reply.send({ success: true, data: report });
-    }
-  );
   // ─── Admin: cancel a booking (properly frees driver + clears Redis) ──────────
   fastify.post(
     "/admin/bookings/:id/cancel",

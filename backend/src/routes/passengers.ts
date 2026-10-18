@@ -15,6 +15,12 @@ import {
   resolveAirportPickup,
 } from "../services/airportBooking.service";
 import { withTripVehicle } from "../utils/bookingRecord";
+import {
+  PASSENGER_LOST_PROPERTY_SELECT,
+  passengerLostProperty,
+  reportByPassenger,
+} from "../services/lostProperty.service";
+import { LostPropertyError } from "../services/lostPropertyRules";
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -239,7 +245,11 @@ export async function passengerRoutes(fastify: FastifyInstance) {
               },
             },
             vehicle: true,
-            lostProperties: true,
+            // only what the app shows — the register's internal fields stay in admin
+            lostProperties: {
+              select: PASSENGER_LOST_PROPERTY_SELECT,
+              orderBy: { reportedAt: "asc" },
+            },
           },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),
@@ -923,85 +933,47 @@ export async function passengerRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ═══════════════════════════════════════════════════════
-  // ADD TO: backend/src/routes/passengers.ts
-  // Paste just before the closing } of passengerRoutes
-  // ═══════════════════════════════════════════════════════
-
   // ─── POST /passengers/bookings/:id/lost-property ───
-  // TfL Condition 9: lost property procedure
+  // TfL Condition 9: lost property register. The service gives the report its ref (LP-2026-001)
+  // and copies the booking details, vehicle reg and passenger name onto it.
   fastify.post(
     "/passengers/bookings/:id/lost-property",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const { userId } = request.user;
       const { id } = request.params as { id: string };
-      const { description, contactPhone } = request.body as {
-        description: string;
+      const { description, contactPhone } = (request.body ?? {}) as {
+        description?: string;
         contactPhone?: string;
       };
 
-      if (!description?.trim()) {
-        return reply.status(400).send({
-          success: false,
-          error: "Description is required",
-        });
-      }
+      try {
+        const { report, booking, passenger } = await reportByPassenger(
+          { prisma: fastify.prisma, log: fastify.log },
+          { userId, bookingId: id, description, contactPhone }
+        );
 
-      const passenger = await fastify.prisma.passenger.findUnique({
-        where: { userId },
-        include: { user: true },
-      });
-      if (!passenger)
-        return reply.status(403).send({ success: false, error: "Not found" });
-
-      const booking = await fastify.prisma.booking.findUnique({
-        where: { id },
-      });
-      if (!booking)
-        return reply
-          .status(404)
-          .send({ success: false, error: "Booking not found" });
-      if (booking.passengerId !== passenger.id)
-        return reply
-          .status(403)
-          .send({ success: false, error: "Access denied" });
-
-      // Check not already reported for this booking
-      const existing = await fastify.prisma.lostProperty.findFirst({
-        where: { bookingId: id, passengerId: passenger.id },
-      });
-      if (existing) {
-        return reply.status(400).send({
-          success: false,
-          error: "Lost property already reported for this booking",
-        });
-      }
-
-      const report = await fastify.prisma.lostProperty.create({
-        data: {
+        // Notify admin via socket
+        fastify.io.to("admin").emit("admin:lost_property", {
+          reportId: report.id,
+          refNo: report.refNo,
           bookingId: id,
-          passengerId: passenger.id,
-          description: description.trim(),
-          contactPhone: contactPhone ?? passenger.user.phone,
-        },
-      });
+          reference: booking.reference,
+          description: report.description,
+          passengerPhone: report.contactPhone,
+          reportedAt: report.reportedAt.toISOString(),
+        });
 
-      // Notify admin via socket
-      fastify.io.to("admin").emit("admin:lost_property", {
-        reportId: report.id,
-        bookingId: id,
-        reference: booking.reference,
-        description: description.trim(),
-        passengerPhone: contactPhone ?? passenger.user.phone,
-        reportedAt: report.reportedAt.toISOString(),
-      });
+        fastify.log.info(
+          `Lost property reported: ${report.refNo} booking=${booking.reference} passenger=${passenger.user.phone}`
+        );
 
-      fastify.log.info(
-        `Lost property reported: booking=${booking.reference} passenger=${passenger.user.phone}`
-      );
-
-      return reply.send({ success: true, data: report });
+        return reply.send({ success: true, data: passengerLostProperty(report) });
+      } catch (err) {
+        if (err instanceof LostPropertyError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
+      }
     }
   );
 
@@ -1022,6 +994,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
 
       const report = await fastify.prisma.lostProperty.findFirst({
         where: { bookingId: id, passengerId: passenger.id },
+        select: PASSENGER_LOST_PROPERTY_SELECT,
+        orderBy: { reportedAt: "asc" },
       });
 
       return reply.send({ success: true, data: report ?? null });

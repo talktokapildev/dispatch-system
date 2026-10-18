@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
-import { Plus, Search, Download, Pencil, X, Check } from "lucide-react";
+import { Plus, Search, Download, Pencil, X, Check, Package } from "lucide-react";
 import {
   Badge,
   SectionHeader,
@@ -447,6 +447,14 @@ export default function BookingsPage() {
               booking={selected}
               onChanged={refreshSelected}
             />
+
+            {/* TfL Condition 9: log property left behind on this trip (Alerts → Lost Property) */}
+            <a
+              href={`/alerts?logLost=${selected.id}`}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white border border-[var(--border)] hover:border-brand-500 rounded-lg px-3 py-1.5 transition-colors"
+            >
+              <Package size={12} /> Log lost property
+            </a>
 
             {selected.notes && (
               <div className="p-3 rounded-lg bg-[var(--card-hover)] text-xs text-slate-400">

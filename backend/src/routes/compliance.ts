@@ -510,7 +510,7 @@ async function runAutomatedChecks(
       lostPropertyCount !== 1 ? "s" : ""
     } on record`,
     detail:
-      "Lost property feature is active. Passengers can report via the app and admin can manage via Alerts.",
+      "Lost property register is active. Passengers report via the app; staff log items handed in and record every enquiry and the result on Alerts. Each item has a ref (LP-YYYY-NNN) and prints in TfL's LOST/FOUND PROPERTY format from TfL Records.",
     requirement:
       "Must have and maintain a procedure for dealing with property left behind by customers. Must record and retain prescribed particulars of any property found or reported missing.",
   };
