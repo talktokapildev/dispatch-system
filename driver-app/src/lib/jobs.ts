@@ -98,7 +98,16 @@ export async function claimJob(jobId: string): Promise<"claimed" | "gone" | "fai
       eta_infeasible:
         "You wouldn't be able to reach pickup in time from your current location.",
       lock_contended: "This job is being claimed right now — try again.",
+      no_vehicle: "You have no vehicle assigned. Please contact OrangeRide.",
     };
+    if (reason === "documents") {
+      // Server sends the reason, e.g. "Your insurance (GL72LXW) expired on …"
+      Alert.alert(
+        "Documents need attention",
+        err.response?.data?.message ?? "Please check your documents."
+      );
+      return "failed";
+    }
     Alert.alert("Couldn't claim job", messages[reason] ?? "Please try again.");
     return reason === "already_claimed" ? "gone" : "failed";
   }

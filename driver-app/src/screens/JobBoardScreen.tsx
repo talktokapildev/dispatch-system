@@ -56,6 +56,8 @@ export default function JobBoardScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Documents not in order → the server sends no open jobs and says why
+  const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async (activeTab: Tab, isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -68,6 +70,7 @@ export default function JobBoardScreen({ navigation, route }: any) {
       // Location (if allowed) → "x mi · y min" from me to each pickup.
       const { data } = await api.get(endpoint, { params: await coordsParams() });
       setJobs(data.data ?? []);
+      if (activeTab === "open") setBlockedMessage(data.blocked?.message ?? null);
     } catch {
       // silent — pull-to-refresh available
     } finally {
@@ -205,6 +208,19 @@ export default function JobBoardScreen({ navigation, route }: any) {
             />
           }
           ListEmptyComponent={
+            tab === "open" && blockedMessage ? (
+              <View style={s.empty}>
+                <Text style={s.emptyIcon}>⛔</Text>
+                <Text style={s.emptyText}>You can't take jobs right now</Text>
+                <Text style={s.emptySubtext}>{blockedMessage}</Text>
+                <TouchableOpacity
+                  style={s.blockedBtn}
+                  onPress={() => navigation.navigate("Documents")}
+                >
+                  <Text style={s.blockedBtnText}>Open Documents</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
             <View style={s.empty}>
               <Text style={s.emptyIcon}>{tab === "open" ? "🗓️" : "📌"}</Text>
               <Text style={s.emptyText}>
@@ -218,6 +234,7 @@ export default function JobBoardScreen({ navigation, route }: any) {
                   : "Claimed jobs from the Open tab will show up here."}
               </Text>
             </View>
+            )
           }
           renderItem={({ item }) => {
             const isBusy = busyId === item.id;
@@ -477,6 +494,14 @@ const styles = (
     },
     btnDisabled: { opacity: 0.5 },
     empty: { alignItems: "center", paddingTop: Spacing.xxl },
+    blockedBtn: {
+      marginTop: Spacing.md,
+      backgroundColor: C.brand,
+      borderRadius: Radius.md,
+      paddingVertical: 10,
+      paddingHorizontal: Spacing.lg,
+    },
+    blockedBtnText: { color: "#000", fontWeight: "700", fontSize: FontSize.sm },
     emptyIcon: { fontSize: 48, marginBottom: Spacing.md },
     emptyText: { fontSize: FontSize.md, color: C.muted, marginBottom: 4 },
     emptySubtext: {

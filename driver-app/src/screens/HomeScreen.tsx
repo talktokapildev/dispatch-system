@@ -19,6 +19,7 @@ import { useTheme } from "../lib/ThemeContext";
 import { useLocationTracking } from "../hooks/useLocationTracking";
 import { useDocumentStatus } from "../hooks/useDocumentStatus";
 import { DocumentStatusBanner } from "../components/DocumentStatusBanner";
+import { isDocumentsError, showDocumentsBlocked } from "../lib/documents";
 
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -32,7 +33,7 @@ export default function HomeScreen({ navigation }: any) {
   const [todayJobs, setTodayJobs] = useState(0);
   const [claimedJobs, setClaimedJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { eligibility } = useDocumentStatus();
+  const { eligibility, refresh: refreshDocuments } = useDocumentStatus();
 
   const isOnline = status !== "OFFLINE";
   const { getInitialLocation, locationRef } = useLocationTracking(
@@ -84,6 +85,17 @@ export default function HomeScreen({ navigation }: any) {
         index: 0,
         routes: [{ name: "ActiveJob", params: { bookingId: data.bookingId } }],
       });
+    },
+    "driver:documents_blocked": (data) => {
+      goOfflineForDocuments(data?.message ?? "");
+    },
+    "driver:job_removed": async () => {
+      // An accepted job went back to the job board (documents) — refresh the list
+      try {
+        const { data } = await api.get("/bookings/scheduled/mine");
+        setClaimedJobs(data?.data ?? []);
+      } catch {}
+      refreshDocuments();
     },
     "booking:cancelled": async (data) => {
       try {
@@ -253,10 +265,20 @@ export default function HomeScreen({ navigation }: any) {
       setStatus("AVAILABLE");
     } catch (err: any) {
       setStatus("OFFLINE");
-      Alert.alert(
-        "Error",
-        err.response?.data?.error ?? "Failed to update status"
-      );
+      if (isDocumentsError(err)) {
+        // Documents not in order: say why, with a way to fix it
+        refreshDocuments();
+        showDocumentsBlocked(
+          navigation,
+          err.response?.data?.error ?? "",
+          "You can't go online"
+        );
+      } else {
+        Alert.alert(
+          "Error",
+          err.response?.data?.error ?? "Failed to update status"
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -267,7 +289,27 @@ export default function HomeScreen({ navigation }: any) {
     try {
       await api.patch("/drivers/status", { status: newStatus });
       setStatus(newStatus);
+    } catch (err: any) {
+      if (isDocumentsError(err)) {
+        refreshDocuments();
+        showDocumentsBlocked(navigation, err.response?.data?.error ?? "", "You can't go back online");
+      }
+    }
+  };
+
+  // The server took us offline because a document expired (or was found missing)
+  const goOfflineForDocuments = async (message: string) => {
+    setStatus("OFFLINE");
+    refreshDocuments();
+    try {
+      const isRegistered = await TaskManager.isTaskRegisteredAsync(
+        "background-location-task"
+      );
+      if (isRegistered)
+        await Location.stopLocationUpdatesAsync("background-location-task");
     } catch {}
+    if (AppState.currentState === "active")
+      showDocumentsBlocked(navigation, message, "You're offline");
   };
 
   const s = styles(Colors);
