@@ -13,18 +13,11 @@ import {
   X,
   Package,
   Plane,
+  Plus,
 } from "lucide-react";
 import { SectionHeader, Spinner } from "@/components/ui";
-import { useState } from "react";
-
-const LOST_PROPERTY_STATUSES = ["REPORTED", "FOUND", "RETURNED", "CLOSED"];
-
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  REPORTED: { label: "Reported", color: "text-amber-400" },
-  FOUND: { label: "Found", color: "text-blue-400" },
-  RETURNED: { label: "Returned", color: "text-green-400" },
-  CLOSED: { label: "Closed", color: "text-slate-500" },
-};
+import { LostPropertyModal, LP_STATUS } from "@/components/LostProperty";
+import { useEffect, useState } from "react";
 
 export default function AlertsPage() {
   const qc = useQueryClient();
@@ -32,9 +25,8 @@ export default function AlertsPage() {
   const [resolving, setResolving] = useState<any>(null);
   const [resolutionNote, setResolutionNote] = useState("");
   const [showClosedLost, setShowClosedLost] = useState(false);
-  const [updatingLost, setUpdatingLost] = useState<any>(null);
-  const [lostStatus, setLostStatus] = useState("");
-  const [lostNotes, setLostNotes] = useState("");
+  // Lost property modal: { item } to update, { item: null, bookingId? } to log a new item
+  const [lostModal, setLostModal] = useState<{ item: any | null; bookingId?: string | null } | null>(null);
 
   const { data: complaints, isLoading: loadingComplaints } = useQuery({
     queryKey: ["complaints"],
@@ -97,23 +89,26 @@ export default function AlertsPage() {
     },
   });
 
-  const updateLostMutation = useMutation({
-    mutationFn: ({
-      id,
-      status,
-      adminNotes,
-    }: {
-      id: string;
-      status: string;
-      adminNotes: string;
-    }) => api.patch(`/admin/lost-property/${id}`, { status, adminNotes }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["lost-property"] });
-      setUpdatingLost(null);
-      setLostStatus("");
-      setLostNotes("");
-    },
-  });
+  // Deep links: /alerts?logLost=<bookingId> (Bookings page) · /alerts?lost=<itemId> (TfL Records)
+  const [linkHandled, setLinkHandled] = useState(false);
+  useEffect(() => {
+    if (linkHandled || typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    const bookingId = q.get("logLost");
+    const itemId = q.get("lost");
+    if (bookingId) {
+      setLostModal({ item: null, bookingId });
+      setLinkHandled(true);
+    } else if (itemId && lostProperties) {
+      const found = lostProperties.find((l: any) => l.id === itemId);
+      if (found) setLostModal({ item: found });
+      setLinkHandled(true);
+    } else if (!itemId) setLinkHandled(true);
+  }, [linkHandled, lostProperties]);
+  const closeLostModal = () => {
+    setLostModal(null);
+    if (typeof window !== "undefined" && window.location.search) window.history.replaceState(null, "", "/alerts");
+  };
 
   const daysUntil = (date: string) =>
     Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
@@ -267,7 +262,7 @@ export default function AlertsPage() {
       )}
 
       {/* ── Lost Property (TfL Condition 9) ── */}
-      {!loadingLost && (openLost.length > 0 || closedLost.length > 0) && (
+      {!loadingLost && (
         <div className="card border-blue-500/20">
           <div className="flex items-center gap-2 p-4 border-b border-[var(--border)]">
             <Package size={14} className="text-blue-400" />
@@ -278,18 +273,24 @@ export default function AlertsPage() {
                   ({openLost.length} open)
                 </span>
               )}
-              {openLost.length === 0 && (
+              {openLost.length === 0 && closedLost.length > 0 && (
                 <span className="ml-1.5 text-green-400">(all resolved)</span>
               )}
             </p>
             <span className="ml-auto text-[10px] text-slate-500">
               TfL Condition 9
             </span>
+            <button
+              onClick={() => setLostModal({ item: null })}
+              className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white border border-[var(--border)] hover:border-brand-500 rounded px-2 py-1 transition-colors"
+            >
+              <Plus size={11} /> Log item
+            </button>
           </div>
 
           {openLost.length === 0 && (
             <div className="px-4 py-4 text-xs text-slate-500 text-center">
-              No open reports
+              No open items
             </div>
           )}
 
@@ -299,41 +300,46 @@ export default function AlertsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`text-xs font-semibold ${
-                          STATUS_LABELS[l.status]?.color
-                        }`}
-                      >
-                        {STATUS_LABELS[l.status]?.label}
+                      <span className={`text-xs font-semibold ${LP_STATUS[l.status]?.color}`}>
+                        {LP_STATUS[l.status]?.label}
                       </span>
-                      <span className="text-[10px] font-mono text-brand-400">
-                        {l.booking?.reference}
-                      </span>
+                      <span className="text-[10px] font-mono text-slate-300">{l.refNo}</span>
+                      {l.booking?.reference && (
+                        <span className="text-[10px] font-mono text-brand-400">{l.booking.reference}</span>
+                      )}
                       <span className="text-[10px] text-slate-500">
-                        {format(new Date(l.reportedAt), "dd MMM yyyy HH:mm")}
+                        {format(new Date(l.receivedAt ?? l.reportedAt), "dd MMM yyyy HH:mm")}
+                        {l.source === "ADMIN_FOUND" ? " · logged by staff" : ""}
                       </span>
+                      {l.overdue && (
+                        <span
+                          className="text-[10px] font-semibold text-amber-400 border border-amber-500/40 rounded px-1.5"
+                          title="Open 28 days or more: consider handing it to the police or disposing of it"
+                        >
+                          {l.daysOpen} days — police / disposal?
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-300 mt-0.5">
-                      {l.passenger?.user?.firstName}{" "}
-                      {l.passenger?.user?.lastName}
-                      {" · "}
-                      <span className="text-slate-500">{l.contactPhone}</span>
+                      {l.customerName ?? "No customer yet"}
+                      {l.contactPhone && (
+                        <>
+                          {" · "}
+                          <span className="text-slate-500">{l.contactPhone}</span>
+                        </>
+                      )}
+                      {l.vehicleReg && <span className="text-slate-500 font-mono"> · {l.vehicleReg}</span>}
+                      {l.handedInByName && <span className="text-slate-500"> · handed in by {l.handedInByName}</span>}
                     </p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {l.description}
-                    </p>
-                    {l.adminNotes && (
-                      <p className="text-xs text-blue-400 mt-1">
-                        Note: {l.adminNotes}
+                    <p className="text-xs text-slate-400 mt-1">{l.description}</p>
+                    {l.contacts?.length > 0 && (
+                      <p className="text-xs text-blue-400 mt-1 line-clamp-1">
+                        Latest: {l.contacts[l.contacts.length - 1].note}
                       </p>
                     )}
                   </div>
                   <button
-                    onClick={() => {
-                      setUpdatingLost(l);
-                      setLostStatus(l.status);
-                      setLostNotes(l.adminNotes ?? "");
-                    }}
+                    onClick={() => setLostModal({ item: l })}
                     className="shrink-0 text-[10px] text-slate-400 hover:text-blue-400 border border-[var(--border)] hover:border-blue-500/40 rounded px-2 py-1 transition-colors whitespace-nowrap"
                   >
                     Update
@@ -350,52 +356,40 @@ export default function AlertsPage() {
                 className="w-full flex items-center justify-between px-4 py-2.5 border-t border-[var(--border)] text-xs text-slate-500 hover:text-slate-300 transition-colors"
               >
                 <span>
-                  {closedLost.length} resolved report
+                  {closedLost.length} resolved item
                   {closedLost.length > 1 ? "s" : ""}
                 </span>
-                {showClosedLost ? (
-                  <ChevronUp size={14} />
-                ) : (
-                  <ChevronDown size={14} />
-                )}
+                {showClosedLost ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
               {showClosedLost && (
                 <div className="divide-y divide-[#1e2d42]">
                   {closedLost.map((l: any) => (
-                    <div key={l.id} className="px-4 py-3 opacity-60">
+                    <button
+                      key={l.id}
+                      onClick={() => setLostModal({ item: l })}
+                      className="w-full text-left px-4 py-3 opacity-70 hover:opacity-100 transition-opacity"
+                    >
                       <div className="flex items-start gap-3">
-                        <CheckCircle
-                          size={12}
-                          className="text-green-400 mt-0.5 shrink-0"
-                        />
+                        <CheckCircle size={12} className="text-green-400 mt-0.5 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              className={`text-xs font-semibold ${
-                                STATUS_LABELS[l.status]?.color
-                              }`}
-                            >
-                              {STATUS_LABELS[l.status]?.label}
+                            <span className={`text-xs font-semibold ${LP_STATUS[l.status]?.color}`}>
+                              {LP_STATUS[l.status]?.label}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-500">
-                              {l.booking?.reference}
-                            </span>
+                            <span className="text-[10px] font-mono text-slate-400">{l.refNo}</span>
+                            {l.booking?.reference && (
+                              <span className="text-[10px] font-mono text-slate-500">{l.booking.reference}</span>
+                            )}
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {l.passenger?.user?.firstName}{" "}
-                            {l.passenger?.user?.lastName}
+                          <p className="text-xs text-slate-400 mt-0.5">{l.customerName ?? "No customer"}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{l.description}</p>
+                          <p className="text-xs text-green-500 mt-0.5">
+                            ✓ {l.outcomeLabel ?? "Result not recorded (closed before the register was kept)"}
+                            {l.outcomeDetails ? ` — ${l.outcomeDetails}` : ""}
                           </p>
-                          <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
-                            {l.description}
-                          </p>
-                          {l.adminNotes && (
-                            <p className="text-xs text-slate-600 mt-0.5">
-                              Note: {l.adminNotes}
-                            </p>
-                          )}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -698,84 +692,13 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* ── Update lost property modal ── */}
-      {updatingLost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">
-                Update Lost Property Report
-              </h3>
-              <button
-                onClick={() => setUpdatingLost(null)}
-                className="text-slate-500 hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] text-xs space-y-1">
-              <p className="text-slate-400 font-mono">
-                {updatingLost.booking?.reference}
-              </p>
-              <p className="text-slate-400">
-                {updatingLost.passenger?.user?.firstName}{" "}
-                {updatingLost.passenger?.user?.lastName} ·{" "}
-                {updatingLost.contactPhone}
-              </p>
-              <p className="text-slate-300 pt-1">{updatingLost.description}</p>
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block">
-                Status
-              </label>
-              <select
-                className="input w-full"
-                value={lostStatus}
-                onChange={(e) => setLostStatus(e.target.value)}
-              >
-                {LOST_PROPERTY_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-slate-400 mb-1.5 block">
-                Notes (visible to passenger)
-              </label>
-              <textarea
-                className="input w-full resize-none text-sm"
-                rows={3}
-                placeholder="e.g. Item found, will contact driver to arrange return…"
-                value={lostNotes}
-                onChange={(e) => setLostNotes(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setUpdatingLost(null)}
-                className="flex-1 btn-ghost py-2.5 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() =>
-                  updateLostMutation.mutate({
-                    id: updatingLost.id,
-                    status: lostStatus,
-                    adminNotes: lostNotes,
-                  })
-                }
-                disabled={updateLostMutation.isPending}
-                className="flex-1 btn-primary py-2.5 text-sm disabled:opacity-40"
-              >
-                {updateLostMutation.isPending ? "Saving…" : "Save Update"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Lost property: log / update ── */}
+      <LostPropertyModal
+        open={!!lostModal}
+        item={lostModal?.item ?? null}
+        bookingId={lostModal?.bookingId ?? null}
+        onClose={closeLostModal}
+      />
     </div>
   );
 }

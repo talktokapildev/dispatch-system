@@ -20,6 +20,22 @@ enum LostPropertyStatus {
   CLOSED
 }
 
+// TfL lost property register: who created the entry
+enum LostPropertySource {
+  PASSENGER_REPORT // passenger reported it from the app
+  ADMIN_FOUND // staff logged an item handed in / found
+}
+
+// TfL "Result / if disposed of how was it disposed of?"
+enum LostPropertyOutcome {
+  COLLECTED_BY_OWNER
+  POSTED_TO_OWNER
+  RETURNED_BY_DRIVER
+  HANDED_TO_POLICE
+  DISPOSED
+  DONATED
+}
+
 enum UserRole {
   PASSENGER
   DRIVER
@@ -271,16 +287,17 @@ model Driver {
   archivedAt           DateTime?
   archivedBy           String?
 
-  user             User              @relation(fields: [userId], references: [id])
-  vehicle          Vehicle?
-  register         DriverRegister?
-  engagements      DriverEngagement[]
-  vehicleHistory   VehicleAssignment[]
-  documents        DriverDocument[]
-  bookings         Booking[]
-  earnings         DriverEarning[]
-  breaks           DriverBreak[]
-  teslaIntegration TeslaIntegration?
+  user                 User                @relation(fields: [userId], references: [id])
+  vehicle              Vehicle?
+  register             DriverRegister?
+  engagements          DriverEngagement[]
+  vehicleHistory       VehicleAssignment[]
+  documents            DriverDocument[]
+  bookings             Booking[]
+  earnings             DriverEarning[]
+  breaks               DriverBreak[]
+  teslaIntegration     TeslaIntegration?
+  lostPropertyHandedIn LostProperty[]      @relation("LostPropertyHandedInBy")
 
   @@index([userId])
   @@index([status])
@@ -354,13 +371,14 @@ model Vehicle {
   // TfL vehicle record
   keeperName       String? // registered keeper (V5C)
   keeperAddress    String?
-  startDate        DateTime  @default(now()) // started working for OrangeRide
+  startDate        DateTime     @default(now()) // started working for OrangeRide
 
   driver         Driver?                @relation(fields: [driverId], references: [id], onDelete: SetNull)
   bookings       Booking[]
   documents      DriverDocument[]
   assignments    VehicleAssignment[]
   servicePeriods VehicleServicePeriod[]
+  lostProperties LostProperty[]
 }
 
 // History of which driver had which car. Written ONLY by the database trigger
@@ -673,9 +691,9 @@ model BookingStatusHistory {
 }
 
 model Receipt {
-  id                    String   @id @default(uuid())
-  bookingId             String   @unique
-  receiptNumber         String   @unique
+  id                    String    @id @default(uuid())
+  bookingId             String    @unique
+  receiptNumber         String    @unique
   operatorName          String
   operatorLicenseNumber String
   driverName            String
@@ -689,7 +707,7 @@ model Receipt {
   fareBreakdown         Json
   totalAmount           Float
   paymentMethod         String
-  issuedAt              DateTime @default(now())
+  issuedAt              DateTime  @default(now())
   // Added with admin receipts (all optional so older rows stay valid)
   passengerName         String?
   billTo                String? // optional company name for expense claims
@@ -836,23 +854,67 @@ model SurchargeZone {
   @@index([isActive])
 }
 
+// TfL Condition 9 lost property register (template "LOST/FOUND PROPERTY").
+// Passenger reports come from the app (source PASSENGER_REPORT); staff log items handed in
+// (ADMIN_FOUND, booking/passenger optional). Booking details, vehicle reg and customer name are
+// COPIED when linked, so the record stays right if the booking, passenger or vehicle goes.
+// adminNotes = the latest update shown to the passenger in the app ("Update: …"); the full
+// enquiry history is LostPropertyContact.
 model LostProperty {
   id           String             @id @default(uuid())
-  bookingId    String
-  passengerId  String
+  refNo        String             @unique // LP-2026-001
+  source       LostPropertySource @default(PASSENGER_REPORT)
+  bookingId    String?
+  passengerId  String?
   description  String
-  contactPhone String
+  contactPhone String // customer phone
   status       LostPropertyStatus @default(REPORTED)
   adminNotes   String?
   reportedAt   DateTime           @default(now())
   resolvedAt   DateTime?
+  updatedAt    DateTime           @default(now()) @updatedAt
 
-  booking   Booking   @relation(fields: [bookingId], references: [id])
-  passenger Passenger @relation(fields: [passengerId], references: [id])
+  // TfL template fields
+  receivedAt         DateTime? // "Date Property received" (set when found / handed in)
+  handedInByDriverId String?
+  handedInByName     String? // "Handed in By" (driver name copied, or typed)
+  vehicleId          String?
+  vehicleReg         String? // "Vehicle registration (where property found)"
+  bookingDateTime    DateTime? // "Date and Time of related booking"
+  customerName       String?
+  customerAddress    String?
+  outcome            LostPropertyOutcome? // "Result / if disposed of how"
+  outcomeAt          DateTime?
+  outcomeDetails     String?
+  representativeName String? // "Company Representative Name"
+  createdByUserId    String?
+  closedByUserId     String?
+
+  booking    Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  passenger  Passenger?            @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  handedInBy Driver?               @relation("LostPropertyHandedInBy", fields: [handedInByDriverId], references: [id], onDelete: SetNull)
+  vehicle    Vehicle?              @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  contacts   LostPropertyContact[]
 
   @@index([bookingId])
   @@index([passengerId])
   @@index([status])
+}
+
+// "Method/Enquiry to return property": every contact / action, in order.
+model LostPropertyContact {
+  id               String   @id @default(uuid())
+  lostPropertyId   String
+  at               DateTime @default(now())
+  staffName        String
+  staffUserId      String?
+  note             String
+  shownToPassenger Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  lostProperty LostProperty @relation(fields: [lostPropertyId], references: [id], onDelete: Cascade)
+
+  @@index([lostPropertyId])
 }
 
 // ─────────────────────────────────────────
@@ -1149,20 +1211,19 @@ model BookingFlightEvent {
   @@index([bookingId, type])
 }
 
-
 /// Raw AeroDataBox Flight Alert notifications (step 5a capture).
 /// Provider data — deleted after 6 days by the retention block in server.ts.
 model FlightWebhookEvent {
-  id             String   @id @default(uuid())
-  receivedAt     DateTime @default(now())
+  id             String    @id @default(uuid())
+  receivedAt     DateTime  @default(now())
   subscriptionId String?
   flightNumber   String?
-  flightCount    Int      @default(0)
+  flightCount    Int       @default(0)
   balance        Int?
   payload        Json
-  notificationId String?   // AeroDataBox notification id (de-dupe itself is in Redis)
+  notificationId String? // AeroDataBox notification id (de-dupe itself is in Redis)
   processedAt    DateTime?
-  outcome        String?   // step 5b: "applied …", "shadow …", "duplicate", "no open watch …"
+  outcome        String? // step 5b: "applied …", "shadow …", "duplicate", "no open watch …"
 
   @@index([receivedAt])
   @@index([subscriptionId])
