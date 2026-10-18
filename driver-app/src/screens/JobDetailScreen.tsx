@@ -130,7 +130,9 @@ export default function JobDetailScreen({ route, navigation }: any) {
       });
     } catch (err: any) {
       Alert.alert(
-        "Couldn't start trip",
+        err.response?.data?.reason === "documents"
+          ? "Documents need attention"
+          : "Couldn't start trip",
         err.response?.data?.error ?? "Please try again."
       );
       setBusy(false);

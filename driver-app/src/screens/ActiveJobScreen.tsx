@@ -356,8 +356,11 @@ export default function ActiveJobScreen({ route, navigation }: any) {
         collapseSheet();
       }
     } catch (err: any) {
+      // 403 "documents": a document has expired — the server says which
       Alert.alert(
-        "Error",
+        err.response?.data?.reason === "documents"
+          ? "Documents need attention"
+          : "Error",
         err.response?.data?.error ?? "Failed to update status"
       );
     } finally {

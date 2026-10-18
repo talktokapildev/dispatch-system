@@ -4,7 +4,7 @@
     "newArchEnabled": false,
     "slug": "orangeride-driver",
     "scheme": "orangeride",
-    "version": "1.0.22",
+    "version": "1.0.23",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
