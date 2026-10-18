@@ -36,6 +36,33 @@ enum LostPropertyOutcome {
   DONATED
 }
 
+// TfL Condition 7 complaints / compliments register
+enum ComplaintType {
+  COMPLAINT
+  COMPLIMENT
+}
+
+enum ComplaintStatus {
+  RECEIVED
+  INVESTIGATING
+  RESOLVED // complaint: outcome + resolution note
+  CLOSED // compliment: done
+}
+
+enum ComplaintOutcome {
+  UPHELD
+  PARTLY_UPHELD
+  NOT_UPHELD
+  WITHDRAWN
+}
+
+enum ComplaintChannel {
+  APP
+  PHONE
+  EMAIL
+  IN_PERSON
+}
+
 enum UserRole {
   PASSENGER
   DRIVER
@@ -238,6 +265,7 @@ model Passenger {
   updatedAt          DateTime @updatedAt
 
   lostProperties LostProperty[]
+  complaints     Complaint[]
 
   user             User                 @relation(fields: [userId], references: [id])
   corporateAccount CorporateAccount?    @relation(fields: [corporateAccountId], references: [id])
@@ -298,6 +326,7 @@ model Driver {
   breaks               DriverBreak[]
   teslaIntegration     TeslaIntegration?
   lostPropertyHandedIn LostProperty[]      @relation("LostPropertyHandedInBy")
+  complaints           Complaint[]
 
   @@index([userId])
   @@index([status])
@@ -379,6 +408,7 @@ model Vehicle {
   assignments    VehicleAssignment[]
   servicePeriods VehicleServicePeriod[]
   lostProperties LostProperty[]
+  complaints     Complaint[]
 }
 
 // History of which driver had which car. Written ONLY by the database trigger
@@ -644,6 +674,7 @@ model Booking {
   updatedAt DateTime @updatedAt
 
   lostProperties LostProperty[]
+  complaints     Complaint[]
 
   passenger        Passenger?             @relation(fields: [passengerId], references: [id])
   driver           Driver?                @relation(fields: [driverId], references: [id])
@@ -1248,4 +1279,67 @@ model SmsMessage {
 
   @@index([createdAt])
   @@index([bookingId])
+}
+
+// TfL Condition 7 complaints / compliments register (template "COMPLAINT/COMPLIMENT").
+// Passenger complaints come from the app (channel APP); staff log the rest. Booking time,
+// complainant, driver name and vehicle reg are COPIED when a booking is linked, so the record
+// stays right if the booking, passenger, driver or vehicle is later changed or deleted.
+// Complaints used to live in Booking.feedback ("[COMPLAINT] …") — migrated here
+// (20261019120000_complaints_register); passenger endpoints rebuild that old text for old apps.
+model Complaint {
+  id                 String            @id @default(uuid())
+  refNo              String            @unique // CC-2026-001
+  type               ComplaintType     @default(COMPLAINT)
+  status             ComplaintStatus   @default(RECEIVED)
+  channel            ComplaintChannel  @default(APP)
+  category           String? // "Driver behaviour", "Late arrival", …
+  details            String // "Details of Complaint"
+  receivedAt         DateTime          @default(now()) // "Date Complaint received"
+  bookingId          String?
+  passengerId        String?
+  driverId           String?
+  vehicleId          String?
+  bookingDateTime    DateTime? // "Date and Time of related booking"
+  complainantName    String?
+  complainantAddress String?
+  complainantPhone   String?
+  driverName         String?
+  vehicleReg         String?
+  handledByUserId    String?
+  handledByName      String? // "Handled By"
+  outcome            ComplaintOutcome?
+  resolutionNote     String? // "Result" — shown to the passenger in the app
+  resolvedAt         DateTime?
+  representativeName String? // "Company Representative Name"
+  closedByUserId     String?
+  createdByUserId    String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @default(now()) @updatedAt
+
+  booking   Booking?           @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  passenger Passenger?         @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  driver    Driver?            @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicle   Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  contacts  ComplaintContact[]
+
+  @@index([bookingId])
+  @@index([passengerId])
+  @@index([driverId])
+  @@index([status])
+}
+
+// "Method/Enquiry to resolve complaint": every contact / action, in order.
+model ComplaintContact {
+  id          String   @id @default(uuid())
+  complaintId String
+  at          DateTime @default(now())
+  staffName   String
+  staffUserId String?
+  note        String
+  createdAt   DateTime @default(now())
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
 }

@@ -1,9 +1,10 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { api } from "@/lib/api";
 import { useState } from "react";
 import { format } from "date-fns";
-import { Star } from "lucide-react";
+import { Star, Award } from "lucide-react";
 import { SectionHeader, Table, Spinner } from "@/components/ui";
 
 function StarRow({ rating }: { rating: number | null }) {
@@ -27,6 +28,16 @@ export default function FeedbackPage() {
   const [page, setPage] = useState(1);
   const [onlyWithComments, setOnlyWithComments] = useState(false);
   const limit = 30;
+  const qc = useQueryClient();
+  // TfL Condition 7: record a passenger's rating comment on the complaints / compliments register
+  const compliment = useMutation({
+    mutationFn: (bookingId: string) => api.post(`/admin/feedback/${bookingId}/compliment`).then((r) => r.data.data),
+    onSuccess: (c: any) => {
+      toast.success(`Recorded as compliment ${c.refNo}`);
+      qc.invalidateQueries({ queryKey: ["complaints"] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? "Could not record the compliment"),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["feedback", page],
@@ -97,6 +108,16 @@ export default function FeedbackPage() {
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-400 max-w-xs">
                   {b.feedback || <span className="text-slate-600">—</span>}
+                  {b.feedback?.trim() && (
+                    <button
+                      onClick={() => compliment.mutate(b.id)}
+                      disabled={compliment.isPending}
+                      className="mt-1 flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-40"
+                      title="Add this comment to the TfL complaints / compliments register"
+                    >
+                      <Award size={10} /> Record as compliment
+                    </button>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-xs font-mono text-slate-500">
                   {b.reference}

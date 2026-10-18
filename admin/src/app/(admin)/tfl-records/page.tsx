@@ -18,6 +18,8 @@ import { TflDriverRecord } from "@/components/TflDriverRecord";
 import { TflVehicleRecord } from "@/components/TflVehicleRecord";
 import { TflLostPropertyRecord, TflLostPropertyRegister } from "@/components/TflLostPropertyRecord";
 import { LP_STATUS, refreshLostProperty } from "@/components/LostProperty";
+import { TflComplaintRecord, TflComplaintRegister } from "@/components/TflComplaintRecord";
+import { CC_STATUS, refreshComplaints } from "@/components/Complaints";
 import { dayText } from "@/components/DriverRegister";
 
 type Row = {
@@ -52,18 +54,21 @@ function TflRecords() {
       ? "vehicles"
       : params.get("item") || params.get("tab") === "lost-property"
         ? "lost-property"
-        : "drivers";
+        : params.get("complaint") || params.get("tab") === "complaints"
+          ? "complaints"
+          : "drivers";
   const TABS = [
     { id: "drivers", label: "Drivers", href: "/tfl-records" },
     { id: "vehicles", label: "Vehicles", href: "/tfl-records?tab=vehicles" },
     { id: "lost-property", label: "Lost property", href: "/tfl-records?tab=lost-property" },
+    { id: "complaints", label: "Complaints", href: "/tfl-records?tab=complaints" },
   ] as const;
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="no-print">
         <SectionHeader
           title="TfL Records"
-          subtitle="Records in TfL's formats — drivers, vehicles and lost property, kept for 12 months after they end"
+          subtitle="Records in TfL's formats — drivers, vehicles, lost property and complaints, kept for 12 months after they end"
         />
         <div className="flex gap-1 mt-4">
           {TABS.map((t) => (
@@ -81,7 +86,15 @@ function TflRecords() {
           ))}
         </div>
       </div>
-      {tab === "drivers" ? <DriverRecords /> : tab === "vehicles" ? <VehicleRecords /> : <LostPropertyRecords />}
+      {tab === "drivers" ? (
+        <DriverRecords />
+      ) : tab === "vehicles" ? (
+        <VehicleRecords />
+      ) : tab === "lost-property" ? (
+        <LostPropertyRecords />
+      ) : (
+        <ComplaintRecords />
+      )}
     </div>
   );
 }
@@ -536,6 +549,194 @@ function LostPropertyRecords() {
               <p>Kept until {rec.item.deletableFrom} (12 months after closing); it can be deleted from then.</p>
             ) : (
               <p>Open items are kept; once closed, the record is kept for 12 months.</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Complaints / compliments ─────────────────────────────────────────────────
+
+function ComplaintRecords() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const qc = useQueryClient();
+  const itemId = params.get("complaint") ?? "";
+  const [view, setView] = useState<"record" | "register">(itemId ? "record" : "register");
+  const [from, setFrom] = useState(ukDayKey(12));
+  const [to, setTo] = useState(ukDayKey(0));
+  const [confirmRef, setConfirmRef] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+
+  const { data: items = [], isLoading } = useQuery<any[]>({
+    queryKey: ["complaints"],
+    queryFn: () => api.get("/admin/complaints").then((r) => r.data.data),
+  });
+  const record = useQuery({
+    queryKey: ["tfl-complaint", itemId],
+    queryFn: () => api.get(`/admin/complaints/${itemId}/tfl-record`).then((r) => r.data.data),
+    enabled: view === "record" && !!itemId,
+    refetchOnWindowFocus: false,
+  });
+  const register = useQuery({
+    queryKey: ["tfl-complaints-register", from, to],
+    queryFn: () =>
+      api.get("/admin/tfl-records/complaints", { params: { from: from || undefined, to: to || undefined } }).then((r) => r.data.data),
+    enabled: view === "register",
+    refetchOnWindowFocus: false,
+  });
+  const rec = record.data;
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/admin/complaints/${itemId}`, { data: { confirmRef } }),
+    onSuccess: () => {
+      toast.success(`${rec?.item.refNo} deleted`);
+      refreshComplaints(qc);
+      setConfirmRef("");
+      router.replace("/tfl-records?tab=complaints");
+      setView("register");
+    },
+    onError: (err: any) => setDeleteError(err?.response?.data?.error ?? "Could not delete"),
+  });
+
+  const choose = (id: string) => {
+    setView("record");
+    setConfirmRef("");
+    setDeleteError("");
+    router.replace(id ? `/tfl-records?complaint=${id}` : "/tfl-records?tab=complaints");
+  };
+  const open = items.filter((i) => i.status === "RECEIVED" || i.status === "INVESTIGATING");
+  const done = items.filter((i) => i.status === "RESOLVED" || i.status === "CLOSED");
+  const label = (i: any) =>
+    `${i.refNo} — ${i.type === "COMPLIMENT" ? "Compliment" : i.category ?? "Complaint"} — ${i.complainantName ?? "no name"} — ${
+      CC_STATUS[i.status]?.label ?? i.status
+    }`;
+  const ready = view === "record" ? !!rec : !!register.data;
+  const viewBtn = (v: "record" | "register", text: string) => (
+    <button
+      onClick={() => setView(v)}
+      className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+        view === v ? "border-brand-500 text-white" : "border-[var(--border)] text-slate-400 hover:text-white"
+      }`}
+    >
+      {text}
+    </button>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="card p-4 flex flex-wrap items-center gap-3 no-print">
+        {viewBtn("register", "Register")}
+        {viewBtn("record", "One record")}
+        {view === "record" ? (
+          <select
+            className="input flex-1 min-w-[260px]"
+            value={itemId}
+            onChange={(e) => choose(e.target.value)}
+            disabled={isLoading}
+            aria-label="Complaint or compliment"
+          >
+            <option value="">{isLoading ? "Loading…" : "Choose a record…"}</option>
+            {open.length > 0 && (
+              <optgroup label="Open">
+                {open.map((i) => (
+                  <option key={i.id} value={i.id}>{label(i)}</option>
+                ))}
+              </optgroup>
+            )}
+            {done.length > 0 && (
+              <optgroup label="Resolved / closed">
+                {done.map((i) => (
+                  <option key={i.id} value={i.id}>{label(i)}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <label className="text-xs text-slate-400 flex items-center gap-1.5">
+              From <input type="date" className="input py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </label>
+            <label className="text-xs text-slate-400 flex items-center gap-1.5">
+              To <input type="date" className="input py-1.5" value={to} onChange={(e) => setTo(e.target.value)} />
+            </label>
+          </div>
+        )}
+        {(view === "register" || itemId) && (
+          <>
+            <button
+              onClick={() => (view === "record" ? record.refetch() : register.refetch())}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-[var(--border)] text-slate-300 hover:text-white hover:border-brand-500"
+            >
+              <RefreshCw size={12} className={(view === "record" ? record : register).isFetching ? "animate-spin" : ""} /> Refresh
+            </button>
+            <button
+              onClick={() => window.print()}
+              disabled={!ready}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-400 disabled:opacity-40 text-black text-sm font-semibold"
+            >
+              <Printer size={14} /> Print / Save as PDF
+            </button>
+          </>
+        )}
+      </div>
+
+      {view === "record" && rec && rec.warnings.length > 0 && (
+        <div className="card p-4 border-amber-500/30 bg-amber-500/5 no-print">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-amber-400 flex items-start gap-1.5">
+              <AlertTriangle size={11} className="mt-0.5 shrink-0" /> Not filled in: {rec.warnings.join(", ")}
+            </p>
+            <a href={`/alerts?complaint=${itemId}`} className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300 whitespace-nowrap">
+              Update on Alerts <ExternalLink size={10} />
+            </a>
+          </div>
+        </div>
+      )}
+      {view === "record" && rec?.item.replyOverdue && (
+        <div className="card p-4 border-amber-500/30 bg-amber-500/5 no-print text-xs text-amber-400">
+          No reply recorded within 48 hours — contact the complainant and add it to the history.
+        </div>
+      )}
+
+      {view === "register" ? (
+        register.isLoading ? (
+          <div className="flex justify-center py-16 no-print"><Spinner size={24} /></div>
+        ) : register.isError || !register.data ? (
+          <div className="card p-10 text-center text-sm text-red-400 no-print">Could not load the register.</div>
+        ) : (
+          <TflComplaintRegister data={register.data} />
+        )
+      ) : !itemId ? (
+        <div className="card p-10 text-center text-sm text-slate-500 no-print">Choose a record to see it in TfL&apos;s format.</div>
+      ) : record.isLoading ? (
+        <div className="flex justify-center py-16 no-print"><Spinner size={24} /></div>
+      ) : record.isError || !rec ? (
+        <div className="card p-10 text-center text-sm text-red-400 no-print">Could not load this record.</div>
+      ) : (
+        <>
+          <TflComplaintRecord data={rec} />
+          <div className="card p-4 no-print text-xs text-slate-400">
+            {rec.item.canDelete ? (
+              <div className="space-y-2">
+                <p>Resolved more than 12 months ago — this record can be deleted permanently. Type <span className="font-mono text-white">{rec.item.refNo}</span> to confirm.</p>
+                <div className="flex flex-wrap gap-2">
+                  <input className="input py-1.5 font-mono uppercase" value={confirmRef} onChange={(e) => setConfirmRef(e.target.value)} aria-label="Type the ref to confirm" />
+                  <button
+                    onClick={() => { setDeleteError(""); remove.mutate(); }}
+                    disabled={confirmRef.trim().toUpperCase() !== rec.item.refNo || remove.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white"
+                  >
+                    <Trash2 size={12} /> Delete permanently
+                  </button>
+                </div>
+                {deleteError && <p className="text-red-400">{deleteError}</p>}
+              </div>
+            ) : rec.item.deletableFrom ? (
+              <p>Kept until {rec.item.deletableFrom} (12 months after resolving); it can be deleted from then.</p>
+            ) : (
+              <p>Open records are kept; once resolved or closed, the record is kept for 12 months.</p>
             )}
           </div>
         </>

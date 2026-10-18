@@ -192,7 +192,7 @@ export function TflLostPropertyRegister({ data }: { data: any }) {
   );
 }
 
-const LP_STYLES = `
+export const LP_STYLES = `
   .tfl .u { text-decoration: underline; }
   .tfl .mono { font-family: "Courier New", monospace; letter-spacing: 1px; }
   .tfl .nowrap { white-space: nowrap; }
