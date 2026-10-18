@@ -18,6 +18,12 @@ import { PricingService } from "../services/pricing.service";
 import { readDocumentUpload } from "../services/documentUpload";
 import { fileLinker } from "../services/fileLinks";
 import {
+  deletableFromMany,
+  hardDeleteDriver,
+  startEngagement,
+} from "../services/driverRegister.service";
+import { RegisterError, parseDay, ukToday } from "../services/driverRegisterRules";
+import {
   checkDriverCanWork,
   gatingEnabled,
   loadCompliance,
@@ -746,7 +752,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
       const [items, total] = await Promise.all([
         fastify.prisma.driver.findMany({
           where,
-          include: { user: true, vehicle: true },
+          include: { user: true, vehicle: true, register: { select: { callSign: true } } },
           orderBy: { createdAt: "desc" },
           skip: (parseInt(page) - 1) * parseInt(limit),
           take: parseInt(limit),
@@ -759,10 +765,19 @@ export async function driverRoutes(fastify: FastifyInstance) {
         fastify.prisma,
         items.filter((d) => !d.archivedAt).map((d) => d.id)
       );
+      const leaving = await deletableFromMany(
+        fastify.prisma,
+        items.map((d) => d.id)
+      );
       const withCompliance = items.map((d) => {
         const c = compliance.get(d.id);
+        const l = leaving.get(d.id);
         return {
           ...d,
+          callSign: d.register?.callSign ?? null,
+          firstAvailable: l?.firstAvailable ?? null,
+          leftOn: d.archivedAt ? l?.leftOn ?? null : null,
+          deletableFrom: d.archivedAt ? l?.deletableFrom ?? null : null,
           compliance: c
             ? {
                 eligible: c.eligible,
@@ -832,8 +847,13 @@ export async function driverRoutes(fastify: FastifyInstance) {
           drivingLicenseNumber: z.string().min(1),
           // Car from the Vehicles page (optional — can be assigned later)
           vehicleId: z.string().min(1).nullable().optional(),
+          // TfL register "Date first available" (YYYY-MM-DD, default today)
+          availableFrom: z.string().optional(),
         })
         .parse(request.body);
+      const availableFrom = body.availableFrom ? parseDay(body.availableFrom) : ukToday();
+      if (!availableFrom || availableFrom > ukToday())
+        return reply.status(400).send({ success: false, error: "Date first available: use a date up to today" });
 
       // TfL Licence Condition 11 (20-vehicle cap) is enforced when vehicles are added on the
       // Vehicles page, not here: a driver is not a vehicle.
@@ -892,6 +912,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
               onboardingComplete: false,
             },
           });
+          await startEngagement(tx, driver.id, availableFrom, request.user.userId);
           if (body.vehicleId) await setDriverVehicle(tx, driver.id, body.vehicleId);
           const vehicle = await tx.vehicle.findUnique({ where: { driverId: driver.id } });
           return { user, driver, vehicle };
@@ -989,69 +1010,27 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Admin: delete driver ───
+  // ─── Admin: delete driver permanently ───
+  // Only for drivers who left (archived) at least 12 months ago — TfL record keeping. Body:
+  // { confirmName } (the driver's name). Deletes their data and their files in Cloudinary;
+  // bookings stay, keeping the PHV licence number. To stop a driver working, archive them.
   fastify.delete(
     "/admin/drivers/:driverId",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
       const { driverId } = request.params as { driverId: string };
-
-      const driver = await fastify.prisma.driver.findUnique({
-        where: { id: driverId },
-        include: { user: true },
-      });
-      if (!driver)
-        return reply
-          .status(404)
-          .send({ success: false, error: "Driver not found" });
-
-      await fastify.prisma.$transaction(async (tx) => {
-        await tx.booking.updateMany({
-          where: { driverId },
-          data: { driverId: null },
-        });
-        await tx.driverEarning.deleteMany({ where: { driverId } });
-        // Vehicle documents stay with the car; only the uploader link is cleared
-        await tx.driverDocument.updateMany({
-          where: { driverId, vehicleId: { not: null } },
-          data: { driverId: null },
-        });
-        await tx.driverDocument.deleteMany({ where: { driverId } });
-        // Their car stays on the fleet, unassigned (and on the bookings it did)
-        await tx.vehicle.updateMany({ where: { driverId }, data: { driverId: null } });
-        await tx.driver.delete({ where: { id: driverId } });
-        await tx.pushToken.deleteMany({ where: { userId: driver.userId } });
-        await tx.otpCode.deleteMany({ where: { userId: driver.userId } });
-        await tx.refreshToken.deleteMany({ where: { userId: driver.userId } });
-
-        // ── Role cleanup ──────────────────────────────────────────────────
-        // Remove DRIVER from the user's roles array. Then decide whether to
-        // delete the user entirely or keep them with their remaining roles.
-        const remainingRoles = driver.user.roles.filter((r) => r !== "DRIVER");
-
-        const passenger = await tx.passenger.findUnique({
-          where: { userId: driver.userId },
-        });
-
-        if (remainingRoles.length === 0 && !passenger) {
-          // No other roles, no passenger record → delete user entirely
-          await tx.user.delete({ where: { id: driver.userId } });
-        } else {
-          // Has other roles (e.g. CORPORATE_ADMIN) or a passenger record →
-          // keep the user but strip the DRIVER role.
-          // If they have a passenger record but no remaining roles, restore PASSENGER.
-          const finalRoles =
-            remainingRoles.length > 0
-              ? remainingRoles
-              : (["PASSENGER"] as any[]);
-          await tx.user.update({
-            where: { id: driver.userId },
-            data: { roles: finalRoles },
-          });
-        }
-      });
-
-      return reply.send({ success: true });
+      const { confirmName } = (request.body ?? {}) as { confirmName?: string };
+      try {
+        const res = await hardDeleteDriver(
+          { prisma: fastify.prisma, redis: fastify.redis, log: fastify.log },
+          { driverId, confirmName: confirmName ?? "" }
+        );
+        return reply.send({ success: true, data: res });
+      } catch (err) {
+        if (err instanceof RegisterError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
+      }
     }
   );
 

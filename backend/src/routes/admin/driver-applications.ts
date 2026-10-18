@@ -9,7 +9,14 @@
 
 import { FastifyInstance } from "fastify";
 import { fileLinker } from "../../services/fileLinks";
-import { linkApplicationDocs } from "../../services/applicationDocs";
+import { APP_DOC_MULTI, APP_DOC_SINGLE, linkApplicationDocs } from "../../services/applicationDocs";
+import {
+  archiveDriver,
+  hardDeleteDriver,
+  startEngagement,
+} from "../../services/driverRegister.service";
+import { RegisterError, dayKey, ukToday } from "../../services/driverRegisterRules";
+import { deleteStoredFile } from "../../services/fileStorage";
 import {
   VehicleError,
   assertUnderCap,
@@ -238,6 +245,8 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
             status: "OFFLINE",
           },
         });
+        // TfL register: "Date first available" = the day the application is approved
+        await startEngagement(tx, driver.id, ukToday(), (request as any).user?.userId ?? null);
 
         const vehicleId = existingVehicle
           ? (
@@ -449,51 +458,35 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           .status(409)
           .send({ error: "Application is already archived" });
 
-      const now = new Date();
-
-      await fastify.prisma.$transaction(async (tx) => {
-        // Soft-delete the application record
-        await tx.driverApplication.update({
-          where: { id },
-          data: { deletedAt: now, deletedBy: adminUser.userId },
+      // If APPROVED, the driver leaves (TfL register: leaving date today) — same as Archive on
+      // the Drivers page: offline, jobs back on the board, car unassigned, signed out.
+      if (application.status === "APPROVED") {
+        const user = await fastify.prisma.user.findUnique({
+          where: { phone: application.phone },
+          include: { driver: true },
         });
-
-        // If APPROVED, also archive the associated driver account
-        if (application.status === "APPROVED") {
-          const user = await tx.user.findUnique({
-            where: { phone: application.phone },
-            include: { driver: true },
-          });
-
-          if (user?.driver) {
-            // Archive driver, vehicle, and all documents
-            await tx.driver.update({
-              where: { id: user.driver.id },
-              data: {
-                archivedAt: now,
-                archivedBy: adminUser.userId,
-                status: "OFFLINE",
-              },
-            });
-            // Their car stays on the fleet, unassigned — retire it on the Vehicles page if it's leaving
-            await tx.vehicle.updateMany({
-              where: { driverId: user.driver.id },
-              data: { driverId: null },
-            });
-            // Driver documents are archived; vehicle documents stay with the car
-            await tx.driverDocument.updateMany({
-              where: { driverId: user.driver.id, vehicleId: null },
-              data: { archivedAt: now },
-            });
-
-            // Remove from Redis online set (can't be dispatched)
-            try {
-              await fastify.redis.srem("drivers:online", user.driver.id);
-            } catch {
-              // Non-blocking
-            }
+        if (user?.driver && !user.driver.archivedAt) {
+          try {
+            await archiveDriver(
+              { prisma: fastify.prisma, redis: fastify.redis, io: fastify.io as any, log: fastify.log },
+              {
+                driverId: user.driver.id,
+                leftOn: dayKey(ukToday()),
+                reason: "Driver application archived",
+                adminUserId: adminUser.userId,
+              }
+            );
+          } catch (err) {
+            if (err instanceof RegisterError)
+              return reply.status(err.statusCode).send({ error: err.message });
+            throw err;
           }
         }
+      }
+
+      await fastify.prisma.driverApplication.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedBy: adminUser.userId },
       });
 
       return reply
@@ -537,56 +530,36 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
         });
       }
 
-      await fastify.prisma.$transaction(async (tx) => {
-        // Find associated user/driver if APPROVED
-        const user = await tx.user.findUnique({
-          where: { phone: application.phone },
-          include: { driver: true },
-        });
-
-        if (user?.driver) {
-          const driverId = user.driver.id;
-
-          // Null out driverId on bookings (preserve booking history)
-          await tx.booking.updateMany({
-            where: { driverId },
-            data: { driverId: null },
-          });
-
-          // Delete dependent records in correct order
-          await tx.driverEarning.deleteMany({ where: { driverId } });
-          await tx.driverBreak.deleteMany({ where: { driverId } });
-          // Vehicle documents stay with the car; only the uploader link is cleared
-          await tx.driverDocument.updateMany({
-            where: { driverId, vehicleId: { not: null } },
-            data: { driverId: null },
-          });
-          await tx.driverDocument.deleteMany({ where: { driverId } });
-          await tx.teslaIntegration.deleteMany({ where: { driverId } });
-          // Their car stays on the fleet, unassigned (and on the bookings it did)
-          await tx.vehicle.updateMany({ where: { driverId }, data: { driverId: null } });
-          await tx.driver.delete({ where: { id: driverId } });
-
-          // Handle user: remove DRIVER role or delete if driver-only
-          const updatedRoles = user.roles.filter((r) => r !== "DRIVER");
-          if (updatedRoles.length === 0) {
-            // Driver-only account — delete the user entirely
-            await tx.pushToken.deleteMany({ where: { userId: user.id } });
-            await tx.refreshToken.deleteMany({ where: { userId: user.id } });
-            await tx.otpCode.deleteMany({ where: { userId: user.id } });
-            await tx.user.delete({ where: { id: user.id } });
-          } else {
-            // Multi-role user — just remove the DRIVER role
-            await tx.user.update({
-              where: { id: user.id },
-              data: { roles: updatedRoles },
-            });
-          }
-        }
-
-        // Finally delete the application
-        await tx.driverApplication.delete({ where: { id } });
+      const user = await fastify.prisma.user.findUnique({
+        where: { phone: application.phone },
+        include: { driver: true },
       });
+
+      if (user?.driver) {
+        // A driver record: TfL requires it to be kept for 12 months after the driver left.
+        // hardDeleteDriver checks that, and deletes their applications and files too.
+        try {
+          await hardDeleteDriver(
+            { prisma: fastify.prisma, redis: fastify.redis, log: fastify.log },
+            {
+              driverId: user.driver.id,
+              confirmName: `${user.firstName} ${user.lastName ?? ""}`.trim(),
+            }
+          );
+        } catch (err) {
+          if (err instanceof RegisterError)
+            return reply.status(err.statusCode).send({ error: err.message });
+          throw err;
+        }
+      } else {
+        // Never became a driver: delete the application and its files.
+        const files = [
+          ...APP_DOC_SINGLE.map((f) => application[f]).filter((v): v is string => !!v),
+          ...APP_DOC_MULTI.flatMap((f) => application[f]),
+        ];
+        await fastify.prisma.driverApplication.delete({ where: { id } });
+        for (const f of files) await deleteStoredFile(f);
+      }
 
       return reply.status(200).send({
         message: "Application and all associated data permanently deleted.",

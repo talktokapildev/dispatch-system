@@ -273,6 +273,8 @@ model Driver {
 
   user             User              @relation(fields: [userId], references: [id])
   vehicle          Vehicle?
+  register         DriverRegister?
+  engagements      DriverEngagement[]
   documents        DriverDocument[]
   bookings         Booking[]
   earnings         DriverEarning[]
@@ -281,6 +283,46 @@ model Driver {
 
   @@index([userId])
   @@index([status])
+}
+
+// TfL driver register details (template "PRIVATE HIRE DRIVER"). Kept OUT of Driver on purpose:
+// many endpoints (passenger bookings included) return whole Driver rows, and these personal
+// details must only ever be read by the admin register endpoints.
+// Dates are calendar days stored as 00:00 UTC of that day.
+model DriverRegister {
+  driverId         String    @id
+  middleNames      String?
+  callSign         String?   @unique
+  address          String? // multi-line, as on the driver's documents
+  postcode         String?
+  dateOfBirth      DateTime?
+  niNumber         String? // National Insurance number, capitals, no spaces
+  licenceCheckedAt DateTime? // DVLA driving licence last checked (check code)
+  updatedBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+}
+
+// TfL driver register: one row per period the driver was available to carry out bookings
+// ("Date first available" / "Date of leaving", then "Restart" / "Finish"). endedAt null = current.
+model DriverEngagement {
+  id                  String    @id @default(uuid())
+  driverId            String
+  startedAt           DateTime // calendar day, 00:00 UTC
+  endedAt             DateTime? // calendar day, 00:00 UTC
+  endReason           String?
+  dismissedForConduct Boolean   @default(false)
+  notes               String?
+  startedBy           String? // userId of the admin
+  endedBy             String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
 }
 
 // A vehicle exists on its own. A driver has at most one current vehicle (driverId is unique, null

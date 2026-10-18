@@ -14,6 +14,8 @@ import {
   RotateCcw,
   CheckCircle,
   Upload,
+  Archive,
+  Printer,
 } from "lucide-react";
 import {
   DriverBadge,
@@ -23,6 +25,14 @@ import {
   Modal,
 } from "@/components/ui";
 import { DocumentsPanel } from "@/components/Documents";
+import {
+  ArchiveDriverModal,
+  DeleteDriverModal,
+  DriverRegisterPanel,
+  RestoreDriverModal,
+  dayText,
+  ukTodayKey,
+} from "@/components/DriverRegister";
 
 import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
@@ -39,6 +49,7 @@ const EMPTY_FORM = {
   pcoLicenseExpiry: "",
   drivingLicenseNumber: "",
   vehicleId: "", // car from the Vehicles page ("" = none)
+  availableFrom: "", // TfL register "Date first available" (new drivers; "" = today)
 };
 
 export default function DriversPage() {
@@ -48,7 +59,9 @@ export default function DriversPage() {
   const [selected, setSelected] = useState<any>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<any>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [archiveFor, setArchiveFor] = useState<any>(null);
+  const [restoreFor, setRestoreFor] = useState<any>(null);
+  const [deleteFor, setDeleteFor] = useState<any>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState("");
 
@@ -220,6 +233,28 @@ export default function DriversPage() {
     refetchInterval: 15_000,
   });
 
+  // /drivers?open=<id> (e.g. from TfL Records): open that driver once the list has loaded,
+  // looking in Archived too for drivers who have left.
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("open");
+    if (id) setOpenId(id);
+  }, []);
+  useEffect(() => {
+    if (!openId || !data) return;
+    const items: any[] = data?.items ?? data ?? [];
+    const found = items.find((d: any) => d.id === openId);
+    if (found) {
+      setSelected(found);
+      setOpenId(null);
+      window.history.replaceState(null, "", "/drivers");
+    } else if (status !== "ARCHIVED") {
+      setStatus("ARCHIVED");
+    } else {
+      setOpenId(null);
+    }
+  }, [openId, data, status]);
+
   // Cars on the fleet, for the vehicle pickers
   const { data: fleetData } = useQuery({
     queryKey: ["vehicles", "active"],
@@ -321,16 +356,6 @@ export default function DriversPage() {
       setFormError(err.response?.data?.error ?? "Failed to update driver"),
   });
 
-  const deleteDriver = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/drivers/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["drivers"] });
-      setDeleteId(null);
-      setSelected(null);
-    },
-    onError: () => setFormError("Failed to delete driver"),
-  });
-
   const openEdit = (d: any) => {
     setEditing(d);
     setForm({
@@ -342,6 +367,7 @@ export default function DriversPage() {
       pcoLicenseExpiry: d.pcoLicenseExpiry?.split("T")[0] ?? "",
       drivingLicenseNumber: d.drivingLicenseNumber ?? "",
       vehicleId: d.vehicle?.id ?? "",
+      availableFrom: "",
     });
     setFormError("");
     setShowAdd(true);
@@ -382,6 +408,7 @@ export default function DriversPage() {
       pcoLicenseExpiry: form.pcoLicenseExpiry,
       drivingLicenseNumber: form.drivingLicenseNumber.trim(),
       vehicleId: form.vehicleId || null,
+      ...(!editing && form.availableFrom ? { availableFrom: form.availableFrom } : {}),
     };
 
     if (editing) {
@@ -536,8 +563,17 @@ export default function DriversPage() {
                           {d.user.firstName} {d.user.lastName}
                         </p>
                         <p className="text-[10px] text-slate-500">
+                          {d.callSign && (
+                            <span className="font-mono text-slate-400 mr-1.5">{d.callSign}</span>
+                          )}
                           {d.user.phone}
                         </p>
+                        {isArchived && d.leftOn && (
+                          <p className="text-[10px] text-slate-500">
+                            Left {dayText(d.leftOn.slice(0, 10))}
+                            {d.deletableFrom && ` · keep until ${dayText(d.deletableFrom.slice(0, 10))}`}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -751,7 +787,30 @@ export default function DriversPage() {
                   onChange={set("drivingLicenseNumber")}
                 />
               </div>
+              {!editing && (
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">
+                    Date first available
+                  </label>
+                  <input
+                    className="input w-full"
+                    type="date"
+                    max={ukTodayKey()}
+                    value={form.availableFrom}
+                    onChange={set("availableFrom")}
+                  />
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    TfL register. Leave empty for today.
+                  </p>
+                </div>
+              )}
             </div>
+            {!editing && (
+              <p className="text-[10px] text-slate-600 mt-2">
+                Address, date of birth, NI number and call sign go in the driver&apos;s
+                TfL register section after they are created.
+              </p>
+            )}
           </div>
 
           {/* Vehicle */}
@@ -824,19 +883,56 @@ export default function DriversPage() {
         {selected && (
           <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
             {/* Action buttons */}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => openEdit(selected)}
+            <div className="flex gap-2 justify-end flex-wrap">
+              <a
+                href={`/tfl-records?driver=${selected.id}`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] text-slate-300 hover:text-white hover:border-brand-500 transition-colors"
               >
-                <Pencil size={12} /> Edit
-              </button>
-              <button
-                onClick={() => setDeleteId(selected.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
+                <Printer size={12} /> TfL record
+              </a>
+              {!selected.archivedAt ? (
+                <>
+                  <button
+                    onClick={() => openEdit(selected)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] text-slate-300 hover:text-white hover:border-brand-500 transition-colors"
+                  >
+                    <Pencil size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => setArchiveFor(selected)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    <Archive size={12} /> Archive (left)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setRestoreFor(selected)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border)] text-slate-300 hover:text-white hover:border-brand-500 transition-colors"
+                  >
+                    <RotateCcw size={12} /> Restore
+                  </button>
+                  {(() => {
+                    const from = selected.deletableFrom?.slice(0, 10) ?? null;
+                    const can = !!from && from <= ukTodayKey();
+                    return (
+                      <button
+                        onClick={() => can && setDeleteFor(selected)}
+                        disabled={!can}
+                        title={
+                          can
+                            ? "Delete permanently"
+                            : `TfL: records are kept for 12 months after leaving${from ? ` — can be deleted from ${dayText(from)}` : ""}`
+                        }
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 size={12} /> Delete permanently
+                      </button>
+                    );
+                  })()}
+                </>
+              )}
             </div>
 
             {/* Status & stats */}
@@ -1105,6 +1201,14 @@ export default function DriversPage() {
               </div>
             </div>
 
+            {/* TfL driver register */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                TfL driver register
+              </p>
+              <DriverRegisterPanel driverId={selected.id} />
+            </div>
+
             {/* Licence */}
             <div>
               <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
@@ -1314,34 +1418,30 @@ export default function DriversPage() {
         )}
       </Modal>
 
-      {/* Delete confirm */}
-      <Modal
-        open={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        title="Delete Driver"
-      >
-        <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
-          Are you sure you want to delete this driver? Their booking history
-          will be preserved but their account will be removed. This cannot be
-          undone.
-        </p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => setDeleteId(null)}
-            className="btn-ghost text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => deleteId && deleteDriver.mutate(deleteId)}
-            disabled={deleteDriver.isPending}
-            className="btn-danger flex items-center gap-2 text-sm"
-          >
-            {deleteDriver.isPending ? <Spinner size={14} /> : null} Delete
-            Driver
-          </button>
-        </div>
-      </Modal>
+      <ArchiveDriverModal
+        driver={archiveFor}
+        onClose={() => setArchiveFor(null)}
+        onDone={() => {
+          setArchiveFor(null);
+          setSelected(null);
+        }}
+      />
+      <RestoreDriverModal
+        driver={restoreFor}
+        onClose={() => setRestoreFor(null)}
+        onDone={() => {
+          setRestoreFor(null);
+          setSelected(null);
+        }}
+      />
+      <DeleteDriverModal
+        driver={deleteFor}
+        onClose={() => setDeleteFor(null)}
+        onDone={() => {
+          setDeleteFor(null);
+          setSelected(null);
+        }}
+      />
     </div>
   );
 }

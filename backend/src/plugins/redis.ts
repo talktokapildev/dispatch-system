@@ -35,6 +35,8 @@ export const RedisKeys = {
   driverLocation: (driverId: string) => `driver:location:${driverId}`,
   driverStatus: (driverId: string) => `driver:status:${driverId}`,
   onlineDrivers: () => `drivers:online`,
+  // Set while a driver is archived (left): their unexpired app tokens are refused.
+  archivedDriver: (userId: string) => `driver:archived:${userId}`,
   bookingLock: (bookingId: string) => `booking:lock:${bookingId}`,
   dispatchQueue: () => `dispatch:queue`,
   otpCode: (phone: string) => `otp:${phone}`,
