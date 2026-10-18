@@ -5,6 +5,7 @@
 //        body: { key: string, notes?: string }
 
 import { FastifyInstance } from "fastify";
+import { isReplyOverdue } from "../services/complaintRules";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -500,6 +501,35 @@ async function runAutomatedChecks(
       "Shall preserve records of all private hire bookings, vehicles and drivers available to carry out bookings.",
   };
 
+  // Condition 7 — Complaints procedure
+  const [complaintTotal, openComplaints] = await Promise.all([
+    prisma.complaint.count({ where: { type: "COMPLAINT" } }),
+    prisma.complaint.findMany({
+      where: { type: "COMPLAINT", status: { in: ["RECEIVED", "INVESTIGATING"] } },
+      select: { type: true, status: true, receivedAt: true, _count: { select: { contacts: true } } },
+    }),
+  ]);
+  const complaintsOverdue = openComplaints.filter((c) =>
+    isReplyOverdue({ ...c, contactCount: c._count.contacts })
+  ).length;
+  const complaintsCheck: AutomatedCheck = {
+    id: "complaints",
+    condition: 7,
+    title: "Complaints Procedure",
+    status: complaintsOverdue > 0 ? "WARN" : "PASS",
+    value: `${complaintTotal} complaint${complaintTotal !== 1 ? "s" : ""} · ${openComplaints.length} open${
+      complaintsOverdue ? ` · ${complaintsOverdue} reply overdue` : ""
+    }`,
+    detail:
+      "Complaints / compliments register is active. Passengers complain via the app; staff log phone, email and in-person complaints and compliments, record every action and the outcome on Alerts. Each record has a ref (CC-YYYY-NNN) and prints in TfL's COMPLAINT/COMPLIMENT format from TfL Records.",
+    requirement:
+      "Must have a procedure for dealing with complaints and keep a record of every complaint and compliment, the action taken and the result, for at least 12 months.",
+    howToFix:
+      complaintsOverdue > 0
+        ? `Reply to ${complaintsOverdue} complaint${complaintsOverdue !== 1 ? "s" : ""} waiting more than 48 hours (Alerts → Complaints).`
+        : undefined,
+  };
+
   // Condition 9 — Lost property procedure
   const lostProperty: AutomatedCheck = {
     id: "lost_property",
@@ -633,6 +663,7 @@ async function runAutomatedChecks(
     phvCheck,
     vehicleRegCheck,
     respondentCheck,
+    complaintsCheck,
     bookingRecords,
     lostProperty,
     preJourneyParticulars,

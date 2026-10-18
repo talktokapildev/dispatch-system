@@ -21,6 +21,8 @@ import {
   reportByPassenger,
 } from "../services/lostProperty.service";
 import { LostPropertyError } from "../services/lostPropertyRules";
+import { passengerBookings, reportByPassenger as reportComplaint } from "../services/complaint.service";
+import { ComplaintError } from "../services/complaintRules";
 
 const generateRef = () =>
   `DS${Date.now().toString(36).toUpperCase()}${Math.random()
@@ -261,7 +263,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
       return reply.send({
         success: true,
         data: {
-          items: items.map(withTripVehicle),
+          // never the real operator notes; complaint in the old text format the app reads
+          items: await passengerBookings(fastify.prisma, passenger.id, items.map(withTripVehicle)),
           total,
           page: parseInt(page),
           limit: parseInt(limit),
@@ -326,7 +329,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
         };
       }
 
-      return reply.send({ success: true, data: enriched });
+      const [forApp] = await passengerBookings(fastify.prisma, passenger.id, [enriched]);
+      return reply.send({ success: true, data: forApp });
     }
   );
 
@@ -846,90 +850,47 @@ export async function passengerRoutes(fastify: FastifyInstance) {
   );
 
   // ─── POST /passengers/bookings/:id/complaint ───────────────────────────────
-  // TfL Condition 7: formal complaints procedure
-  // Stores complaint against booking + notifies admin via socket
+  // TfL Condition 7: complaints register. Stored in the Complaint table (ref CC-2026-001) — no
+  // longer in Booking.feedback, where a rating comment used to overwrite it. Notifies admin via socket.
   fastify.post(
     "/passengers/bookings/:id/complaint",
     { preHandler: [fastify.authenticate] },
     async (request, reply) => {
       const { userId } = request.user;
       const { id } = request.params as { id: string };
-      const { category, description } = request.body as {
-        category: string;
-        description: string;
+      const { category, description } = (request.body ?? {}) as {
+        category?: string;
+        description?: string;
       };
 
-      if (!category || !description?.trim()) {
-        return reply.status(400).send({
-          success: false,
-          error: "Category and description are required",
+      try {
+        const { complaint, booking } = await reportComplaint(
+          { prisma: fastify.prisma, log: fastify.log },
+          { userId, bookingId: id, category, description }
+        );
+
+        fastify.io.to("admin").emit("admin:complaint", {
+          complaintId: complaint.id,
+          refNo: complaint.refNo,
+          bookingId: id,
+          reference: booking.reference,
+          passengerName: complaint.complainantName,
+          passengerPhone: complaint.complainantPhone,
+          category: complaint.category,
+          description: complaint.details,
+          submittedAt: complaint.receivedAt.toISOString(),
         });
+
+        fastify.log.info(
+          `Complaint submitted: ${complaint.refNo} booking=${booking.reference} category="${complaint.category}"`
+        );
+
+        return reply.send({ success: true, message: "Complaint submitted", data: { refNo: complaint.refNo } });
+      } catch (err) {
+        if (err instanceof ComplaintError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
       }
-
-      const passenger = await getPassenger(userId);
-      if (!passenger)
-        return reply.status(403).send({ success: false, error: "Not found" });
-
-      const booking = await fastify.prisma.booking.findUnique({
-        where: { id },
-      });
-      if (!booking)
-        return reply
-          .status(404)
-          .send({ success: false, error: "Booking not found" });
-      if (booking.passengerId !== passenger.id)
-        return reply
-          .status(403)
-          .send({ success: false, error: "Access denied" });
-
-      // Store complaint in booking feedback field
-      const complaintText = `[COMPLAINT] Category: ${category}\n${description.trim()}`;
-      await fastify.prisma.booking.update({
-        where: { id },
-        data: { feedback: complaintText },
-      });
-
-      // Get passenger name for notification
-      const user = await fastify.prisma.user.findUnique({
-        where: { id: userId },
-      });
-      const passengerName = `${user?.firstName ?? ""} ${
-        user?.lastName ?? ""
-      }`.trim();
-
-      // Notify admin via socket
-      fastify.io.to("admin").emit("admin:complaint", {
-        bookingId: id,
-        reference: booking.reference,
-        passengerName,
-        passengerPhone: user?.phone,
-        category,
-        description: description.trim(),
-        submittedAt: new Date().toISOString(),
-      });
-
-      // Store as notification for admin
-      await fastify.prisma.notification.create({
-        data: {
-          userId,
-          title: `Complaint: ${category}`,
-          body: `Booking ${booking.reference} — ${description
-            .trim()
-            .slice(0, 100)}`,
-          data: {
-            type: "COMPLAINT",
-            bookingId: id,
-            reference: booking.reference,
-            category,
-          },
-        },
-      });
-
-      fastify.log.info(
-        `Complaint submitted: booking=${booking.reference} category="${category}" passenger=${passengerName}`
-      );
-
-      return reply.send({ success: true, message: "Complaint submitted" });
     }
   );
 
@@ -1189,7 +1150,8 @@ export async function passengerRoutes(fastify: FastifyInstance) {
           lastLongitude: booking.driver.currentLongitude,
         };
       }
-      return reply.send({ success: true, data: enriched });
+      const [forApp] = await passengerBookings(fastify.prisma, passenger.id, [enriched]);
+      return reply.send({ success: true, data: forApp });
     }
   );
 
@@ -1230,7 +1192,9 @@ export async function passengerRoutes(fastify: FastifyInstance) {
         orderBy: { createdAt: "desc" },
       });
 
-      return reply.send({ success: true, data: booking ?? null });
+      if (!booking) return reply.send({ success: true, data: null });
+      const [forApp] = await passengerBookings(fastify.prisma, passenger.id, [booking]);
+      return reply.send({ success: true, data: forApp });
     }
   );
 
