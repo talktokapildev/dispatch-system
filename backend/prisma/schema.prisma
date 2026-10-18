@@ -275,6 +275,7 @@ model Driver {
   vehicle          Vehicle?
   register         DriverRegister?
   engagements      DriverEngagement[]
+  vehicleHistory   VehicleAssignment[]
   documents        DriverDocument[]
   bookings         Booking[]
   earnings         DriverEarning[]
@@ -355,9 +356,47 @@ model Vehicle {
   keeperAddress    String?
   startDate        DateTime  @default(now()) // started working for OrangeRide
 
-  driver    Driver?          @relation(fields: [driverId], references: [id], onDelete: SetNull)
-  bookings  Booking[]
-  documents DriverDocument[]
+  driver         Driver?                @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  bookings       Booking[]
+  documents      DriverDocument[]
+  assignments    VehicleAssignment[]
+  servicePeriods VehicleServicePeriod[]
+}
+
+// History of which driver had which car. Written ONLY by the database trigger
+// "vehicle_history" on "Vehicle" (migration 20261018200000_vehicle_history): every change of
+// Vehicle.driverId closes the open row and opens a new one, whichever code path made it.
+model VehicleAssignment {
+  id         String    @id @default(uuid())
+  vehicleId  String
+  driverId   String? // null once the driver's record has been deleted (driverName is kept)
+  driverName String // name when the car was assigned
+  startedAt  DateTime
+  endedAt    DateTime?
+  endReason  String? // Reassigned, Unassigned, Driver left, Vehicle retired
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver? @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+// TfL vehicle record "Start Date / Vehicle Ceased": the periods a car was on the fleet. Written
+// ONLY by the "vehicle_history" trigger (retire closes, restore opens, editing Vehicle.startDate
+// moves the first period's start).
+model VehicleServicePeriod {
+  id        String    @id @default(uuid())
+  vehicleId String
+  startedAt DateTime
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
 }
 
 // A driver or vehicle document. Each upload is a new version: the approved version stays in force
