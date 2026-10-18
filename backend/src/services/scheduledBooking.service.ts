@@ -17,6 +17,7 @@ import {
   releaseClaimLock,
 } from "../utils/scheduledBookingLock";
 import { SocketEvent } from "../types";
+import { checkDriverCanWork } from "./documentCompliance.service";
 import {
   resolveDispatcher,
   getDriverVehicleStamp,
@@ -39,7 +40,12 @@ type EtaCheckResult = {
 };
 
 type ClaimSuccess = { success: true; booking: Booking };
-type ClaimFailure = { success: false; reason: string; etaMinutes?: number };
+type ClaimFailure = {
+  success: false;
+  reason: string;
+  etaMinutes?: number;
+  message?: string;
+};
 type ClaimResult = ClaimSuccess | ClaimFailure;
 
 type ReleaseSuccess = { success: true; adminAlertRequired: boolean };
@@ -146,6 +152,10 @@ export class ScheduledBookingService {
         driverId
       );
       if (!vehicleId) return { success: false, reason: "no_vehicle" };
+
+      const docs = await checkDriverCanWork(this.prisma, driverId, "job-board claim");
+      if (!docs.ok)
+        return { success: false, reason: "documents", message: docs.message };
 
       const updateResult = await this.prisma.booking.updateMany({
         where: { id: bookingId, status: BookingStatus.SCHEDULED_OPEN },
@@ -321,7 +331,8 @@ export class ScheduledBookingService {
     bookingId: string,
     driverId: string
   ): Promise<
-    { success: true; booking: Booking } | { success: false; reason: string }
+    | { success: true; booking: Booking }
+    | { success: false; reason: string; message?: string }
   > {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -338,6 +349,9 @@ export class ScheduledBookingService {
     if (!ScheduledBookingService.canStartNow(booking.scheduledAt)) {
       return { success: false, reason: "too_early" };
     }
+    const docs = await checkDriverCanWork(this.prisma, driverId, "start trip");
+    if (!docs.ok)
+      return { success: false, reason: "documents", message: docs.message };
 
     await this.prisma.driver.update({
       where: { id: driverId },

@@ -2,8 +2,6 @@ import {
   PrismaClient,
   BookingStatus,
   DriverStatus,
-  DocumentType,
-  DocumentStatus,
 } from "@prisma/client";
 import Redis from "ioredis";
 import { Server as SocketServer } from "socket.io";
@@ -18,19 +16,13 @@ import {
   MAX_DRIVER_SEARCH_RADIUS_KM,
 } from "../config";
 import { getDriverVehicleStamp, type VehicleStamp } from "../utils/bookingRecord";
-
-// All 8 document types a driver must have APPROVED (and not expired)
-// before they can receive any dispatch offer — auto or manual.
-const REQUIRED_DISPATCH_DOCS: DocumentType[] = [
-  DocumentType.PCO_LICENSE,
-  DocumentType.DRIVING_LICENSE,
-  DocumentType.DRIVING_LICENSE_BACK,
-  DocumentType.PHV_LICENCE,
-  DocumentType.VEHICLE_INSURANCE,
-  DocumentType.MOT_CERTIFICATE,
-  DocumentType.V5C_LOGBOOK,
-  DocumentType.DBS_CHECK,
-];
+import {
+  checkDriverCanWork,
+  gatingEnabled,
+  loadComplianceMany,
+  shadowLogOnce,
+} from "./documentCompliance.service";
+import { problemSummary } from "./documentRules";
 
 export class DispatchService {
   private notifications: NotificationService;
@@ -43,31 +35,6 @@ export class DispatchService {
   ) {
     this.notifications = new NotificationService(prisma);
     this.pricing = new PricingService(prisma, redis);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Document compliance check
-  // Returns true only if the driver has every required document with status
-  // APPROVED and either no expiry date or an expiry date in the future.
-  // ─────────────────────────────────────────────────────────────────────────
-  private isDocumentCompliant(
-    documents: {
-      type: DocumentType;
-      status: DocumentStatus;
-      expiryDate: Date | null;
-    }[]
-  ): boolean {
-    const now = new Date();
-    const validTypes = new Set(
-      documents
-        .filter(
-          (doc) =>
-            doc.status === DocumentStatus.APPROVED &&
-            (doc.expiryDate === null || doc.expiryDate > now)
-        )
-        .map((doc) => doc.type)
-    );
-    return REQUIRED_DISPATCH_DOCS.every((type) => validTypes.has(type));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -614,17 +581,17 @@ export class DispatchService {
   async manualAssign(bookingId: string, driverId: string): Promise<void> {
     const driver = await this.prisma.driver.findUnique({
       where: { id: driverId },
-      include: { documents: true, vehicle: { select: { id: true } } },
+      include: { vehicle: { select: { id: true } } },
     });
 
     if (!driver || driver.status !== DriverStatus.AVAILABLE) {
       throw new Error("Driver not available");
     }
 
-    if (!this.isDocumentCompliant(driver.documents)) {
+    const docs = await checkDriverCanWork(this.prisma, driverId, "manual assign");
+    if (!docs.ok) {
       throw new Error(
-        "Driver does not have all required documents approved. " +
-          "Check the Documents page before manually assigning this driver."
+        `Driver's documents are not in order: ${docs.message} Check the Documents page.`
       );
     }
 
@@ -661,7 +628,7 @@ export class DispatchService {
   // ─────────────────────────────────────────────────────────────────────────
   // findNearestDrivers
   // Only returns drivers who are online, AVAILABLE, have a location,
-  // AND have all 8 required documents APPROVED and not expired.
+  // AND have their documents in order (documentCompliance.service; shadow mode only logs).
   // ─────────────────────────────────────────────────────────────────────────
   async findNearestDrivers(
     lat: number,
@@ -681,25 +648,24 @@ export class DispatchService {
         currentLongitude: { not: null },
         vehicle: { isNot: null }, // no car, no job
       },
-      include: {
-        vehicle: true,
-        documents: {
-          select: { type: true, status: true, expiryDate: true },
-        },
-      },
+      include: { vehicle: true },
     });
 
-    const now = new Date();
+    const compliance = await loadComplianceMany(
+      this.prisma,
+      drivers.map((d) => d.id)
+    );
+    const enforce = gatingEnabled();
     const withDistance: AvailableDriver[] = drivers
       // ── Document compliance filter ──────────────────────────────────────
       .filter((d) => {
-        const compliant = this.isDocumentCompliant(d.documents);
-        if (!compliant) {
-          console.log(
-            `[Dispatch] Driver ${d.id} excluded — missing or unapproved documents`
-          );
-        }
-        return compliant;
+        const c = compliance.get(d.id);
+        if (c?.eligible) return true;
+        if (!enforce && !shadowLogOnce(`${d.id}:dispatch`)) return true;
+        console.warn(
+          `[Documents] ${enforce ? "Excluded from dispatch" : "SHADOW would exclude from dispatch"}: driver ${d.id} (${c ? problemSummary(c) : "not found"})`
+        );
+        return !enforce;
       })
       // ── Distance filter ─────────────────────────────────────────────────
       .map((d) => ({

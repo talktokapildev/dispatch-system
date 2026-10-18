@@ -1,104 +1,64 @@
 "use client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+// Documents: driver & vehicle documents across the fleet.
+// Tabs: waiting for review, expiring (30 days), expired, approved without an expiry date,
+// rejected, and every approved version in force. Review = approve with expiry date / reject with
+// a reason (the driver is notified). Per-driver and per-car views are on the Drivers / Vehicles pages.
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { SectionHeader, Table, Modal, Spinner } from "@/components/ui";
-import { CheckCircle, XCircle, AlertTriangle, FileText } from "lucide-react";
-import toast from "react-hot-toast";
+import { CarFront, FileText, User } from "lucide-react";
+import { api } from "@/lib/api";
+import { SectionHeader, Spinner, Table } from "@/components/ui";
+import { DOC_LABELS, ExpiryText, ReviewModal, StateChip } from "@/components/Documents";
 
-const DOC_TABS = ["PENDING", "APPROVED", "REJECTED", "EXPIRING"];
+const TABS = [
+  { key: "pending", label: "Waiting for review", count: "pending", badge: "bg-red-500 text-white" },
+  { key: "expiring", label: "Expiring (30 days)", count: "expiring", badge: "bg-yellow-500 text-black" },
+  { key: "expired", label: "Expired", count: "expired", badge: "bg-red-500 text-white" },
+  { key: "expiry_needed", label: "No expiry date", count: "expiryNeeded", badge: "bg-orange-500 text-black" },
+  { key: "rejected", label: "Rejected", count: null, badge: "" },
+  { key: "current", label: "All approved", count: null, badge: "" },
+] as const;
 
 export default function DocumentsPage() {
-  const qc = useQueryClient();
-  const [tab, setTab] = useState("PENDING");
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("pending");
   const [selected, setSelected] = useState<any>(null);
-  const [notes, setNotes] = useState("");
 
-  // Single endpoint handles all tabs
   const { data: docs = [], isLoading } = useQuery({
     queryKey: ["docs", tab],
-    queryFn: () => {
-      if (tab === "EXPIRING") {
-        return api
-          .get("/admin/documents", { params: { expiring: "true", days: 60 } })
-          .then((r) => r.data.data);
-      }
-      return api
-        .get("/admin/documents", { params: { status: tab } })
-        .then((r) => r.data.data);
-    },
+    queryFn: () => api.get("/admin/documents", { params: { view: tab, days: 30 } }).then((r) => r.data.data),
     refetchInterval: 30_000,
   });
-
-  // Badge counts
-  const { data: pendingCount = 0 } = useQuery({
-    queryKey: ["docs-count", "PENDING"],
-    queryFn: () =>
-      api
-        .get("/admin/documents", { params: { status: "PENDING" } })
-        .then((r) => r.data.data.length),
-    refetchInterval: 60_000,
-  });
-  const { data: expiringCount = 0 } = useQuery({
-    queryKey: ["docs-count", "EXPIRING"],
-    queryFn: () =>
-      api
-        .get("/admin/documents", { params: { expiring: "true", days: 60 } })
-        .then((r) => r.data.data.length),
+  const { data: counts } = useQuery({
+    queryKey: ["docs-counts"],
+    queryFn: () => api.get("/admin/documents/counts").then((r) => r.data.data),
     refetchInterval: 60_000,
   });
 
-  const reviewMutation = useMutation({
-    mutationFn: ({ driverId, docId, status, notes }: any) =>
-      api.patch(`/admin/drivers/${driverId}/documents/${docId}`, {
-        status,
-        notes,
-      }),
-    onSuccess: () => {
-      toast.success("Document reviewed");
-      qc.invalidateQueries({ queryKey: ["docs"] });
-      qc.invalidateQueries({ queryKey: ["docs-count"] });
-      setSelected(null);
-    },
-    onError: () => toast.error("Review failed"),
-  });
-
-  const daysUntilExpiry = (date: string) =>
-    Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
-
+  const showExpiry = tab !== "rejected";
   return (
     <div className="space-y-5 animate-fade-in">
       <SectionHeader
-        title="Document Management"
-        subtitle="TfL compliance — PCO licences, insurance, MOT, DBS"
+        title="Documents"
+        subtitle="Driver documents (PCO badge, licence, DBS) and vehicle documents (PHV licence, insurance, MOT, V5C). A driver gets jobs only when all are approved and in date."
       />
 
-      {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-[var(--table-hover)] rounded-lg border border-[var(--border)] w-fit">
-        {DOC_TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded text-xs font-medium transition-all ${
-              tab === t
-                ? "bg-brand-500 text-black"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            {t}
-            {t === "PENDING" && pendingCount > 0 && (
-              <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1 py-0.5 rounded-full">
-                {pendingCount}
-              </span>
-            )}
-            {t === "EXPIRING" && expiringCount > 0 && (
-              <span className="ml-1.5 bg-yellow-500 text-black text-[10px] px-1 py-0.5 rounded-full">
-                {expiringCount}
-              </span>
-            )}
-          </button>
-        ))}
+      <div className="flex flex-wrap gap-1 p-1 bg-[var(--table-hover)] rounded-lg border border-[var(--border)] w-fit">
+        {TABS.map((t) => {
+          const n = t.count ? counts?.[t.count] ?? 0 : 0;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                tab === t.key ? "bg-brand-500 text-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              {t.label}
+              {n > 0 && <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${t.badge}`}>{n}</span>}
+            </button>
+          );
+        })}
       </div>
 
       <div className="card overflow-hidden">
@@ -108,220 +68,67 @@ export default function DocumentsPage() {
           </div>
         ) : (
           <Table
-            headers={
-              tab === "EXPIRING"
-                ? ["Driver", "Document", "Expires", "Days Left", "Status"]
-                : [
-                    "Driver",
-                    "Document",
-                    "Uploaded",
-                    "Expiry Date",
-                    "Status",
-                    "Action",
-                  ]
-            }
+            headers={["Belongs to", "Document", "Uploaded", ...(showExpiry ? ["Expiry"] : ["Reason"]), "Status", ""]}
             isEmpty={!docs.length}
-            emptyMessage={`No ${tab.toLowerCase()} documents`}
+            emptyMessage="Nothing here"
           >
-            {docs.map((doc: any) => {
-              const driver = doc.driver;
-              const driverUser = driver?.user;
-              const days = doc.expiryDate
-                ? daysUntilExpiry(doc.expiryDate)
-                : null;
-
-              return (
-                <tr key={doc.id} className="table-row">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-400 text-[10px] font-bold">
-                        {driverUser?.firstName?.[0]}
-                        {driverUser?.lastName?.[0]}
-                      </div>
-                      <div>
-                        <p className="text-xs text-white">
-                          {driverUser?.firstName} {driverUser?.lastName}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          {driver?.pcoBadgeNumber}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <FileText size={12} className="text-slate-500" />
-                      <span className="text-xs text-slate-300">
-                        {doc.type?.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {doc.createdAt
-                      ? format(new Date(doc.createdAt), "dd MMM yyyy")
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {doc.expiryDate ? (
-                      <span
-                        className={
-                          days !== null && days <= 30
-                            ? "text-red-400"
-                            : days !== null && days <= 60
-                            ? "text-yellow-400"
-                            : "text-slate-400"
-                        }
-                      >
-                        {format(new Date(doc.expiryDate), "dd MMM yyyy")}
-                      </span>
+            {docs.map((doc: any) => (
+              <tr key={doc.id} className="table-row cursor-pointer" onClick={() => setSelected(doc)}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    {doc.owner.kind === "vehicle" ? (
+                      <CarFront size={13} className="text-slate-500" />
                     ) : (
-                      "—"
+                      <User size={13} className="text-slate-500" />
+                    )}
+                    <div>
+                      <p className="text-xs text-[var(--text)]">
+                        {doc.owner.kind === "vehicle" ? (
+                          <span className="font-mono">{doc.owner.licensePlate}</span>
+                        ) : (
+                          doc.owner.driverName
+                        )}
+                      </p>
+                      {doc.owner.kind === "vehicle" && (
+                        <p className="text-[10px] text-slate-500">{doc.owner.driverName ?? "Unassigned"}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <FileText size={12} className="text-slate-500" />
+                    <span className="text-xs text-slate-300">{DOC_LABELS[doc.type] ?? doc.type}</span>
+                    {doc.pages?.length > 1 && <span className="text-[10px] text-slate-500">({doc.pages.length} pages)</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-xs text-slate-500">{format(new Date(doc.createdAt), "dd MMM yyyy")}</td>
+                {showExpiry ? (
+                  <td className="px-4 py-3">
+                    {doc.expiryDate ? (
+                      <ExpiryText date={doc.expiryDate} daysLeft={doc.daysLeft} />
+                    ) : doc.expiryRequired ? (
+                      <span className="text-xs text-orange-400">needed</span>
+                    ) : (
+                      <span className="text-xs text-slate-600">—</span>
                     )}
                   </td>
-                  {tab === "EXPIRING" && (
-                    <td className="px-4 py-3">
-                      {days !== null && (
-                        <span
-                          className={`text-xs font-semibold flex items-center gap-1 ${
-                            days <= 14
-                              ? "text-red-400"
-                              : days <= 30
-                              ? "text-orange-400"
-                              : "text-yellow-400"
-                          }`}
-                        >
-                          <AlertTriangle size={11} />
-                          {days} days
-                        </span>
-                      )}
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <span
-                      className={`badge text-[10px] ${
-                        doc.status === "PENDING"
-                          ? "bg-yellow-500/15 text-yellow-400"
-                          : doc.status === "APPROVED"
-                          ? "bg-green-500/15 text-green-400"
-                          : doc.status === "REJECTED"
-                          ? "bg-red-500/15 text-red-400"
-                          : doc.status === "EXPIRED"
-                          ? "bg-slate-500/15 text-slate-400"
-                          : ""
-                      }`}
-                    >
-                      {doc.status}
-                    </span>
-                  </td>
-                  {tab !== "EXPIRING" && (
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => {
-                          setSelected(doc);
-                          setNotes("");
-                        }}
-                        className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
-                      >
-                        Review →
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
+                ) : (
+                  <td className="px-4 py-3 text-xs text-red-400 max-w-[240px] truncate">{doc.rejectionReason ?? "—"}</td>
+                )}
+                <td className="px-4 py-3">
+                  <StateChip state={doc.status} />
+                </td>
+                <td className="px-4 py-3 text-xs text-brand-400">
+                  {doc.status === "PENDING" ? "Review →" : doc.status === "APPROVED" && !doc.expiryDate && doc.expiryRequired ? "Add date →" : "View →"}
+                </td>
+              </tr>
+            ))}
           </Table>
         )}
       </div>
 
-      {/* Review modal */}
-      <Modal
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title="Review Document"
-      >
-        {selected && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-white">
-                  {selected.type?.replace(/_/g, " ")}
-                </p>
-                <span className="text-xs text-slate-500">
-                  Uploaded{" "}
-                  {selected.createdAt &&
-                    format(new Date(selected.createdAt), "dd MMM yyyy")}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Driver: {selected.driver?.user?.firstName}{" "}
-                {selected.driver?.user?.lastName} ·{" "}
-                {selected.driver?.pcoBadgeNumber}
-              </p>
-              {selected.expiryDate && (
-                <p className="text-xs text-slate-400">
-                  Expires:{" "}
-                  <span className="text-white">
-                    {format(new Date(selected.expiryDate), "dd MMM yyyy")}
-                  </span>
-                </p>
-              )}
-              {selected.fileUrl && (
-                <a
-                  href={selected.fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs text-brand-400 hover:underline flex items-center gap-1 mt-2"
-                >
-                  <FileText size={11} /> View document →
-                </a>
-              )}
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-400 block mb-1.5">
-                Notes (optional)
-              </label>
-              <textarea
-                className="input resize-none h-20"
-                placeholder="Any notes for the driver…"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() =>
-                  reviewMutation.mutate({
-                    driverId: selected.driver?.id,
-                    docId: selected.id,
-                    status: "APPROVED",
-                    notes,
-                  })
-                }
-                disabled={reviewMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-400 text-sm font-medium transition-all"
-              >
-                <CheckCircle size={14} /> Approve
-              </button>
-              <button
-                onClick={() =>
-                  reviewMutation.mutate({
-                    driverId: selected.driver?.id,
-                    docId: selected.id,
-                    status: "REJECTED",
-                    notes,
-                  })
-                }
-                disabled={reviewMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm font-medium transition-all"
-              >
-                <XCircle size={14} /> Reject
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ReviewModal doc={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

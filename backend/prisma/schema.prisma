@@ -313,27 +313,45 @@ model Vehicle {
   keeperAddress    String?
   startDate        DateTime  @default(now()) // started working for OrangeRide
 
-  driver   Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
-  bookings Booking[]
+  driver    Driver?          @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  bookings  Booking[]
+  documents DriverDocument[]
 }
 
+// A driver or vehicle document. Each upload is a new version: the approved version stays in force
+// until a newer one is approved (it is then marked replaced) or it expires. Nothing is overwritten,
+// so the history is kept for TfL records.
+// Owner: driver documents (PCO badge, driving licence, DBS, profile photo) have vehicleId null.
+// Vehicle documents (PHV vehicle licence, insurance, MOT, V5C, vehicle photo) have vehicleId set;
+// driverId is then only the driver who uploaded it (may be null).
 model DriverDocument {
-  id         String         @id @default(uuid())
-  driverId   String
-  type       DocumentType
-  status     DocumentStatus @default(PENDING)
-  fileUrl    String
-  expiryDate DateTime?
-  notes      String?
-  reviewedAt DateTime?
-  reviewedBy String?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
-  archivedAt DateTime?
+  id                String         @id @default(uuid())
+  driverId          String?
+  vehicleId         String?
+  type              DocumentType
+  status            DocumentStatus @default(PENDING)
+  fileUrl           String
+  pageUrls          String[]       @default([]) // extra pages (insurance, V5C)
+  expiryDate        DateTime? // valid to the end of this UK day
+  expiryGraceUntil  DateTime? // approved before expiry dates were required: counts as valid until then
+  notes             String? // admin notes (internal)
+  rejectionReason   String? // shown to the driver
+  uploadedBy        String? // userId of the driver or admin who uploaded it
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  replacedAt        DateTime? // a newer version was approved (or this was merged as a page)
+  replacedById      String?
+  lastReminderDays  Int? // last expiry reminder sent (30, 14, 7, 1 days before)
+  expiredNotifiedAt DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  archivedAt        DateTime?
 
-  driver Driver @relation(fields: [driverId], references: [id])
+  driver  Driver?  @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([driverId])
+  @@index([vehicleId])
   @@index([status])
   @@index([expiryDate])
 }

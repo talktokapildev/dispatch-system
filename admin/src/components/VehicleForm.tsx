@@ -131,7 +131,11 @@ export function VehicleFormFields({
       </div>
 
       <div>
-        <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-3">Licensing & expiry dates</p>
+        <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Licensing & expiry dates</p>
+        <p className="text-[10px] text-slate-500 mb-3">
+          Jobs are allowed by the approved documents, not these dates. Approving a new MOT, insurance or PHV
+          licence document updates them automatically.
+        </p>
         <div className="grid grid-cols-2 gap-3">
           {text("motExpiry", "MOT expiry", "", { required: true, type: "date" })}
           {text("insuranceExpiry", "Insurance expiry", "", { required: true, type: "date" })}

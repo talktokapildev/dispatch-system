@@ -108,13 +108,18 @@ export async function adminRoutes(fastify: FastifyInstance) {
           GROUP BY 1
           ORDER BY 1 ASC
         `,
-        fastify.prisma.driverDocument.count({ where: { status: "PENDING" } }),
+        fastify.prisma.driverDocument.count({
+          where: { status: "PENDING", replacedAt: null, archivedAt: null },
+        }),
+        // approved versions in force that expire within 30 days (or already have)
         fastify.prisma.driverDocument.count({
           where: {
             expiryDate: {
               lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
             },
             status: "APPROVED",
+            replacedAt: null,
+            archivedAt: null,
           },
         }),
       ]);

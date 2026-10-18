@@ -304,11 +304,18 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           },
         ];
 
+        // Driver documents belong to the driver; vehicle documents to the car.
+        // Multi-page insurance / V5C become one document with extra pages.
+        const VEHICLE_DOCS = ["PHV_LICENCE", "MOT_CERTIFICATE", "VEHICLE_INSURANCE", "V5C_LOGBOOK"];
+        const owner = (type: string) =>
+          VEHICLE_DOCS.includes(type)
+            ? { driverId: driver.id, vehicleId }
+            : { driverId: driver.id };
         for (const { url, type, expiryDate } of singleDocs) {
           if (url) {
             await tx.driverDocument.create({
               data: {
-                driverId: driver.id,
+                ...owner(type),
                 type: type as any,
                 fileUrl: url,
                 status: "PENDING",
@@ -318,24 +325,26 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           }
         }
 
-        for (const url of insuranceUrls) {
+        if (insuranceUrls.length) {
           await tx.driverDocument.create({
             data: {
-              driverId: driver.id,
+              ...owner("VEHICLE_INSURANCE"),
               type: "VEHICLE_INSURANCE" as any,
-              fileUrl: url,
+              fileUrl: insuranceUrls[0],
+              pageUrls: insuranceUrls.slice(1),
               status: "PENDING",
               expiryDate: application.docInsuranceExpiry ?? null,
             },
           });
         }
 
-        for (const url of v5cUrls) {
+        if (v5cUrls.length) {
           await tx.driverDocument.create({
             data: {
-              driverId: driver.id,
+              ...owner("V5C_LOGBOOK"),
               type: "V5C_LOGBOOK" as any,
-              fileUrl: url,
+              fileUrl: v5cUrls[0],
+              pageUrls: v5cUrls.slice(1),
               status: "PENDING",
               expiryDate: null,
             },
@@ -468,8 +477,9 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
               where: { driverId: user.driver.id },
               data: { driverId: null },
             });
+            // Driver documents are archived; vehicle documents stay with the car
             await tx.driverDocument.updateMany({
-              where: { driverId: user.driver.id },
+              where: { driverId: user.driver.id, vehicleId: null },
               data: { archivedAt: now },
             });
 
@@ -543,6 +553,11 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
           // Delete dependent records in correct order
           await tx.driverEarning.deleteMany({ where: { driverId } });
           await tx.driverBreak.deleteMany({ where: { driverId } });
+          // Vehicle documents stay with the car; only the uploader link is cleared
+          await tx.driverDocument.updateMany({
+            where: { driverId, vehicleId: { not: null } },
+            data: { driverId: null },
+          });
           await tx.driverDocument.deleteMany({ where: { driverId } });
           await tx.teslaIntegration.deleteMany({ where: { driverId } });
           // Their car stays on the fleet, unassigned (and on the bookings it did)
