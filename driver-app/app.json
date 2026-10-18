@@ -47,7 +47,7 @@
         "backgroundColor": "#090d14"
       },
       "package": "com.orangeride.driver",
-      "versionCode": 22,
+      "versionCode": 23,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
