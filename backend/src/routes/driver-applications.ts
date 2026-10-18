@@ -8,9 +8,17 @@
 import { FastifyInstance } from "fastify";
 import { normalizePhone } from "../lib/phone";
 import {
-  uploadToCloudinary,
   CloudinaryFolder,
-} from "../services/cloudinary.service";
+  decodeDataUri,
+  uploadPrivate,
+} from "../services/fileStorage";
+import { fileLinker } from "../services/fileLinks";
+import { linkApplicationDocs } from "../services/applicationDocs";
+
+// Documents are stored privately; the applicant gets short-lived links (10 min) to their own
+// files. Only someone who knows the application id (kept on the applicant's phone) gets them.
+const applicantFiles = (request: Parameters<typeof fileLinker>[0], id: string) =>
+  fileLinker(request, { kind: "applicant", id });
 
 const DOC_FOLDER_MAP: Record<string, CloudinaryFolder> = {
   docPcoBadge: "driver-applications/pco-badge",
@@ -189,9 +197,10 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
   });
 
   // ─── POST /api/v1/driver-applications/:id/documents ────────────────────────
-  // Upload a single document image.
-  // - Single-file docs: stores URL string on the application field.
-  // - Multi-page docs (docInsurance, docV5c): appends URL to the array.
+  // Upload a single document image (stored privately).
+  // - Single-file docs: stores the storage reference on the application field.
+  // - Multi-page docs (docInsurance, docV5c): appends it to the array.
+  // Response `url` / `documents` are short-lived links, not storage URLs.
   // Body: { docType: string, image: string (base64 data URI) }
   fastify.post("/driver-applications/:id/documents", async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -227,9 +236,9 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         .send({ error: "Cannot update documents on an approved application" });
     }
 
-    let uploadResult;
+    let ref: string;
     try {
-      uploadResult = await uploadToCloudinary(image, folder, id);
+      ref = await uploadPrivate(decodeDataUri(image), folder, id);
     } catch (err: any) {
       fastify.log.error({ err }, "Cloudinary upload failed");
       return reply
@@ -239,8 +248,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
 
     // Multi-page: push to array. Single: set string.
     const updateData = MULTI_PAGE_DOCS.has(docType)
-      ? { [docType]: { push: uploadResult.url } }
-      : { [docType]: uploadResult.url };
+      ? { [docType]: { push: ref } }
+      : { [docType]: ref };
 
     const updated = await fastify.prisma.driverApplication.update({
       where: { id },
@@ -258,11 +267,14 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
       },
     });
 
+    const files = applicantFiles(request, id);
+    const documents = linkApplicationDocs(files, id, updated);
+    const field = (documents as Record<string, any>)[docType];
     return reply.status(200).send({
       message: "Document uploaded",
       docType,
-      url: uploadResult.url,
-      documents: updated,
+      url: Array.isArray(field) ? field[field.length - 1] : field,
+      documents,
     });
   });
 
@@ -292,17 +304,13 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
           .send({ error: "Cannot update an approved application" });
       }
 
-      // Read file buffer and convert to base64 for Cloudinary
       const chunks: Buffer[] = [];
       for await (const chunk of data.file) chunks.push(chunk);
       const buffer = Buffer.concat(chunks);
-      const base64DataUri = `data:${data.mimetype};base64,${buffer.toString(
-        "base64"
-      )}`;
 
-      let uploadResult;
+      let ref: string;
       try {
-        uploadResult = await uploadToCloudinary(base64DataUri, folder, id);
+        ref = await uploadPrivate(buffer, folder, id);
       } catch (err: any) {
         fastify.log.error({ err }, "Cloudinary upload failed");
         return reply
@@ -311,17 +319,18 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
       }
 
       const updateData = MULTI_PAGE_DOCS.has(docType)
-        ? { [docType]: { push: uploadResult.url } }
-        : { [docType]: uploadResult.url };
+        ? { [docType]: { push: ref } }
+        : { [docType]: ref };
 
       await fastify.prisma.driverApplication.update({
         where: { id },
         data: updateData,
       });
 
+      const url = applicantFiles(request, id).link(ref, `app:${id}:${docType}`);
       return reply
         .status(200)
-        .send({ message: "Document uploaded", docType, url: uploadResult.url });
+        .send({ message: "Document uploaded", docType, url });
     }
   );
 
@@ -433,6 +442,8 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: "Application not found" });
     }
 
+    const linked = linkApplicationDocs(applicantFiles(request, id), id, application);
+
     return reply.status(200).send({
       id: application.id,
       status: application.status,
@@ -466,14 +477,14 @@ export async function driverApplicationRoutes(fastify: FastifyInstance) {
         docV5c: (application.docV5c as string[]).length > 0,
       },
       rawDocuments: {
-        docPcoBadge: application.docPcoBadge ?? null,
-        docDrivingLicFront: application.docDrivingLicFront ?? null,
-        docDrivingLicBack: application.docDrivingLicBack ?? null,
-        docPhvLicence: application.docPhvLicence ?? null,
-        docInsurance: application.docInsurance as string[],
-        docMot: application.docMot ?? null,
-        docDbs: application.docDbs ?? null,
-        docV5c: application.docV5c as string[],
+        docPcoBadge: linked.docPcoBadge ?? null,
+        docDrivingLicFront: linked.docDrivingLicFront ?? null,
+        docDrivingLicBack: linked.docDrivingLicBack ?? null,
+        docPhvLicence: linked.docPhvLicence ?? null,
+        docInsurance: linked.docInsurance as string[],
+        docMot: linked.docMot ?? null,
+        docDbs: linked.docDbs ?? null,
+        docV5c: linked.docV5c as string[],
         docPhvExpiry: application.docPhvExpiry ?? null,
         docInsuranceExpiry: application.docInsuranceExpiry ?? null,
         docMotExpiry: application.docMotExpiry ?? null,

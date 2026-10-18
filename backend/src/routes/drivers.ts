@@ -16,6 +16,7 @@ import {
 } from "../services/notification.service";
 import { PricingService } from "../services/pricing.service";
 import { readDocumentUpload } from "../services/documentUpload";
+import { fileLinker } from "../services/fileLinks";
 import {
   checkDriverCanWork,
   gatingEnabled,
@@ -1126,6 +1127,7 @@ export async function driverRoutes(fastify: FastifyInstance) {
         orderBy: { createdAt: "desc" },
       });
       const now = new Date();
+      const files = fileLinker(request, { kind: "driver", id: userId });
       const types = [...new Set(rows.map((r) => r.type))];
       const data = types
         .map((type) => {
@@ -1136,10 +1138,9 @@ export async function driverRoutes(fastify: FastifyInstance) {
           const shown = st.pending ?? st.rejected ?? st.current;
           if (!shown) return null;
           return {
-            ...shown,
+            ...files.doc(shown), // fileUrl / pageUrls / pages = short-lived links
             label: DOC_LABELS[type as DocType],
             state: st.state,
-            pages: [shown.fileUrl, ...(shown.pageUrls ?? [])],
             current: st.current
               ? { id: st.current.id, expiryDate: st.current.expiryDate, daysLeft: st.daysLeft }
               : null,
@@ -1248,7 +1249,8 @@ export async function driverRoutes(fastify: FastifyInstance) {
           expiryDate,
           uploadedBy: userId,
         });
-        return reply.status(201).send({ success: true, data: doc });
+        const links = fileLinker(request, { kind: "driver", id: userId });
+        return reply.status(201).send({ success: true, data: links.doc(doc) });
       } catch (err) {
         if (err instanceof DocumentError)
           return reply.status(err.statusCode).send({ success: false, error: err.message });

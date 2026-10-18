@@ -43,6 +43,9 @@ import { runDocumentCycle } from "./services/documentWatch.service";
 import { twilioWebhookRoutes } from "./routes/twilioWebhooks";
 import { driverFlightRoutes } from "./routes/driverFlight";
 import { enableSmsTracking } from "./services/sms.service";
+import { fileRoutes } from "./routes/files";
+import { missingStorageConfig } from "./services/fileStorage";
+import { fileTokenSecretSet } from "./services/fileLinks";
 
 import { Prisma } from "@prisma/client";
 
@@ -146,6 +149,8 @@ async function buildServer() {
   fastify.register(adminBookingReceiptRoutes, { prefix });
   fastify.register(adminVehicleRoutes, { prefix });
   fastify.register(adminDocumentRoutes, { prefix });
+  // Short-lived links to private document files (signed token in the URL, no auth header)
+  fastify.register(fileRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
@@ -334,7 +339,23 @@ async function reseedOnlineDrivers(
   }
 }
 
+/** Private document storage needs these; refuse to start in production without them. */
+function checkFileStorageConfig() {
+  const missing = [
+    ...missingStorageConfig(),
+    ...(fileTokenSecretSet() ? [] : ["FILE_TOKEN_SECRET (32+ characters)"]),
+  ];
+  if (!missing.length) return;
+  const msg = `[Startup] Private document storage not configured — missing: ${missing.join(", ")}`;
+  if (config.NODE_ENV === "production") {
+    console.error(msg);
+    process.exit(1);
+  }
+  console.warn(`${msg} (local: document uploads/links may not work)`);
+}
+
 async function start() {
+  checkFileStorageConfig();
   const server = await buildServer();
 
   try {

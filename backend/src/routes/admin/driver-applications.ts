@@ -8,8 +8,8 @@
 // DELETE /api/v1/admin/driver-applications/:id/permanent    — hard delete (requires name confirmation)
 
 import { FastifyInstance } from "fastify";
-// Add near the top with the other imports:
-import { getFaceCroppedUrl } from "../../utils/cloudinaryFaceCrop";
+import { fileLinker } from "../../services/fileLinks";
+import { linkApplicationDocs } from "../../services/applicationDocs";
 import {
   VehicleError,
   assertUnderCap,
@@ -135,9 +135,12 @@ export async function adminDriverApplicationRoutes(fastify: FastifyInstance) {
       if (!application)
         return reply.status(404).send({ error: "Application not found" });
 
-      const suggestedPhotoUrl = getFaceCroppedUrl(application.docPcoBadge);
-
-      return reply.status(200).send({ application, suggestedPhotoUrl });
+      // Documents are private: send short-lived links. suggestedPhotoUrl is no longer produced.
+      const files = fileLinker(request, { kind: "admin", id: request.user.userId });
+      return reply.status(200).send({
+        application: linkApplicationDocs(files, application.id, application),
+        suggestedPhotoUrl: null,
+      });
     }
   );
 

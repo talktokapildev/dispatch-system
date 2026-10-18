@@ -1,10 +1,11 @@
 // backend/src/services/documentUpload.ts
 //
 // Reads a multipart document upload (driver app or admin site): text fields plus one or more
-// files (pages). Each file goes to Cloudinary (folder drivers/documents).
+// files (pages). Each file is stored PRIVATELY in Cloudinary (folder drivers/documents, type
+// authenticated); `files` holds storage references (cld:…), never URLs.
 import type { FastifyRequest } from "fastify";
 import type {} from "@fastify/multipart"; // request.parts()
-import { uploadToCloudinary } from "./cloudinary.service";
+import { uploadPrivate } from "./fileStorage";
 
 export const MAX_PAGES = 6;
 
@@ -21,13 +22,7 @@ export async function readDocumentUpload(
       const buffer = await part.toBuffer();
       if (!buffer.length) continue;
       if (files.length >= MAX_PAGES) continue;
-      const dataUri = `data:${part.mimetype};base64,${buffer.toString("base64")}`;
-      const res = await uploadToCloudinary(
-        dataUri,
-        "drivers/documents",
-        `${ownerKey}_p${files.length + 1}`
-      );
-      files.push(res.url);
+      files.push(await uploadPrivate(buffer, "drivers/documents", `${ownerKey}_p${files.length + 1}`));
     }
   }
   return { fields, files };
