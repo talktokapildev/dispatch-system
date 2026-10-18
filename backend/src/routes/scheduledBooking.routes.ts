@@ -13,6 +13,7 @@ import {
 } from "../services/driverFlightView";
 import { jobDistances, parseCoords } from "../services/jobDistance.service";
 import type { Booking } from "@prisma/client";
+import { checkDriverCanWork } from "../services/documentCompliance.service";
 
 const claimSchema = z.object({
   latitude: z.number(),
@@ -68,6 +69,21 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
         return reply
           .status(403)
           .send({ success: false, error: "Driver account required" });
+      }
+
+      // Documents not in order → no open jobs (the app shows why from dispatch-eligibility)
+      const docs = await checkDriverCanWork(
+        fastify.prisma,
+        driver.id,
+        "job board",
+        request.log
+      );
+      if (!docs.ok) {
+        return reply.send({
+          success: true,
+          data: [],
+          blocked: { reason: "documents", message: docs.message },
+        });
       }
 
       const jobs = await scheduledBookings.listOpenJobs();
@@ -138,10 +154,12 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
           lock_contended: 409,
           eta_infeasible: 422,
           no_vehicle: 409,
+          documents: 403,
         };
         return reply.status(statusMap[result.reason] ?? 400).send({
           success: false,
           error: result.reason,
+          message: result.message,
           etaMinutes: "etaMinutes" in result ? result.etaMinutes : undefined,
         });
       }
@@ -213,6 +231,7 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
           not_your_booking: 403,
           not_startable_state: 409,
           too_early: 422,
+          documents: 403,
         };
         const messages: Record<string, string> = {
           too_early:
@@ -220,7 +239,11 @@ export async function scheduledBookingRoutes(fastify: FastifyInstance) {
         };
         return reply.status(statusMap[result.reason] ?? 400).send({
           success: false,
-          error: messages[result.reason] ?? result.reason,
+          error:
+            result.reason === "documents" && result.message
+              ? result.message
+              : messages[result.reason] ?? result.reason,
+          reason: result.reason,
         });
       }
 

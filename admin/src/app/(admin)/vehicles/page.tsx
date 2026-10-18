@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { AlertTriangle, Archive, CarFront, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Modal, SectionHeader, Spinner, Table } from "@/components/ui";
+import { DocumentsPanel } from "@/components/Documents";
 import {
   EMPTY_VEHICLE_FORM,
   VehicleFormFields,
@@ -485,6 +486,12 @@ export default function VehiclesPage() {
                 {selected.notes}
               </p>
             )}
+
+            {/* Documents */}
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Documents</p>
+              <DocumentsPanel vehicleId={selected.id} ownerLabel={selected.licensePlate} />
+            </div>
 
             {/* Trips */}
             {selected.upcoming?.length > 0 && (

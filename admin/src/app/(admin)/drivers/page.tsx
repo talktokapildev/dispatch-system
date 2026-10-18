@@ -9,7 +9,6 @@ import {
   UserPlus,
   Pencil,
   Trash2,
-  FileText,
   ExternalLink,
   RotateCw,
   RotateCcw,
@@ -23,24 +22,13 @@ import {
   Spinner,
   Modal,
 } from "@/components/ui";
+import { DocumentsPanel } from "@/components/Documents";
 
 import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 
 const STATUSES = ["", "AVAILABLE", "ON_JOB", "BREAK", "OFFLINE", "ARCHIVED"];
 
-const DOC_LABELS: Record<string, string> = {
-  PCO_LICENSE: "PCO Badge",
-  DRIVING_LICENSE: "Driving Lic (Front)",
-  DRIVING_LICENSE_BACK: "Driving Lic (Back)",
-  PHV_LICENCE: "PHV Licence",
-  VEHICLE_INSURANCE: "Insurance",
-  MOT_CERTIFICATE: "MOT",
-  V5C_LOGBOOK: "V5C Logbook",
-  DBS_CHECK: "DBS Certificate",
-};
-
-const REQUIRED_DOCS = Object.keys(DOC_LABELS);
 
 const EMPTY_FORM = {
   firstName: "",
@@ -304,16 +292,6 @@ export default function DriversPage() {
       toast.error(err.response?.data?.error ?? "Failed to save photo"),
   });
 
-  // ── Fetch documents for the selected driver ──────────────────────────────
-  const { data: driverDocs = [], isLoading: docsLoading } = useQuery({
-    queryKey: ["driver-docs", selected?.id],
-    queryFn: () =>
-      api
-        .get("/admin/documents", { params: { driverId: selected.id } })
-        .then((r) => r.data.data),
-    enabled: !!selected?.id,
-  });
-
   const addDriver = useMutation({
     mutationFn: (payload: any) => api.post("/admin/drivers", payload),
     onSuccess: () => {
@@ -451,7 +429,7 @@ export default function DriversPage() {
           <div className="flex items-center gap-2 text-yellow-400 mb-3">
             <AlertTriangle size={14} />
             <span className="text-sm font-medium">
-              {expiringDocs.length} documents expiring within 60 days
+              {expiringDocs.length} documents expired or expiring within 60 days
             </span>
           </div>
           <div className="space-y-1.5">
@@ -461,11 +439,15 @@ export default function DriversPage() {
                 className="flex items-center justify-between text-xs"
               >
                 <span className="text-slate-400">
-                  {doc.driver.user.firstName} {doc.driver.user.lastName} —{" "}
-                  {doc.type.replace(/_/g, " ")}
+                  {doc.owner.label} — {doc.label}
                 </span>
-                <span className="text-yellow-400 font-medium">
-                  Expires {format(new Date(doc.expiryDate), "dd MMM yyyy")}
+                <span
+                  className={`font-medium ${
+                    doc.daysLeft < 0 ? "text-red-400" : "text-yellow-400"
+                  }`}
+                >
+                  {doc.daysLeft < 0 ? "Expired" : "Expires"}{" "}
+                  {format(new Date(doc.expiryDate), "dd MMM yyyy")}
                 </span>
               </div>
             ))}
@@ -518,6 +500,7 @@ export default function DriversPage() {
               "PCO Badge",
               "Vehicle",
               "Status",
+              "Documents",
               "Rating",
               "Total Jobs",
               "PCO Expiry",
@@ -582,6 +565,35 @@ export default function DriversPage() {
                       </span>
                     ) : (
                       <DriverBadge status={d.status} />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {d.compliance ? (
+                      d.compliance.eligible ? (
+                        <span
+                          className={`text-xs font-medium ${
+                            d.compliance.expiringSoon
+                              ? "text-amber-400"
+                              : "text-green-400"
+                          }`}
+                          title={
+                            d.compliance.expiringSoon
+                              ? `${d.compliance.expiringSoon} expiring within 30 days`
+                              : "All approved and in date"
+                          }
+                        >
+                          {d.compliance.expiringSoon ? "⚠ Expiring" : "✓ OK"}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs text-red-400 font-medium block max-w-[180px] truncate"
+                          title={d.compliance.summary}
+                        >
+                          ✗ {d.compliance.summary}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-xs text-slate-600">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -1290,61 +1302,13 @@ export default function DriversPage() {
 
             {/* Documents */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] uppercase tracking-widest text-slate-500">
-                  Documents
-                </p>
-                <a
-                  href="/documents"
-                  className="flex items-center gap-1 text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
-                >
-                  Manage in Documents page
-                  <ExternalLink size={10} />
-                </a>
-              </div>
-
-              {docsLoading ? (
-                <div className="flex justify-center py-4">
-                  <Spinner size={16} />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {REQUIRED_DOCS.map((type) => {
-                    const doc = driverDocs.find((d: any) => d.type === type);
-                    const status = doc?.status ?? "MISSING";
-                    const statusStyle =
-                      status === "APPROVED"
-                        ? "bg-green-500/15 text-green-400"
-                        : status === "PENDING"
-                        ? "bg-yellow-500/15 text-yellow-400"
-                        : status === "REJECTED"
-                        ? "bg-red-500/15 text-red-400"
-                        : "bg-slate-500/15 text-slate-500";
-
-                    return (
-                      <div
-                        key={type}
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--card-hover)] border border-[var(--border)]"
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <FileText
-                            size={11}
-                            className="text-slate-500 shrink-0"
-                          />
-                          <span className="text-[11px] text-slate-300 truncate">
-                            {DOC_LABELS[type]}
-                          </span>
-                        </div>
-                        <span
-                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ml-2 shrink-0 ${statusStyle}`}
-                        >
-                          {status}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">
+                Documents
+              </p>
+              <DocumentsPanel
+                driverId={selected.id}
+                ownerLabel={`${selected.user.firstName} ${selected.user.lastName ?? ""}`.trim()}
+              />
             </div>
           </div>
         )}

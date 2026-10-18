@@ -15,7 +15,30 @@ import {
   PushApp,
 } from "../services/notification.service";
 import { PricingService } from "../services/pricing.service";
-import { uploadToCloudinary } from "../services/cloudinary.service";
+import { readDocumentUpload } from "../services/documentUpload";
+import {
+  checkDriverCanWork,
+  gatingEnabled,
+  loadCompliance,
+  loadComplianceMany,
+} from "../services/documentCompliance.service";
+import {
+  DOC_LABELS,
+  DocType,
+  blockMessage,
+  isDocType,
+  isVehicleType,
+  legacyEligibility,
+  parseExpiryDate,
+  problemSummary,
+  typeStatus,
+} from "../services/documentRules";
+import {
+  DocumentError,
+  addDocumentVersion,
+  notifyReview,
+  reviewDocument,
+} from "../services/documentReview.service";
 import { SocketEvent } from "../types";
 import { isValidEncodedPolyline } from "../utils/polyline";
 import { VehicleError, setDriverVehicle } from "../services/vehicle.service";
@@ -126,6 +149,19 @@ export async function driverRoutes(fastify: FastifyInstance) {
         return reply
           .status(404)
           .send({ success: false, error: "Driver not found" });
+
+      if (body.status === DriverStatus.AVAILABLE) {
+        const docs = await checkDriverCanWork(
+          fastify.prisma,
+          driver.id,
+          "going online",
+          request.log
+        );
+        if (!docs.ok)
+          return reply
+            .status(403)
+            .send({ success: false, error: docs.message, reason: "documents" });
+      }
 
       await fastify.prisma.driver.update({
         where: { id: driver.id },
@@ -459,6 +495,26 @@ export async function driverRoutes(fastify: FastifyInstance) {
           .send({ success: false, error: "Invalid status transition" });
       }
 
+      // Setting off for a job: documents must be in order (trips under way are never stopped)
+      if (status === "DRIVER_EN_ROUTE") {
+        const current = await fastify.prisma.booking.findUnique({
+          where: { id: bookingId },
+          select: { status: true },
+        });
+        if (current?.status === "DRIVER_ASSIGNED") {
+          const docs = await checkDriverCanWork(
+            fastify.prisma,
+            driver.id,
+            "setting off",
+            request.log
+          );
+          if (!docs.ok)
+            return reply
+              .status(403)
+              .send({ success: false, error: docs.message, reason: "documents" });
+        }
+      }
+
       const dispatch = new DispatchService(
         fastify.prisma,
         fastify.redis,
@@ -697,115 +753,65 @@ export async function driverRoutes(fastify: FastifyInstance) {
         fastify.prisma.driver.count({ where }),
       ]);
 
+      // Documents chip: ✓ or the first problem
+      const compliance = await loadComplianceMany(
+        fastify.prisma,
+        items.filter((d) => !d.archivedAt).map((d) => d.id)
+      );
+      const withCompliance = items.map((d) => {
+        const c = compliance.get(d.id);
+        return {
+          ...d,
+          compliance: c
+            ? {
+                eligible: c.eligible,
+                summary: c.eligible ? "" : problemSummary(c),
+                expiringSoon: c.expiringSoon.length,
+              }
+            : null,
+        };
+      });
+
       return reply.send({
         success: true,
-        data: { items, total, page: parseInt(page), limit: parseInt(limit) },
+        data: {
+          items: withCompliance,
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+        },
       });
     }
   );
 
-  // ─── Admin: driver document review ───
+  // ─── Admin: driver document review (older admin builds; new page uses /admin/documents/:id/review) ───
   fastify.patch(
     "/admin/drivers/:driverId/documents/:docId",
     { preHandler: [fastify.authenticateAdmin] },
     async (request, reply) => {
-      const { driverId, docId } = request.params as {
-        driverId: string;
-        docId: string;
-      };
-      const { status, notes } = request.body as {
+      const { docId } = request.params as { driverId: string; docId: string };
+      const { status, notes, expiryDate, rejectionReason } = request.body as {
         status: "APPROVED" | "REJECTED";
         notes?: string;
+        expiryDate?: string;
+        rejectionReason?: string;
       };
-
-      const doc = await fastify.prisma.driverDocument.update({
-        where: { id: docId },
-        data: {
-          status,
+      try {
+        const doc = await reviewDocument(fastify.prisma, {
+          docId,
+          decision: status === "APPROVED" ? "approve" : "reject",
+          expiryDate: parseExpiryDate(expiryDate),
+          rejectionReason: rejectionReason ?? notes,
           notes,
-          reviewedAt: new Date(),
-          reviewedBy: request.user.userId,
-        },
-      });
-
-      return reply.send({ success: true, data: doc });
-    }
-  );
-
-  // ─── Admin: expiring documents alert ───
-  fastify.get(
-    "/admin/drivers/documents/expiring",
-    { preHandler: [fastify.authenticateAdmin] },
-    async (request, reply) => {
-      const { days = "30" } = request.query as Record<string, string>;
-      const threshold = new Date();
-      threshold.setDate(threshold.getDate() + parseInt(days));
-
-      const docs = await fastify.prisma.driverDocument.findMany({
-        where: {
-          expiryDate: { lte: threshold },
-          status: "APPROVED",
-          archivedAt: null, // exclude archived driver documents
-          driver: { archivedAt: null }, // exclude documents of archived drivers
-        },
-        include: { driver: { include: { user: true } } },
-        orderBy: { expiryDate: "asc" },
-      });
-
-      return reply.send({ success: true, data: docs });
-    }
-  );
-
-  // ─── Admin: list all documents (with driver info) ───────────────────────
-  // Used by the Documents management page.
-  // Query params: ?status=PENDING|APPROVED|REJECTED  (omit for all)
-  //               ?expiring=true&days=60             (documents expiring soon)
-  fastify.get(
-    "/admin/documents",
-    { preHandler: [fastify.authenticateAdmin] },
-    async (request, reply) => {
-      const {
-        status,
-        expiring,
-        days = "60",
-        driverId,
-      } = request.query as Record<string, string>;
-
-      const where: any = {
-        archivedAt: null, // never show archived documents
-        driver: { archivedAt: null }, // never show documents of archived drivers
-      };
-
-      if (driverId) where.driverId = driverId;
-
-      if (expiring === "true") {
-        const threshold = new Date();
-        threshold.setDate(threshold.getDate() + parseInt(days));
-        where.expiryDate = { lte: threshold, gte: new Date() };
-      } else if (status) {
-        where.status = status;
+          adminUserId: request.user.userId,
+        });
+        notifyReview(fastify.prisma, doc);
+        return reply.send({ success: true, data: doc });
+      } catch (err) {
+        if (err instanceof DocumentError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
       }
-
-      const documents = await fastify.prisma.driverDocument.findMany({
-        where,
-        include: {
-          driver: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  phone: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      return reply.send({ success: true, data: documents });
     }
   );
 
@@ -1004,6 +1010,11 @@ export async function driverRoutes(fastify: FastifyInstance) {
           data: { driverId: null },
         });
         await tx.driverEarning.deleteMany({ where: { driverId } });
+        // Vehicle documents stay with the car; only the uploader link is cleared
+        await tx.driverDocument.updateMany({
+          where: { driverId, vehicleId: { not: null } },
+          data: { driverId: null },
+        });
         await tx.driverDocument.deleteMany({ where: { driverId } });
         // Their car stays on the fleet, unassigned (and on the bookings it did)
         await tx.vehicle.updateMany({ where: { driverId }, data: { driverId: null } });
@@ -1085,7 +1096,9 @@ export async function driverRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // ─── Driver: get own documents ───
+  // ─── Driver: own documents (driver documents + current car's) ───
+  // One row per type: the newest upload (waiting for review / rejected) if there is one,
+  // otherwise the approved version in force. Newest first, as older app builds expect.
   fastify.get(
     "/drivers/documents",
     { preHandler: [fastify.authenticateDriver] },
@@ -1093,92 +1106,97 @@ export async function driverRoutes(fastify: FastifyInstance) {
       const { userId } = request.user;
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
+        select: { id: true, vehicle: { select: { id: true, licensePlate: true } } },
       });
       if (!driver)
         return reply
           .status(404)
           .send({ success: false, error: "Driver not found" });
 
-      const documents = await fastify.prisma.driverDocument.findMany({
-        where: { driverId: driver.id },
+      const vehicle = driver.vehicle;
+      const rows = await fastify.prisma.driverDocument.findMany({
+        where: {
+          archivedAt: null,
+          replacedAt: null,
+          OR: [
+            { driverId: driver.id, vehicleId: null },
+            ...(vehicle ? [{ vehicleId: vehicle.id }] : []),
+          ],
+        },
         orderBy: { createdAt: "desc" },
       });
-      return reply.send({ success: true, data: documents });
+      const now = new Date();
+      const types = [...new Set(rows.map((r) => r.type))];
+      const data = types
+        .map((type) => {
+          const own = rows.filter((r) =>
+            isVehicleType(type) ? r.vehicleId === vehicle?.id : !r.vehicleId
+          );
+          const st = typeStatus(type as DocType, own, now);
+          const shown = st.pending ?? st.rejected ?? st.current;
+          if (!shown) return null;
+          return {
+            ...shown,
+            label: DOC_LABELS[type as DocType],
+            state: st.state,
+            pages: [shown.fileUrl, ...(shown.pageUrls ?? [])],
+            current: st.current
+              ? { id: st.current.id, expiryDate: st.current.expiryDate, daysLeft: st.daysLeft }
+              : null,
+            vehiclePlate: isVehicleType(type) ? vehicle?.licensePlate ?? null : null,
+          };
+        })
+        .filter((d): d is NonNullable<typeof d> => !!d)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return reply.send({ success: true, data });
     }
   );
 
   // GET /driver/dispatch-eligibility
-  // Returns the document compliance status for the logged-in driver.
-  // The driver app uses this to show a banner explaining why jobs aren't coming.
+  // Whether the driver's documents (and their current car's) allow them to work, and why not.
+  // Keeps the older fields (eligible, missingDocs, pendingDocs, expiredDocs, rejectedDocs) for
+  // app 1.0.22. `enforced` false = shadow mode (jobs still come while we check the data).
   fastify.get(
     "/driver/dispatch-eligibility",
     { onRequest: [fastify.authenticate] },
     async (req, reply) => {
       const userId = (req.user as any).userId;
-
       const driver = await fastify.prisma.driver.findUnique({
         where: { userId },
-        include: {
-          documents: {
-            select: { type: true, status: true, expiryDate: true },
-          },
-        },
+        select: { id: true },
       });
-
       if (!driver) {
         return reply.status(404).send({ error: "Driver not found" });
       }
+      const c = await loadCompliance(fastify.prisma, driver.id);
+      if (!c) return reply.status(404).send({ error: "Driver not found" });
 
-      const REQUIRED = [
-        "PCO_LICENSE",
-        "DRIVING_LICENSE",
-        "DRIVING_LICENSE_BACK",
-        "PHV_LICENCE",
-        "VEHICLE_INSURANCE",
-        "MOT_CERTIFICATE",
-        "V5C_LOGBOOK",
-        "DBS_CHECK",
-      ] as const;
-
-      const now = new Date();
-      const missingDocs: string[] = [];
-      const pendingDocs: string[] = [];
-      const expiredDocs: string[] = [];
-      const rejectedDocs: string[] = [];
-
-      for (const type of REQUIRED) {
-        const doc = driver.documents.find((d) => d.type === type);
-        if (!doc) {
-          missingDocs.push(type);
-        } else if (doc.status === "REJECTED") {
-          rejectedDocs.push(type);
-        } else if (doc.status === "PENDING") {
-          pendingDocs.push(type);
-        } else if (doc.status === "APPROVED") {
-          if (doc.expiryDate && doc.expiryDate <= now) {
-            expiredDocs.push(type);
-          }
-        }
-      }
-
-      const eligible =
-        missingDocs.length === 0 &&
-        pendingDocs.length === 0 &&
-        expiredDocs.length === 0 &&
-        rejectedDocs.length === 0;
-
+      const item = (i: (typeof c.items)[number]) => ({
+        type: i.type,
+        label: DOC_LABELS[i.type],
+        owner: i.owner,
+        state: i.state,
+        expiryDate: i.expiryDate,
+        daysLeft: i.daysLeft,
+        pendingReview: !!i.pending,
+        rejectionReason: i.rejected?.rejectionReason ?? null,
+      });
       return reply.send({
-        eligible,
-        missingDocs,
-        pendingDocs,
-        expiredDocs,
-        rejectedDocs,
+        ...legacyEligibility(c),
+        enforced: gatingEnabled(),
+        message: c.eligible ? "" : blockMessage(c),
+        noVehicle: c.noVehicle,
+        vehicle: c.vehicle,
+        items: c.items.map(item),
+        problems: c.problems.map(item),
+        expiringSoon: c.expiringSoon.map(item),
       });
     }
   );
 
-  // ─── Driver: upload document ───
-  // ─── Driver: upload document ───
+  // ─── Driver: upload a document (new version, waits for review) ───
+  // Multipart: type, optional expiryDate (YYYY-MM-DD or ISO), one or more files (pages).
+  // Vehicle documents go on the driver's current car.
   fastify.post(
     "/drivers/documents",
     { preHandler: [fastify.authenticateDriver] },
@@ -1192,77 +1210,50 @@ export async function driverRoutes(fastify: FastifyInstance) {
           .status(404)
           .send({ success: false, error: "Driver not found" });
 
-      let type: string | null = null;
-      let fileUrl: string | null = null;
-
-      for await (const part of request.parts()) {
-        if (part.type === "field" && part.fieldname === "type") {
-          type = part.value as string;
-        } else if (part.type === "file") {
-          const buffer = await part.toBuffer();
-          const base64DataUri = `data:${part.mimetype};base64,${buffer.toString(
-            "base64"
-          )}`;
-
-          try {
-            const uploadResult = await uploadToCloudinary(
-              base64DataUri,
-              "drivers/documents",
-              driver.id
-            );
-            fileUrl = uploadResult.url;
-          } catch (err: any) {
-            fastify.log.error(
-              { err },
-              "Cloudinary upload failed for driver document"
-            );
-            return reply.status(500).send({
-              success: false,
-              error: "Document upload failed. Please try again.",
-            });
-          }
-        }
+      let upload: Awaited<ReturnType<typeof readDocumentUpload>>;
+      try {
+        upload = await readDocumentUpload(request, `${driver.id}_${Date.now()}`);
+      } catch (err: any) {
+        fastify.log.error(
+          { err },
+          "Cloudinary upload failed for driver document"
+        );
+        return reply.status(500).send({
+          success: false,
+          error: "Document upload failed. Please try again.",
+        });
       }
+      const { fields, files } = upload;
+      const type = fields.type;
 
       if (!type)
         return reply
           .status(400)
           .send({ success: false, error: "Document type is required" });
-
-      if (!fileUrl)
+      if (!files.length)
         return reply
           .status(400)
           .send({ success: false, error: "A document file is required" });
-
-      if (!Object.values(DocumentType).includes(type as DocumentType))
+      if (!isDocType(type))
         return reply
           .status(400)
           .send({ success: false, error: "Invalid document type" });
+      const expiryDate = parseExpiryDate(fields.expiryDate);
 
-      const docType = type as DocumentType;
-      const existing = await fastify.prisma.driverDocument.findFirst({
-        where: { driverId: driver.id, type: docType },
-        select: { id: true },
-      });
-
-      const doc = await fastify.prisma.driverDocument.upsert({
-        where: { id: existing?.id ?? "" },
-        create: {
+      try {
+        const doc = await addDocumentVersion(fastify.prisma, {
+          type,
+          files,
           driverId: driver.id,
-          type: docType,
-          fileUrl,
-          status: "PENDING",
-        },
-        update: {
-          fileUrl,
-          status: "PENDING",
-          notes: null,
-          reviewedAt: null,
-          reviewedBy: null,
-        },
-      });
-
-      return reply.status(201).send({ success: true, data: doc });
+          expiryDate,
+          uploadedBy: userId,
+        });
+        return reply.status(201).send({ success: true, data: doc });
+      } catch (err) {
+        if (err instanceof DocumentError)
+          return reply.status(err.statusCode).send({ success: false, error: err.message });
+        throw err;
+      }
     }
   );
 
