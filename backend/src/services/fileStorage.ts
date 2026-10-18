@@ -259,3 +259,26 @@ export async function makeAuthenticated(a: CloudinaryAsset): Promise<CloudinaryA
     throw err;
   }
 }
+
+// ─── Deleting (driver records past their retention period) ────────────────────
+
+/**
+ * Delete a stored file (reference or legacy Cloudinary URL) from Cloudinary. Best effort:
+ * returns false (never throws) when it can't be deleted; unknown values are skipped.
+ */
+export async function deleteStoredFile(value: string | null | undefined): Promise<boolean> {
+  const stored = parseStored(value);
+  if (!stored || stored.kind === "unknown") return false;
+  try {
+    ensureConfigured();
+    const a = stored.asset;
+    const res = await cloudinary.uploader.destroy(a.publicId, {
+      type: a.type,
+      resource_type: a.resourceType,
+      invalidate: true,
+    });
+    return res?.result === "ok" || res?.result === "not found";
+  } catch {
+    return false;
+  }
+}

@@ -13,6 +13,7 @@ import {
   LogOut,
   MapPin,
   FileText,
+  FileCheck,
   AlertTriangle,
   Settings,
   Sun,
@@ -56,6 +57,7 @@ const nav: NavItem[] = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/staff", label: "Staff Register", icon: ClipboardList },
+  { href: "/tfl-records", label: "TfL Records", icon: FileCheck },
   { href: "/alerts", label: "Alerts", icon: AlertTriangle },
   { href: "/feedback", label: "Feedback", icon: Star },
   {

@@ -4,6 +4,7 @@ import fp from "fastify-plugin";
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import fjwt from "@fastify/jwt";
 import { config } from "../config";
+import { RedisKeys } from "./redis";
 
 export interface JwtPayload {
   userId: string;
@@ -78,9 +79,19 @@ const authPlugin: FastifyPluginAsync = fp(async (fastify) => {
       try {
         await request.jwtVerify();
         if (!request.user.roles.includes("DRIVER")) {
-          reply
+          return reply
             .status(403)
             .send({ success: false, error: "Driver access only" });
+        }
+        // Archived (left) drivers: refuse tokens issued before they left.
+        const archived = await fastify.redis
+          .exists(RedisKeys.archivedDriver(request.user.userId))
+          .catch(() => 0);
+        if (archived) {
+          return reply.status(403).send({
+            success: false,
+            error: "This driver account has been suspended. Please contact your operator.",
+          });
         }
       } catch {
         reply.status(401).send({ success: false, error: "Unauthorised" });
