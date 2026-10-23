@@ -62,6 +62,9 @@ export default function Footer() {
             <Link href="/drivers" className={link}>
               Drive with us
             </Link>
+            <Link href="/#faq" className={link}>
+              FAQs
+            </Link>
             <a href={DRIVER_IOS} className={link}>
               Driver app (iPhone)
             </a>

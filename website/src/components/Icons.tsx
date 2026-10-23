@@ -97,3 +97,13 @@ export function PlaneIcon({ size = 18, color = "#2e3238" }: { size?: number; col
     </svg>
   );
 }
+
+/** Small green "live" dot (menu link to the flight status page). Decorative. */
+export function LiveDot() {
+  return (
+    <span
+      aria-hidden
+      className="inline-block h-2 w-2 flex-none rounded-full bg-[#22c55e] shadow-[0_0_0_3px_#dcfce7]"
+    />
+  );
+}
