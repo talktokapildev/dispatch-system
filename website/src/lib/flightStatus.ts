@@ -4,10 +4,10 @@
 // Env (website service on Railway): FLIGHT_STATUS_SITE_KEY — the same value as the backend's.
 
 import { API_URL } from "./quote";
-import type { BoardData, FlightWithView } from "./flightFormat";
+import type { BoardData, FlightWithView, WeatherMap } from "./flightFormat";
 
 export type FlightResult =
-  | { status: "FOUND"; source: "BOARD" | "LOOKUP"; fetchedAt: string; flights: FlightWithView[] }
+  | { status: "FOUND"; source: "BOARD" | "LOOKUP"; fetchedAt: string; flights: FlightWithView[]; weather?: WeatherMap }
   | { status: "NOT_IN_BOARD" }
   | { status: "INVALID" }
   | { status: "ERROR" };

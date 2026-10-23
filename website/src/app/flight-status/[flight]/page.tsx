@@ -8,7 +8,17 @@ import { BookPanel, GatwickFacts, PlainEnglish, Tips } from "@/components/flight
 import FlightFaq from "@/components/flight/FlightFaq";
 import FlightSearch from "@/components/flight/FlightSearch";
 import { DarkBand, h2 } from "@/components/flight/ui";
-import { cleanFlightNumber, dayLabel, FlightWithView, placeName, ukDate, ukTime, urlNumber } from "@/lib/flightFormat";
+import {
+  cleanFlightNumber,
+  dayLabel,
+  FlightWithView,
+  placeName,
+  shownNumber,
+  ukDate,
+  ukTime,
+  urlNumber,
+  WEATHER_CREDIT,
+} from "@/lib/flightFormat";
 import { fetchBoard, fetchFlight } from "@/lib/flightStatus";
 import { pageMetadata } from "@/lib/seo";
 
@@ -46,7 +56,7 @@ export default async function FlightPage({ params, searchParams }: Props) {
   if (result.status !== "FOUND") {
     return (
       <>
-        <DarkBand heading={`${number} flight status`}>
+        <DarkBand heading={`${number} flight status`} gatwick={board?.weather?.LGW}>
           <FlightSearch defaultNumber={number} defaultDate={date ?? undefined} />
         </DarkBand>
         <div className="mx-auto -mt-[72px] flex max-w-site flex-col gap-12 px-3 pb-24 sm:-mt-24 sm:px-6">
@@ -78,24 +88,27 @@ export default async function FlightPage({ params, searchParams }: Props) {
   const { flight: f, view: v } = main;
   const flightDate = ukDate(f.lgw.scheduledUtc);
   const dirParam = (x: FlightWithView) => (x.flight.direction === "ARRIVAL" ? "arrival" : "departure");
+  // Weather: the flight's own reply first, the board's as a fallback (both are the same cache).
+  const weather = { ...(board?.weather ?? {}), ...(result.weather ?? {}) };
+  const hasWeather = !!weather.LGW || (!!f.other.iata && !!weather[f.other.iata]);
   const boardDir =
     searchParams.board === "departures" ? "DEPARTURE" : searchParams.board === "arrivals" ? "ARRIVAL" : f.direction;
 
   return (
     <>
       <AutoRefresh />
-      <DarkBand heading={`${number} flight status`}>
+      <DarkBand heading={`${number} flight status`} gatwick={weather.LGW}>
         <FlightSearch defaultNumber={number} defaultDate={flightDate} />
       </DarkBand>
 
       <div className="mx-auto -mt-[72px] flex max-w-site flex-col gap-7 px-3 pb-24 sm:-mt-24 sm:px-6">
-        <FlightCard flight={f} view={v} fetchedAt={result.fetchedAt} now={now} />
+        <FlightCard flight={f} view={v} fetchedAt={result.fetchedAt} now={now} weather={weather} />
 
         {others.length > 0 && (
           <div className="rounded-[18px] border border-line bg-white px-5 py-4 text-[15.5px]">
             {others.map((o) => (
               <p key={o.flight.id} className="m-0">
-                {o.flight.number} also {o.flight.direction === "ARRIVAL" ? "lands at" : "leaves"} Gatwick at {ukTime(o.flight.lgw.scheduledUtc)}{" "}
+                {shownNumber(o.flight)} also {o.flight.direction === "ARRIVAL" ? "lands at" : "leaves"} Gatwick at {ukTime(o.flight.lgw.scheduledUtc)}{" "}
                 {o.flight.direction === "ARRIVAL" ? "from" : "to"} {placeName(o.flight.other)}.{" "}
                 <Link href={`/flight-status/${number}?date=${ukDate(o.flight.lgw.scheduledUtc)}&dir=${dirParam(o)}`}>
                   Show that flight
@@ -132,8 +145,8 @@ export default async function FlightPage({ params, searchParams }: Props) {
 
         <FlightFaq only={f.direction} />
         <p className="m-0 text-[13.5px] text-muted">
-          {urlNumber(f.number) !== number ? `Shown as ${f.number}. ` : ""}Times are UK time unless marked local. Flight details can
-          change: always check with your airline.
+          {urlNumber(shownNumber(f)) !== number ? `Shown as ${shownNumber(f)}. ` : ""}Times are UK time unless marked local. Flight
+          details can change: always check with your airline.{hasWeather ? ` ${WEATHER_CREDIT}.` : ""}
         </p>
       </div>
     </>

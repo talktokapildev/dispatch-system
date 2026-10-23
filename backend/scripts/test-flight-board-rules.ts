@@ -4,6 +4,8 @@
 //
 //   node --env-file=.env -r ts-node/register scripts/test-flight-board-rules.ts
 import {
+  displayNumberFor,
+  fillTerminals,
   boardList,
   boardWindow,
   describe,
@@ -28,7 +30,14 @@ const tm = (utcHm: string, localHm: string, offset = "+01:00", day = "2026-10-23
 });
 const NOW = new Date("2026-10-23T19:41:00Z"); // 20:41 UK
 
-const AMS = { iata: "AMS", name: "Amsterdam Schiphol", municipalityName: "Amsterdam" };
+const AMS = {
+  iata: "AMS",
+  name: "Amsterdam Schiphol",
+  municipalityName: "Amsterdam",
+  countryCode: "nl",
+  location: { lat: 52.3086, lon: 4.7639 },
+  timeZone: "Europe/Amsterdam",
+};
 const LGW = { iata: "LGW", name: "London Gatwick", municipalityName: "London" };
 const BCN = { iata: "BCN", name: "Barcelona", municipalityName: "Barcelona" };
 const easyJet = { name: "easyJet", iata: "U2", icao: "EZY" };
@@ -193,6 +202,29 @@ check("long-haul: 3h before", longHaul.longHaul && longHaul.beThereBy === "2026-
 // ── Single-flight lookup response ───────────────────────────────────────────
 const legs = parseLookupLegs([ezy8687, { ...ezy8687, arrival: { ...ezy8687.arrival, airport: { iata: "LTN" } } }]);
 check("lookup keeps Gatwick legs only", legs.length === 1 && legs[0].direction === "ARRIVAL");
+
+// ── v2: ticket-style numbers, airport position/country, terminal filling ─────
+check("easyJet shown as EZY", arr.displayNumber === "EZY8687", arr.displayNumber);
+check("BA stays BA", displayNumberFor("BA 2525", "BA") === "BA2525");
+check("easyJet Switzerland as EZS", displayNumberFor("DS 1234", "DS") === "EZS1234");
+check("leading zeros dropped", displayNumberFor("BA 0123", "BA") === "BA123");
+check("country code upper-cased", arr.other.countryCode === "NL", String(arr.other.countryCode));
+check("airport position", arr.other.lat === 52.3086 && arr.other.lon === 4.7639);
+check("airport time zone", arr.other.timeZone === "Europe/Amsterdam");
+check("no position → null", dep.other.lat === null && dep.other.countryCode === null);
+check("provider terminal not marked inferred", arr.lgw.terminalInferred === false);
+const mk = (term: "NORTH" | "SOUTH" | null, iata = "U2", n = "1", cs: BoardFlight["codeshare"] = "OPERATOR") =>
+  ({ ...arr, id: `x${n}${iata}${term}`, number: `${iata} ${n}`, airline: { ...arr.airline, iata }, codeshare: cs, lgw: { ...arr.lgw, terminal: term, terminalInferred: false } }) as BoardFlight;
+const filled = fillTerminals([mk("NORTH", "U2", "1"), mk("NORTH", "U2", "2"), mk(null, "U2", "3")]);
+check("fills blank from same airline", filled[2].lgw.terminal === "NORTH" && filled[2].lgw.terminalInferred);
+const mixed = fillTerminals([mk("NORTH", "BA", "1"), mk("SOUTH", "BA", "2"), mk(null, "BA", "3")]);
+check("airline at both terminals stays blank", mixed[2].lgw.terminal === null);
+const single = fillTerminals([mk("SOUTH", "W6", "1"), mk(null, "W6", "2")]);
+check("needs 2 known flights", single[1].lgw.terminal === null);
+const viaCodeshare = fillTerminals([mk("NORTH", "KL", "1", "CODESHARE"), mk("NORTH", "KL", "2", "CODESHARE"), mk(null, "KL", "3")]);
+check("codeshares don't count", viaCodeshare[2].lgw.terminal === null);
+const board2 = parseBoard({ arrivals: [ezy8687, { ...ezy8687, number: "U2 8001", arrival: { ...ezy8687.arrival, scheduledTime: tm("21:10", "22:10") } }, { ...ezy8687, number: "U2 8002", arrival: { ...ezy8687.arrival, terminal: null, scheduledTime: tm("22:10", "23:10") } }], departures: [] });
+check("parseBoard fills terminals", board2.find((f) => f.number === "U2 8002")?.lgw.terminal === "NORTH");
 
 // ── Board window (12 h of LOCAL clock time, max) ────────────────────────────
 const w = boardWindow(new Date("2026-10-23T12:00:00Z")); // 13:00 UK (BST)

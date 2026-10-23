@@ -20,11 +20,15 @@
 //   FLIGHT_BOARD_REFRESH_MIN=30        30 on the Pro plan, 10 on Ultra (min 5)
 //   FLIGHT_BOARD_UNITS_FLOOR=1500
 //   FLIGHT_STATUS_LOOKUPS_PER_DAY=100
+//
+// Weather at each airport on the board (weather.service.ts, OpenWeather) is topped up on the
+// same 1-minute tick, separately from AeroDataBox units.
 import axios from "axios";
 import Redis from "ioredis";
 import { PrismaClient } from "@prisma/client";
 import { alertAdmin } from "./flightAlerts.service";
 import { getFlightBuffers, BUFFER_DEFAULTS } from "../utils/airportPickup";
+import { ensureWeather, LGW_PLACE, Place, refreshWeather } from "./weather.service";
 import {
   AIRPORT_IATA,
   BoardFlight,
@@ -278,15 +282,41 @@ export async function lookupFlight(
     ? { status: "FOUND", flights: onDate, fetchedAt: now.toISOString() }
     : { status: "NOT_FOUND" };
   await redis.set(cacheKey, JSON.stringify(outcome), "EX", LOOKUP_TTL_S);
+  if (outcome.status === "FOUND")
+    await ensureWeather(redis, log, [LGW_PLACE, ...placesOf(outcome.flights)], now).catch(() => undefined);
   return outcome;
+}
+
+/** The other-end airports with a known position (for weather). */
+export function placesOf(flights: BoardFlight[]): Place[] {
+  const out: Place[] = [];
+  for (const f of flights)
+    if (f.other.iata && f.other.lat != null && f.other.lon != null)
+      out.push({ iata: f.other.iata, lat: f.other.lat, lon: f.other.lon });
+  return out;
 }
 
 /** Starts the once-a-minute refresh check (only refreshes when due; see refreshBoardIfDue). */
 export function startFlightBoardRefresh(deps: BoardDeps): void {
-  const tick = () =>
-    refreshBoardIfDue(deps).catch((err) =>
-      deps.log.warn(`[FlightBoard] refresh error: ${(err as Error)?.message ?? err}`)
-    );
+  const tick = async () => {
+    try {
+      await refreshBoardIfDue(deps);
+    } catch (err) {
+      deps.log.warn(`[FlightBoard] refresh error: ${(err as Error)?.message ?? err}`);
+    }
+    if (!enabled()) return;
+    try {
+      // Soonest flights first, so the rows people look at get weather first after a restart.
+      const board = await getBoard(deps.redis);
+      const now = Date.now();
+      const soonest = [...(board?.flights ?? [])].sort(
+        (a, b) => Math.abs(Date.parse(a.lgw.scheduledUtc) - now) - Math.abs(Date.parse(b.lgw.scheduledUtc) - now)
+      );
+      await refreshWeather(deps.redis, deps.log, placesOf(soonest));
+    } catch (err) {
+      deps.log.warn(`[Weather] refresh error: ${(err as Error)?.message ?? err}`);
+    }
+  };
   setTimeout(tick, 20_000); // shortly after start-up
   setInterval(tick, 60_000);
 }

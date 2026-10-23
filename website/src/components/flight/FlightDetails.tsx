@@ -7,6 +7,7 @@ import {
   minutesBetween,
   placeName,
   plainEnglish,
+  shownNumber,
   terminalName,
   ukDate,
   ukTime,
@@ -29,7 +30,11 @@ export function GatwickFacts({ f }: { f: BoardFlight }) {
     {
       label: "Terminal",
       value: term ? term.replace(" Terminal", "") : "Not shown yet",
-      note: term ? `Not ${f.lgw.terminal === "NORTH" ? "South" : "North"}: check before you set off` : "Check with the airline",
+      note: !term
+        ? "Check with the airline"
+        : f.lgw.terminalInferred
+          ? `${f.airline.name ?? "This airline"}'s other flights today use ${term.replace(" Terminal", "")}: check your booking`
+          : `Not ${f.lgw.terminal === "NORTH" ? "South" : "North"}: check before you set off`,
     },
     arrival && f.lgw.baggageBelt ? { label: "Baggage belt", value: f.lgw.baggageBelt } : null,
     !arrival && f.lgw.checkInDesk ? { label: "Check-in desks", value: f.lgw.checkInDesk } : null,
@@ -70,13 +75,13 @@ function whatsappText(f: BoardFlight, v: FlightView): string {
     f.direction === "ARRIVAL"
       ? [
           "Hi OrangeRide, I'd like a pickup from Gatwick:",
-          `Flight: ${f.number} from ${placeName(f.other)}, landing ${day} at ${ukTime(v.scheduledAt)} (${term})`,
+          `Flight: ${shownNumber(f)} from ${placeName(f.other)}, landing ${day} at ${ukTime(v.scheduledAt)} (${term})`,
           "Going to: ",
           "Passengers and bags: ",
         ]
       : [
           "Hi OrangeRide, I'd like a lift to Gatwick:",
-          `Flight: ${f.number} to ${placeName(f.other)}, leaving ${day} at ${ukTime(v.scheduledAt)} (${term})`,
+          `Flight: ${shownNumber(f)} to ${placeName(f.other)}, leaving ${day} at ${ukTime(v.scheduledAt)} (${term})`,
           "Pickup from: ",
           "Passengers and bags: ",
         ];
@@ -103,7 +108,7 @@ export function BookPanel({ f, v, now }: { f: BoardFlight; v: FlightView; now: D
       : "Flying from Gatwick again?";
   const body = canBookThis
     ? arrival
-      ? `Our driver tracks ${f.number} and moves the pickup if it's late. They get a text with the meeting point when they land.`
+      ? `Our driver tracks ${shownNumber(f)} and moves the pickup if it's late. They get a text with the meeting point when they land.`
       : "Pre-booked, fixed fare, licensed driver. No parking to find and no drop-off charge to pay."
     : arrival
       ? "Book at least 24 hours ahead. We track the flight and move the pickup if it's late, at a fixed fare."

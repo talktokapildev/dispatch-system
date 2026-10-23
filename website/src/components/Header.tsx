@@ -6,8 +6,8 @@ import { LiveDot, PhoneIcon } from "./Icons";
 import MobileMenu from "./MobileMenu";
 
 /**
- * Desktop (>= 1100px): logo, five links and two buttons in one row, as in the canvas.
- * Below 1100px: logo, a round call button and a Menu button that opens <MobileMenu>.
+ * Desktop (>= 1200px): logo, five links and two buttons in one row, as in the canvas.
+ * Below 1200px: logo, a round call button and a Menu button that opens <MobileMenu>.
  */
 export default function Header() {
   return (
