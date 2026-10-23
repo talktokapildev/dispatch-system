@@ -24,6 +24,17 @@ const PROMISES = ["No surge pricing", "10 min free wait", "Free cancellation"];
 const fieldClass =
   "min-h-[52px] w-full rounded-[14px] border-[1.5px] border-[#d1d5db] bg-[#f8fafc] px-[14px] text-[16px] text-ink outline-none transition-colors focus:border-amber focus:bg-white";
 
+/**
+ * Date/time inputs: iOS Safari gives them a minimum width (they overflowed their column) and
+ * centred text. Reset both so they fit the grid like the other fields.
+ */
+const dateTimeClass =
+  "block min-w-0 appearance-none text-left [-webkit-appearance:none] [&::-webkit-date-and-time-value]:text-left";
+
+/** iOS shows an empty date/time box with no hint; other browsers show their own (dd/mm/yyyy). */
+const iosPlaceholderClass =
+  "pointer-events-none absolute inset-y-0 left-[15px] hidden items-center text-[16px] font-normal text-muted supports-[-webkit-touch-callout:none]:flex";
+
 const ctaClass =
   "inline-flex min-h-[58px] items-center justify-center gap-[10px] whitespace-nowrap rounded-[16px] bg-amber px-6 py-[15px] text-[17px] font-extrabold text-ink no-underline shadow-[0_10px_24px_-12px_rgba(245,158,11,0.9)] transition hover:-translate-y-[1px] hover:text-ink hover:shadow-[0_14px_28px_-12px_rgba(245,158,11,0.95)] active:translate-y-0 disabled:translate-y-0 disabled:opacity-60";
 
@@ -355,31 +366,37 @@ export default function QuoteCalculator({
         </div>
 
         <div className="grid grid-cols-2 gap-3 min-[900px]:col-span-9 min-[900px]:grid-cols-4">
-          <label className="flex flex-col gap-[6px] text-[14px] font-bold text-soft">
+          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
             <span>
               Date <span className="font-semibold text-muted">· optional</span>
             </span>
-            <input
-              type="date"
-              min={ukToday()}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className={fieldClass}
-            />
+            <span className="relative block">
+              <input
+                type="date"
+                min={ukToday()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={`${fieldClass} ${dateTimeClass}`}
+              />
+              {!date && <span className={iosPlaceholderClass}>Any date</span>}
+            </span>
           </label>
-          <label className="flex flex-col gap-[6px] text-[14px] font-bold text-soft">
+          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
             <span>
               Time <span className="font-semibold text-muted">· UK</span>
             </span>
-            <input
-              type="time"
-              step={300}
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className={fieldClass}
-            />
+            <span className="relative block">
+              <input
+                type="time"
+                step={300}
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className={`${fieldClass} ${dateTimeClass}`}
+              />
+              {!time && <span className={iosPlaceholderClass}>Any time</span>}
+            </span>
           </label>
-          <label className="flex flex-col gap-[6px] text-[14px] font-bold text-soft">
+          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
             Passengers
             <select
               value={passengers}
@@ -394,7 +411,7 @@ export default function QuoteCalculator({
               <option value={5}>5 or more</option>
             </select>
           </label>
-          <label className="flex flex-col gap-[6px] text-[14px] font-bold text-soft">
+          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
             Large bags
             <select
               value={bags}
