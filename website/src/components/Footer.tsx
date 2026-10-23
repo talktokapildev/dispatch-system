@@ -50,6 +50,9 @@ export default function Footer() {
           </div>
           <div className="flex flex-col gap-[2px]">
             <strong className="pb-2 text-white">Explore</strong>
+            <Link href="/flight-status" className={link}>
+              Gatwick flight status
+            </Link>
             <Link href="/#arrivals" className={link}>
               Flight tracking
             </Link>

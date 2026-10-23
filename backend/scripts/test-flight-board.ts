@@ -185,7 +185,7 @@ async function main() {
   check("flight page from board", r.json().data.status === "FOUND" && r.json().data.source === "BOARD");
   check("flight has view", r.json().data.flights[0].view.gateAt === "2026-10-23T20:19:00.000Z");
   const callsBefore = calls.length;
-  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA2541?date=2026-10-24", headers: H });
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA9999?date=2026-10-24", headers: H });
   check("page load never calls provider", r.json().data.status === "NOT_IN_BOARD" && calls.length === callsBefore);
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/nonsense", headers: H });
   check("bad number", r.json().data.status === "INVALID");
@@ -204,6 +204,11 @@ async function main() {
     payload: { number: "BA2541", date: "2026-10-24" },
   });
   check("lookup outside board (cached)", r.json().data.status === "FOUND" && r.json().data.source === "LOOKUP");
+  const callsNow = calls.length;
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA2541?date=2026-10-24", headers: H });
+  check("shared link serves the cached lookup", r.json().data.source === "LOOKUP" && calls.length === callsNow);
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA2541", headers: H });
+  check("no date: board only", r.json().data.status === "NOT_IN_BOARD");
   for (let i = 0; i < 10; i++)
     r = await app.inject({
       method: "POST",

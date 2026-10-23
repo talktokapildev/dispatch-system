@@ -212,6 +212,27 @@ function validDate(date: string, now: Date): boolean {
   return days >= -2 && days <= MAX_DAYS_AHEAD;
 }
 
+/**
+ * A "Check flight" result already in the 30-minute cache, or null. Never calls the
+ * provider: the flight page uses it so a shared link for a looked-up flight still works.
+ */
+export async function cachedLookup(
+  redis: Redis,
+  input: string,
+  date: string
+): Promise<Extract<LookupOutcome, { status: "FOUND" }> | null> {
+  const key = matchKey(input);
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const raw = await redis.get(`flightstatus:lookup:${key}:${date}`);
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw) as LookupOutcome;
+    return o.status === "FOUND" ? o : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function lookupFlight(
   deps: BoardDeps,
   input: string,
