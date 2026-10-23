@@ -298,6 +298,9 @@ export function placesOf(flights: BoardFlight[]): Place[] {
 
 /** Starts the once-a-minute refresh check (only refreshes when due; see refreshBoardIfDue). */
 export function startFlightBoardRefresh(deps: BoardDeps): void {
+  // Say so loudly rather than leave the page silently without weather.
+  if (enabled() && !process.env.OPENWEATHER_API_KEY)
+    deps.log.warn("[Weather] OPENWEATHER_API_KEY is not set - the flight status page will show no weather");
   const tick = async () => {
     try {
       await refreshBoardIfDue(deps);
