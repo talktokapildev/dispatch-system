@@ -185,7 +185,32 @@ export function matchKey(input: string): string | null {
 
 // Airlines whose tickets and Gatwick's screens use a different code from the IATA one the
 // provider sends (seen on Gatwick's board: easyJet = EZY). Everyone else: IATA, no space.
-const TICKET_CODE: Record<string, string> = { U2: "EZY", DS: "EZS", EC: "EJU" };
+// TUI's UK flights are shown as TOM (e.g. TOM627), not BY.
+const TICKET_CODE: Record<string, string> = { U2: "EZY", DS: "EZS", EC: "EJU", BY: "TOM" };
+
+// The provider names an airport by the town it's in ("Luqa", "Arrecife", "Kerkyra"). People know
+// the destination, so common Gatwick routes get the familiar name. Others: the provider's name,
+// cut at a "/" ("Montpellier/Méditerranée" → "Montpellier").
+const CITY_NAME: Record<string, string> = {
+  MLA: "Malta", ACE: "Lanzarote", FUE: "Fuerteventura", LPA: "Gran Canaria", TFS: "Tenerife South",
+  TFN: "Tenerife North", IBZ: "Ibiza", MAH: "Menorca", PMI: "Palma de Mallorca", CFU: "Corfu",
+  JTR: "Santorini", JMK: "Mykonos", HER: "Heraklion", CHQ: "Chania", KGS: "Kos", ZTH: "Zakynthos",
+  RHO: "Rhodes", EFL: "Kefalonia", PVK: "Preveza", SKG: "Thessaloniki", BJV: "Bodrum",
+  DLM: "Dalaman", SPU: "Split", DBV: "Dubrovnik", TIV: "Tivat", FNC: "Madeira", PDL: "Azores",
+  SID: "Sal", BVC: "Boa Vista", MRU: "Mauritius", BGI: "Barbados", ANU: "Antigua", UVF: "St Lucia",
+  GND: "Grenada", PUJ: "Punta Cana", KEF: "Reykjavik", GRO: "Girona", REU: "Reus",
+  TSF: "Venice Treviso", BGY: "Milan Bergamo", MXP: "Milan Malpensa", LIN: "Milan Linate",
+  CIA: "Rome Ciampino", FCO: "Rome", ORY: "Paris Orly", CDG: "Paris", BVA: "Paris Beauvais",
+  GCI: "Guernsey", IOM: "Isle of Man", MPL: "Montpellier", SSH: "Sharm el-Sheikh",
+  OLB: "Olbia", BOJ: "Burgas", VAR: "Varna", LCA: "Larnaca", PFO: "Paphos", BFS: "Belfast",
+};
+
+function cityName(airport: Raw | undefined): string | null {
+  const iata = text(airport?.iata)?.toUpperCase();
+  if (iata && CITY_NAME[iata]) return CITY_NAME[iata];
+  const raw = text(airport?.municipalityName) ?? text(airport?.shortName) ?? text(airport?.name);
+  return raw ? raw.split("/")[0].trim() || raw : null;
+}
 
 /** "U2 8687" → "EZY8687"; "BA 2525" → "BA2525". */
 export function displayNumberFor(number: string, airlineIata: string | null): string {
@@ -262,7 +287,7 @@ function toBoardFlight(item: Raw, direction: Direction): BoardFlight | null {
     aircraft: text(item.aircraft?.model),
     other: {
       iata: text(o.airport?.iata),
-      name: text(o.airport?.municipalityName) ?? text(o.airport?.shortName) ?? text(o.airport?.name),
+      name: cityName(o.airport),
       scheduledUtc: o.scheduledUtc,
       revisedUtc: o.revisedUtc,
       runwayUtc: o.runwayUtc,
@@ -311,7 +336,32 @@ export function parseBoard(body: unknown): BoardFlight[] {
   const seen = new Set<string>();
   const unique = all.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
   unique.sort((a, b2) => a.lgw.scheduledUtc.localeCompare(b2.lgw.scheduledUtc));
-  return fillTerminals(linkCodeshares(unique));
+  return fillTerminals(linkCodeshares(dropCallsignDuplicates(unique)));
+}
+
+/** A real flight number: airline code + digits + optional letter ("BA 2683", "U2 8687A"). */
+export function isFlightNumber(n: string): boolean {
+  return splitNumber(n) !== null;
+}
+
+/**
+ * The provider sometimes lists a flight a second time under an air-traffic call sign instead of
+ * its flight number (seen live: "A0 42YR" Ibiza 21:24 next to BA2683 Ibiza 21:25). Drop such an
+ * entry when a proper flight in the same direction, to/from the same airport, is within 20 min.
+ * A call-sign entry with no such twin stays (it may be the only record of that flight).
+ */
+export function dropCallsignDuplicates(flights: BoardFlight[]): BoardFlight[] {
+  const proper = flights.filter((f) => isFlightNumber(f.number));
+  return flights.filter((f) => {
+    if (isFlightNumber(f.number)) return true;
+    const t = Date.parse(f.lgw.scheduledUtc);
+    return !proper.some(
+      (p) =>
+        p.direction === f.direction &&
+        p.other.iata === f.other.iata &&
+        Math.abs(Date.parse(p.lgw.scheduledUtc) - t) <= 20 * MIN
+    );
+  });
 }
 
 /**

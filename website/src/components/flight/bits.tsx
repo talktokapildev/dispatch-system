@@ -47,12 +47,24 @@ export function Flag({ code, size = "md" }: { code: string | null | undefined; s
   );
 }
 
-const SUN = "#e8a317";
-const GREY = "#7c8594";
-const BLUE = "#3b6fd8";
-
-/** Small weather icon; the temperature or text beside it carries the meaning. */
-export function WeatherIcon({ kind, night = false, size = 18 }: { kind: WeatherKind; night?: boolean; size?: number }) {
+/** Small weather icon; the temperature or text beside it carries the meaning.
+ *  `onDark`: lighter strokes for the dark header band (the moon was too faint there). */
+export function WeatherIcon({
+  kind,
+  night = false,
+  size = 18,
+  onDark = false,
+}: {
+  kind: WeatherKind;
+  night?: boolean;
+  size?: number;
+  onDark?: boolean;
+}) {
+  const SUN = onDark ? "#fbbf24" : "#e8a317";
+  const GREY = onDark ? "#d1d5db" : "#7c8594";
+  const BLUE = onDark ? "#93b4f5" : "#3b6fd8";
+  const MOON = onDark ? "#dbe3ff" : "#6b7bb3";
+  const SNOW = onDark ? "#bcd2f5" : "#5b8fd6";
   const common = {
     width: size,
     height: size,
@@ -69,7 +81,7 @@ export function WeatherIcon({ kind, night = false, size = 18 }: { kind: WeatherK
   switch (kind) {
     case "clear":
       return night ? (
-        <svg {...common} stroke="#6b7bb3">
+        <svg {...common} stroke={MOON}>
           <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />
         </svg>
       ) : (
@@ -82,7 +94,7 @@ export function WeatherIcon({ kind, night = false, size = 18 }: { kind: WeatherK
       return (
         <svg {...common}>
           {night ? (
-            <path d="M11.5 7.5A4.5 4.5 0 0 1 6 12.4 4.5 4.5 0 1 0 11.5 7.5z" stroke="#6b7bb3" />
+            <path d="M11.5 7.5A4.5 4.5 0 0 1 6 12.4 4.5 4.5 0 1 0 11.5 7.5z" stroke={MOON} />
           ) : (
             <>
               <path d="M9 3v1.5M3.5 9H5M5.2 5.2l1 1M12.8 5.2l-1 1" stroke={SUN} />
@@ -108,7 +120,7 @@ export function WeatherIcon({ kind, night = false, size = 18 }: { kind: WeatherK
       );
     case "snow":
       return (
-        <svg {...common} stroke="#5b8fd6">
+        <svg {...common} stroke={SNOW}>
           <path d={rainCloud} />
           <path d="M8 19h.01M12 20h.01M16 19h.01M10 22h.01M14 22h.01" strokeWidth={2.6} />
         </svg>

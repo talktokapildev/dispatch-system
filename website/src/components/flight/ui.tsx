@@ -66,7 +66,7 @@ export function DarkBand({ heading, children, gatwick }: { heading: ReactNode; c
               title={WEATHER_CREDIT}
             >
               <span className="grid h-[34px] w-[34px] flex-none place-items-center rounded-full bg-[#4a5058]">
-                <WeatherIcon kind={gatwick.kind} night={gatwick.night} size={22} />
+                <WeatherIcon kind={gatwick.kind} night={gatwick.night} size={22} onDark />
               </span>
               <span className="flex flex-col leading-tight sm:flex-row sm:items-center sm:gap-[10px]">
                 <span className="whitespace-nowrap font-bold text-white">

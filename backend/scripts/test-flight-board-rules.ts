@@ -4,6 +4,8 @@
 //
 //   node --env-file=.env -r ts-node/register scripts/test-flight-board-rules.ts
 import {
+  dropCallsignDuplicates,
+  isFlightNumber,
   displayNumberFor,
   fillTerminals,
   boardList,
@@ -202,6 +204,31 @@ check("long-haul: 3h before", longHaul.longHaul && longHaul.beThereBy === "2026-
 // ── Single-flight lookup response ───────────────────────────────────────────
 const legs = parseLookupLegs([ezy8687, { ...ezy8687, arrival: { ...ezy8687.arrival, airport: { iata: "LTN" } } }]);
 check("lookup keeps Gatwick legs only", legs.length === 1 && legs[0].direction === "ARRIVAL");
+
+// ── Polish: TUI as TOM, friendly city names, call-sign duplicates ───────────
+check("TUI shown as TOM", displayNumberFor("BY 627", "BY") === "TOM627");
+const MLA = { iata: "MLA", municipalityName: "Luqa", countryCode: "MT" };
+const MPL = { iata: "MPL", municipalityName: "Montpellier/Méditerranée" };
+const XXX = { iata: "XXX", municipalityName: "Somewhere/Else" };
+const withFrom = (airport: object, number = "U2 1", sched = "21:00") => ({
+  ...ezy8687,
+  number,
+  departure: { ...ezy8687.departure, airport },
+  arrival: { ...ezy8687.arrival, scheduledTime: tm(sched, sched) },
+});
+const named = parseBoard({ arrivals: [withFrom(MLA, "U2 1"), withFrom(MPL, "U2 2"), withFrom(XXX, "U2 3")], departures: [] });
+check("Luqa → Malta", named.find((f) => f.number === "U2 1")?.other.name === "Malta");
+check("Montpellier/Méditerranée → Montpellier", named.find((f) => f.number === "U2 2")?.other.name === "Montpellier");
+check("unknown: cut at /", named.find((f) => f.number === "U2 3")?.other.name === "Somewhere");
+check("call sign is not a flight number", !isFlightNumber("A0 42YR") && isFlightNumber("BA 2683"));
+const IBZ = { iata: "IBZ", municipalityName: "Ibiza Town" };
+const dup = parseBoard({
+  arrivals: [withFrom(IBZ, "A0 42YR", "20:24"), withFrom(IBZ, "BA 2683", "20:25"), withFrom(MLA, "A0 77QQ", "20:30")],
+  departures: [],
+});
+check("call-sign twin dropped", !dup.some((f) => f.number === "A0 42YR") && dup.some((f) => f.number === "BA 2683"));
+check("call-sign entry with no twin kept", dup.some((f) => f.number === "A0 77QQ"));
+check("dropCallsignDuplicates keeps proper flights", dropCallsignDuplicates(board).length === board.length);
 
 // ── v2: ticket-style numbers, airport position/country, terminal filling ─────
 check("easyJet shown as EZY", arr.displayNumber === "EZY8687", arr.displayNumber);
