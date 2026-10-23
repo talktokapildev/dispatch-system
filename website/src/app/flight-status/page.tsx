@@ -28,7 +28,7 @@ export default async function FlightStatusPage({ searchParams }: { searchParams:
   return (
     <>
       <AutoRefresh />
-      <DarkBand heading="Is the flight on time?">
+      <DarkBand heading="Is the flight on time?" gatwick={board?.weather?.LGW}>
         <FlightSearch />
         <p className="m-0 mt-3 text-[14.5px] text-[#c4c9d1]">
           Arrivals and departures at Gatwick. Type the number from the ticket, like EZY8687 or BA2541, and we&apos;ll work out

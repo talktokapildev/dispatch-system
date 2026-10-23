@@ -4,14 +4,19 @@ import {
   dayLabel,
   duration,
   FlightView,
+  localNow,
   minutesBetween,
   placeName,
+  shownNumber,
   statusLabel,
   terminalName,
   TONE,
   ukDate,
   ukTime,
+  Weather,
+  WeatherMap,
 } from "@/lib/flightFormat";
+import { AirlineTag, Flag, WeatherIcon } from "./bits";
 import { PlaneMark, StatusPill } from "./ui";
 
 /** The big card: who/when, the route with progress, the three answers, and the timeline. */
@@ -20,18 +25,22 @@ export default function FlightCard({
   view: v,
   fetchedAt,
   now,
+  weather = {},
 }: {
   flight: BoardFlight;
   view: FlightView;
   fetchedAt: string;
   now: Date;
+  weather?: WeatherMap;
 }) {
   const arrival = f.direction === "ARRIVAL";
   const ended = ["CANCELLED", "MAYBE_CANCELLED", "DIVERTED"].includes(v.state);
+  const number = shownNumber(f);
+  const providerNumber = f.number.replace(/\s/g, "");
   const subtitle = [
-    f.airline.name,
     dayLabel(ukDate(f.lgw.scheduledUtc)),
     f.aircraft,
+    providerNumber !== number ? `also shown as ${f.number}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -41,16 +50,16 @@ export default function FlightCard({
       {/* Who and when */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-[#eef0f3] px-[18px] py-[18px] sm:px-8 sm:py-[26px]">
         <div className="flex min-w-0 items-center gap-[14px]">
-          <span
-            aria-hidden
-            className="hidden h-12 w-12 flex-none place-items-center rounded-[14px] bg-[#fff3e0] text-[15px] font-extrabold text-accent-dark sm:grid"
-          >
-            {f.airline.iata ?? f.number.slice(0, 2)}
+          <span className="hidden flex-none sm:block">
+            <AirlineTag iata={f.airline.iata} name={f.airline.name} size="lg" />
           </span>
           <div className="flex min-w-0 flex-col">
             <div className="flex flex-wrap items-center gap-[10px]">
+              <span className="sm:hidden">
+                <AirlineTag iata={f.airline.iata} name={f.airline.name} size="sm" />
+              </span>
               <strong className="font-heading text-[22px] leading-[1.1] tracking-[-0.02em] text-ink sm:text-[26px]">
-                {f.number}
+                {number}
               </strong>
               <span className="rounded-[6px] bg-ink px-2 py-[2px] text-[12px] font-extrabold tracking-[0.06em] text-[#fbbf24]">
                 {arrival ? "ARRIVING" : "DEPARTING"}
@@ -68,7 +77,7 @@ export default function FlightCard({
         </div>
       </div>
 
-      <Route f={f} v={v} now={now} ended={ended} />
+      <Route f={f} v={v} now={now} ended={ended} weather={weather} />
       <Answers f={f} v={v} ended={ended} />
       {!ended && <Timeline f={f} v={v} now={now} />}
     </article>
@@ -76,7 +85,7 @@ export default function FlightCard({
 }
 
 // ── Route + progress ────────────────────────────────────────────────────────
-function Route({ f, v, now, ended }: { f: BoardFlight; v: FlightView; now: Date; ended: boolean }) {
+function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; now: Date; ended: boolean; weather: WeatherMap }) {
   const arrival = f.direction === "ARRIVAL";
   const otherCode = f.other.iata ?? "···";
   const otherName = placeName(f.other);
@@ -124,12 +133,23 @@ function Route({ f, v, now, ended }: { f: BoardFlight; v: FlightView; now: Date;
     otherUtc && otherLocal
       ? `${f.other.runwayUtc ? "Took off" : "Leaves"} ${ukTime(otherUtc)}${otherLocal !== ukTime(otherUtc) ? ` (${otherLocal} local)` : ""}`
       : null;
+  const otherWx = f.other.iata ? weather[f.other.iata] : undefined;
+  const lgwWx = weather.LGW;
+  const there = localNow(f.other.timeZone, now);
+  const otherEnd = {
+    code: otherCode,
+    name: otherName,
+    country: f.other.countryCode ?? null,
+    wx: otherWx,
+    wxNote: `In ${otherName} now${there ? ` · ${there} local` : ""}`,
+  };
+  const lgwEnd = { code: "LGW", name: "London Gatwick", country: "GB", wx: lgwWx, wxNote: lgwWx ? `At Gatwick now · wind ${lgwWx.windMph} mph` : "" };
   const leftEnd = arrival
-    ? { label: "FROM", code: otherCode, name: otherName, sub: takeOffText }
-    : { label: "FROM", code: "LGW", name: "London Gatwick", sub: lgwSub };
+    ? { label: "FROM", ...otherEnd, sub: takeOffText }
+    : { label: "FROM", ...lgwEnd, sub: lgwSub };
   const rightEnd = arrival
-    ? { label: "TO", code: "LGW", name: "London Gatwick", sub: lgwSub }
-    : { label: "TO", code: otherCode, name: otherName, sub: otherLocal ? `${f.other.runwayLocal ? "Landed" : "Lands"} ${otherLocal} local` : null };
+    ? { label: "TO", ...lgwEnd, sub: lgwSub }
+    : { label: "TO", ...otherEnd, sub: otherLocal ? `${f.other.runwayLocal ? "Landed" : "Lands"} ${otherLocal} local` : null };
 
   const pct = `${Math.round(progress * 100)}%`;
   return (
@@ -160,13 +180,50 @@ function Route({ f, v, now, ended }: { f: BoardFlight; v: FlightView; now: Date;
   );
 }
 
-function End({ label, code, name, sub, align }: { label: string; code: string; name: string; sub: string | null; align: "left" | "right" }) {
+function End({
+  label,
+  code,
+  name,
+  sub,
+  align,
+  country,
+  wx,
+  wxNote,
+}: {
+  label: string;
+  code: string;
+  name: string;
+  sub: string | null;
+  align: "left" | "right";
+  country: string | null;
+  wx?: Weather;
+  wxNote: string;
+}) {
+  const right = align === "right";
   return (
-    <div className={`flex min-w-0 flex-col gap-[2px] ${align === "right" ? "items-end text-right" : ""}`}>
+    <div className={`flex min-w-0 flex-col gap-[2px] ${right ? "items-end text-right" : ""}`}>
       <span className="text-[13px] font-extrabold tracking-[0.08em] text-muted">{label}</span>
-      <strong className="font-heading text-[34px] leading-none tracking-[-0.03em] text-ink sm:text-[44px]">{code}</strong>
+      <span className={`flex items-center gap-[10px] ${right ? "flex-row-reverse" : ""}`}>
+        <strong className="font-heading text-[34px] leading-none tracking-[-0.03em] text-ink sm:text-[44px]">{code}</strong>
+        <Flag code={country} size="lg" />
+      </span>
       <span className="font-semibold text-soft">{name}</span>
       {sub && <span className="text-[14px] text-muted sm:text-[14.5px]">{sub}</span>}
+      {wx && (
+        <span
+          className={`mt-2 inline-flex items-center gap-[10px] rounded-[14px] border py-2 pl-[10px] pr-[14px] text-left ${
+            wx.kind === "clear" || wx.kind === "partly" ? "border-[#fde68a] bg-[#fffbeb]" : "border-[#c7d7fe] bg-[#eff4ff]"
+          }`}
+        >
+          <WeatherIcon kind={wx.kind} night={wx.night} size={26} />
+          <span className="flex flex-col leading-[1.25]">
+            <strong className="text-[15.5px] text-ink sm:text-[17px]">
+              {wx.tempC}° · {wx.text}
+            </strong>
+            <span className="text-[12.5px] text-muted sm:text-[13px]">{wxNote}</span>
+          </span>
+        </span>
+      )}
     </div>
   );
 }

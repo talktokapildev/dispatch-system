@@ -1,5 +1,19 @@
 import Link from "next/link";
-import { ago, BoardData, BoardRow, Direction, placeName, statusLabel, ukDate, ukTime, urlNumber } from "@/lib/flightFormat";
+import {
+  ago,
+  BoardData,
+  BoardRow,
+  Direction,
+  placeName,
+  shownNumber,
+  statusLabel,
+  ukDate,
+  ukTime,
+  urlNumber,
+  WEATHER_CREDIT,
+  WeatherMap,
+} from "@/lib/flightFormat";
+import { AirlineTag, Flag, WeatherInline } from "./bits";
 import { StatusPill, h2 } from "./ui";
 
 const tabClass = (on: boolean) =>
@@ -10,6 +24,8 @@ const tabClass = (on: boolean) =>
 /**
  * Gatwick arrivals or departures. `full` (the board page): next hour in view, earlier and later
  * flights behind "Show" buttons. Otherwise (a flight page): the next few, and a link to the board.
+ * Each row: time, airline label, flight number as on the ticket, flag + city + weather there,
+ * terminal, (belt or gate when Gatwick publishes them), status.
  */
 export default function Board({
   data,
@@ -27,6 +43,7 @@ export default function Board({
   highlightId?: string;
 }) {
   const rows = direction === "ARRIVAL" ? data.arrivals : data.departures;
+  const weather = data.weather ?? {};
   const t = now.getTime();
   const key = (r: BoardRow) => Date.parse(r.view.expectedAt ?? r.view.scheduledAt);
   const done = (r: BoardRow) => r.view.landed || r.view.state === "DEPARTED" || r.view.state === "CANCELLED";
@@ -39,14 +56,29 @@ export default function Board({
   const showBelt = direction === "ARRIVAL" && rows.some((r) => r.baggageBelt);
   const showGate = direction === "DEPARTURE" && rows.some((r) => r.gate);
   const extra = showBelt ? "Belt" : showGate ? "Gate" : null;
-  const cols = extra
-    ? "md:grid-cols-[96px_118px_minmax(0,1fr)_96px_64px_minmax(150px,auto)]"
-    : "md:grid-cols-[96px_118px_minmax(0,1fr)_96px_minmax(150px,auto)]";
+  // Literal class names (Tailwind only generates classes it can find written out in full).
+  const cols = full
+    ? extra
+      ? "md:grid-cols-[84px_150px_104px_minmax(0,1fr)_84px_56px_minmax(140px,auto)]"
+      : "md:grid-cols-[84px_150px_104px_minmax(0,1fr)_84px_minmax(140px,auto)]"
+    : extra
+      ? "md:grid-cols-[84px_112px_104px_minmax(0,1fr)_84px_56px_minmax(140px,auto)]"
+      : "md:grid-cols-[84px_112px_104px_minmax(0,1fr)_84px_minmax(140px,auto)]";
+  const anyWeather = rows.some((r) => r.other.iata && weather[r.other.iata]);
 
   const list = (items: BoardRow[]) => (
     <ul className="m-0 list-none p-0">
       {items.map((r) => (
-        <Row key={r.id} r={r} direction={direction} cols={cols} extra={extra} highlight={r.id === highlightId} />
+        <Row
+          key={r.id}
+          r={r}
+          direction={direction}
+          cols={cols}
+          extra={extra}
+          highlight={r.id === highlightId}
+          weather={weather}
+          shortLabel={!full}
+        />
       ))}
     </ul>
   );
@@ -70,6 +102,7 @@ export default function Board({
       <div className="overflow-hidden rounded-[20px] border border-line bg-white">
         <div className={`hidden gap-3 px-[18px] py-[13px] text-[13.5px] font-bold text-muted md:grid ${cols}`} aria-hidden>
           <span>{direction === "ARRIVAL" ? "Due" : "Leaves"}</span>
+          <span>Airline</span>
           <span>Flight</span>
           <span>{direction === "ARRIVAL" ? "From" : "To"}</span>
           <span>Terminal</span>
@@ -101,7 +134,9 @@ export default function Board({
         )}
       </div>
       <p className="m-0 text-[13.5px] text-muted">
-        {data.fetchedAt ? `Updated ${ago(data.fetchedAt, now)}. ` : ""}Times are UK time. Flight details can change: always check with your airline.
+        {data.fetchedAt ? `Updated ${ago(data.fetchedAt, now)}. ` : ""}Times are UK time
+        {anyWeather ? "; weather is now, at the other airport" : ""}. Flight details can change: always check with your airline.
+        {anyWeather ? ` ${WEATHER_CREDIT}.` : ""}
         {!full && (
           <>
             {" "}
@@ -119,35 +154,58 @@ function Row({
   cols,
   extra,
   highlight,
+  weather,
+  shortLabel,
 }: {
   r: BoardRow;
   direction: Direction;
   cols: string;
   extra: string | null;
   highlight: boolean;
+  weather: WeatherMap;
+  shortLabel: boolean;
 }) {
   const v = r.view;
   const sched = ukTime(v.scheduledAt);
   const moved = v.expectedAt && v.delayMin != null && Math.abs(v.delayMin) >= 5 && !["CANCELLED", "MAYBE_CANCELLED", "DIVERTED"].includes(v.state);
-  const href = `/flight-status/${urlNumber(r.number)}?date=${ukDate(v.scheduledAt)}`;
+  const href = `/flight-status/${urlNumber(shownNumber(r))}?date=${ukDate(v.scheduledAt)}`;
   const term = r.terminal === "NORTH" ? "North" : r.terminal === "SOUTH" ? "South" : "–";
   const extraValue = extra === "Belt" ? r.baggageBelt : extra === "Gate" ? r.gate : null;
+  const w = r.other.iata ? weather[r.other.iata] : undefined;
   return (
     <li className={`border-t border-[#eef0f3] ${highlight ? "bg-[#fffaf0]" : ""}`}>
       <Link
         href={href}
-        className={`grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-x-3 px-[14px] py-3 text-[15.5px] text-body no-underline hover:bg-[#f8fafc] hover:text-body sm:px-[18px] md:py-[14px] ${cols}`}
+        className={`grid grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 px-[14px] py-3 text-[15.5px] text-body no-underline hover:bg-[#f8fafc] hover:text-body sm:px-[18px] md:py-[13px] ${cols}`}
       >
         <span className="flex flex-col leading-tight">
-          <strong className={moved ? "text-[13.5px] font-semibold text-muted line-through" : "text-ink"}>{sched}</strong>
+          <strong className={moved ? "text-[13px] font-semibold text-muted line-through" : "text-ink"}>{sched}</strong>
           {moved && <strong className="text-ink">{ukTime(v.expectedAt)}</strong>}
         </span>
-        <span className="flex min-w-0 flex-col leading-tight md:contents">
-          <span className={`text-ink ${highlight ? "font-extrabold" : "font-semibold"}`}>{r.number}</span>
-          <span className="truncate text-[14px] text-muted md:text-[15.5px] md:text-body">
-            {placeName(r.other)}
+
+        {/* Phones: two lines in the middle column. From md: these become separate columns. */}
+        <span className="flex min-w-0 flex-col gap-[3px] leading-tight md:contents">
+          <span className="flex items-center gap-[7px] md:contents">
             <span className="md:hidden">
-              {" · "}
+              <AirlineTag iata={r.airlineIata} name={r.airline} size="sm" short />
+            </span>
+            <span className="hidden md:block">
+              <AirlineTag iata={r.airlineIata} name={r.airline} short={shortLabel} />
+            </span>
+            <span className={`text-ink ${highlight ? "font-extrabold" : "font-bold"}`}>{shownNumber(r)}</span>
+          </span>
+          {/* The city always keeps its space; on phones weather and terminal wrap below it if needed. */}
+          <span className="flex min-w-0 flex-wrap items-center gap-x-[7px] gap-y-[2px] text-[14px] md:flex-nowrap md:gap-x-[9px] md:text-[15.5px]">
+            <span className="flex min-w-0 max-w-full items-center gap-[7px] md:gap-[9px]">
+              <Flag code={r.other.countryCode} />
+              <span className="truncate font-semibold text-ink">{placeName(r.other)}</span>
+            </span>
+            {w && (
+              <span className="text-[13.5px] md:text-[14.5px]">
+                <WeatherInline w={w} />
+              </span>
+            )}
+            <span className="whitespace-nowrap text-muted md:hidden">
               {term}
               {extraValue ? ` · ${extra} ${extraValue}` : ""}
             </span>
@@ -155,6 +213,7 @@ function Row({
           <span className="hidden md:block">{term}</span>
           {extra && <span className="hidden font-semibold text-ink md:block">{extraValue ?? "–"}</span>}
         </span>
+
         <span className="justify-self-end md:justify-self-start">
           <StatusPill tone={v.tone} small>
             {statusLabel(direction, v, true)}

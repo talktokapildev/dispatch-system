@@ -5,7 +5,8 @@ module.exports = {
     extend: {
       screens: {
         // Full desktop header from here; below it the header shows a Menu button.
-        nav: "1100px",
+        // 1200px: below this the links + phone + "Get the app" don't fit on one line.
+        nav: "1200px",
       },
       colors: {
         // Colours from the approved canvas (Light-v4 / Privacy / Terms)

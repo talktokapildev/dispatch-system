@@ -31,9 +31,11 @@ import {
   BoardFlight,
   boardList,
   describe,
+  displayNumberFor,
   findInBoard,
   matchKey,
 } from "../services/flightBoardRules";
+import { readWeather } from "../services/weather.service";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -62,9 +64,12 @@ function boardRow(f: BoardFlight, now: Date, buffers: { hand: number; checked: n
   return {
     id: f.id,
     number: f.number,
+    displayNumber: f.displayNumber ?? displayNumberFor(f.number, f.airline.iata),
     airline: f.airline.name,
-    other: { iata: f.other.iata, name: f.other.name },
+    airlineIata: f.airline.iata,
+    other: { iata: f.other.iata, name: f.other.name, countryCode: f.other.countryCode ?? null },
     terminal: f.lgw.terminal,
+    terminalInferred: f.lgw.terminalInferred ?? false,
     gate: f.lgw.gate,
     baggageBelt: f.lgw.baggageBelt,
     view: {
@@ -101,8 +106,20 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
 
   const withViews = async (flights: BoardFlight[], now: Date) => {
     const buffers = await boardBuffers(deps);
-    return flights.map((flight) => ({ flight, view: describe(flight, now, buffers) }));
+    return flights.map((flight) => ({
+      flight: { ...flight, displayNumber: flight.displayNumber ?? displayNumberFor(flight.number, flight.airline.iata) },
+      view: describe(flight, now, buffers),
+    }));
   };
+
+  /** FOUND reply for a flight page, with cached weather at both ends (never fetched here). */
+  const found = async (source: "BOARD" | "LOOKUP", fetchedAt: string, flights: BoardFlight[], now: Date) => ({
+    status: "FOUND",
+    source,
+    fetchedAt,
+    flights: await withViews(flights, now),
+    weather: await readWeather(fastify.redis, ["LGW", ...flights.map((f) => f.other.iata)]),
+  });
 
   fastify.get("/public/flight-status/board", { config: { rateLimit: false } }, async (request, reply) => {
     if (refuse(request, reply)) return;
@@ -116,13 +133,17 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
         .filter((f) => Date.parse(f.lgw.scheduledUtc) >= from)
         .map((f) => boardRow(f, now, buffers));
     const ageMin = (now.getTime() - Date.parse(board.fetchedAt)) / 60_000;
+    const arrivals = rows("ARRIVAL");
+    const departures = rows("DEPARTURE");
     return reply.send({
       success: true,
       data: {
         fetchedAt: board.fetchedAt,
         stale: ageMin > staleAfterMin(),
-        arrivals: rows("ARRIVAL"),
-        departures: rows("DEPARTURE"),
+        arrivals,
+        departures,
+        // Cached weather by airport code (LGW = Gatwick itself). Missing airports are left out.
+        weather: await readWeather(fastify.redis, ["LGW", ...[...arrivals, ...departures].map((r) => r.other.iata)]),
       },
     });
   });
@@ -135,24 +156,17 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
       return reply.send({ success: true, data: { status: "INVALID" } });
     const now = new Date();
     const board = await getBoard(fastify.redis);
-    const found = board ? findInBoard(board.flights, number, date.data ?? null, now) : [];
-    if (!found.length && date.data) {
+    const inBoard = board ? findInBoard(board.flights, number, date.data ?? null, now) : [];
+    if (!inBoard.length && date.data) {
       const cached = await cachedLookup(fastify.redis, number, date.data);
-      if (cached)
-        return reply.send({
-          success: true,
-          data: { status: "FOUND", source: "LOOKUP", fetchedAt: cached.fetchedAt, flights: await withViews(cached.flights, now) },
-        });
+      if (cached) return reply.send({ success: true, data: await found("LOOKUP", cached.fetchedAt, cached.flights, now) });
     }
-    if (!found.length)
+    if (!inBoard.length)
       return reply.send({
         success: true,
         data: { status: "NOT_IN_BOARD", boardFrom: board?.fromLocal ?? null, boardTo: board?.toLocal ?? null },
       });
-    return reply.send({
-      success: true,
-      data: { status: "FOUND", source: "BOARD", fetchedAt: board!.fetchedAt, flights: await withViews(found, now) },
-    });
+    return reply.send({ success: true, data: await found("BOARD", board!.fetchedAt, inBoard, now) });
   });
 
   fastify.post("/public/flight-status/lookup", { config: { rateLimit: false } }, async (request, reply) => {
@@ -166,11 +180,7 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
     // The board first: free, and fresher than a cached lookup.
     const board = await getBoard(fastify.redis);
     const fromBoard = board ? findInBoard(board.flights, number, date, now) : [];
-    if (fromBoard.length)
-      return reply.send({
-        success: true,
-        data: { status: "FOUND", source: "BOARD", fetchedAt: board!.fetchedAt, flights: await withViews(fromBoard, now) },
-      });
+    if (fromBoard.length) return reply.send({ success: true, data: await found("BOARD", board!.fetchedAt, fromBoard, now) });
 
     const visitor = String(request.headers["x-visitor-ip"] ?? "").trim().slice(0, 64);
     if (
@@ -185,9 +195,6 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
 
     const r = await lookupFlight(deps, number, date, now);
     if (r.status !== "FOUND") return reply.send({ success: true, data: { status: r.status } });
-    return reply.send({
-      success: true,
-      data: { status: "FOUND", source: "LOOKUP", fetchedAt: r.fetchedAt, flights: await withViews(r.flights, now) },
-    });
+    return reply.send({ success: true, data: await found("LOOKUP", r.fetchedAt, r.flights, now) });
   });
 }

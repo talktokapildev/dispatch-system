@@ -20,6 +20,9 @@ class FakeRedis {
   async get(k: string) {
     return this.store.get(k) ?? null;
   }
+  async mget(...ks: string[]) {
+    return ks.map((k) => this.store.get(k) ?? null);
+  }
   async set(k: string, v: string, ...args: unknown[]) {
     if (args.includes("NX") && this.store.has(k)) return null;
     this.store.set(k, v);
@@ -180,10 +183,17 @@ async function main() {
   check("board ok", r.statusCode === 200 && board.arrivals.length === 1 && board.departures.length === 0);
   check("board row is compact", board.arrivals[0].view.state === "EN_ROUTE" && !("keys" in board.arrivals[0]));
   check("board marked stale (7 h old)", board.stale === true);
+  check("row: ticket-style number", board.arrivals[0].displayNumber === "EZY8687", board.arrivals[0].displayNumber);
+  check("row: airline code + country", board.arrivals[0].airlineIata === "U2" && "countryCode" in board.arrivals[0].other);
+  check("board: weather map present", typeof board.weather === "object");
 
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687", headers: H });
   check("flight page from board", r.json().data.status === "FOUND" && r.json().data.source === "BOARD");
   check("flight has view", r.json().data.flights[0].view.gateAt === "2026-10-23T20:19:00.000Z");
+  await redis.set("weather:LGW", JSON.stringify({ w: { tempC: 11, kind: "rain", night: true, text: "Light rain", windMph: 18, at: "x" }, fetchedAt: "x" }));
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687", headers: H });
+  check("flight page: cached Gatwick weather", r.json().data.weather?.LGW?.tempC === 11);
+  check("flight page: ticket-style number", r.json().data.flights[0].flight.displayNumber === "EZY8687");
   const callsBefore = calls.length;
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA9999?date=2026-10-24", headers: H });
   check("page load never calls provider", r.json().data.status === "NOT_IN_BOARD" && calls.length === callsBefore);

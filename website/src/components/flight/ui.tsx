@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { TONE, Tone } from "@/lib/flightFormat";
+import { TONE, Tone, Weather, WEATHER_CREDIT } from "@/lib/flightFormat";
+import { WeatherIcon } from "./bits";
 
 // Small shared pieces for the flight status pages.
 
@@ -52,12 +53,32 @@ export function Fact({ label, value, note }: { label: string; value: ReactNode; 
   );
 }
 
-/** The dark band at the top of both pages (heading + search form). */
-export function DarkBand({ heading, children }: { heading: ReactNode; children: ReactNode }) {
+/** The dark band at the top of both pages (heading, Gatwick's weather now, search form). */
+export function DarkBand({ heading, children, gatwick }: { heading: ReactNode; children: ReactNode; gatwick?: Weather }) {
   return (
     <section className="bg-ink text-[#d1d5db]">
       <div className="mx-auto flex max-w-site flex-col gap-[18px] px-4 pb-[104px] pt-9 sm:gap-[22px] sm:px-6 sm:pb-[132px] sm:pt-14">
-        <span className={`${eyebrow} text-[#fbbf24]`}>LIVE FLIGHT STATUS · LONDON GATWICK</span>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <span className={`${eyebrow} text-[#fbbf24]`}>LIVE FLIGHT STATUS · LONDON GATWICK</span>
+          {gatwick && (
+            <p
+              className="m-0 inline-flex items-center gap-[10px] rounded-[16px] bg-ink-2 py-2 pl-[10px] pr-4 sm:rounded-full"
+              title={WEATHER_CREDIT}
+            >
+              <span className="grid h-[34px] w-[34px] flex-none place-items-center rounded-full bg-[#4a5058]">
+                <WeatherIcon kind={gatwick.kind} night={gatwick.night} size={22} />
+              </span>
+              <span className="flex flex-col leading-tight sm:flex-row sm:items-center sm:gap-[10px]">
+                <span className="whitespace-nowrap font-bold text-white">
+                  Gatwick now <span className="font-heading text-[20px]">{gatwick.tempC}°</span>
+                </span>
+                <span className="whitespace-nowrap text-[14px] text-[#c4c9d1] sm:text-[15px]">
+                  {gatwick.text} · Wind {gatwick.windMph} mph
+                </span>
+              </span>
+            </p>
+          )}
+        </div>
         <h1 className="m-0 font-heading text-[clamp(34px,4.6vw,52px)] font-bold leading-[1.03] tracking-[-0.035em] text-white">
           {heading}
         </h1>

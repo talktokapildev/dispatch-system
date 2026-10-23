@@ -46,6 +46,10 @@ export type OtherEnd = {
   scheduledLocal: string | null; // "HH:MM" in that airport's own time
   revisedLocal: string | null;
   runwayLocal: string | null;
+  countryCode: string | null; // ISO 3166 alpha-2, e.g. "CH" (flags)
+  lat: number | null; // airport position (weather)
+  lon: number | null;
+  timeZone: string | null; // IANA, e.g. "Europe/Zurich" (local time there)
 };
 
 /** The Gatwick side of the trip. */
@@ -55,6 +59,9 @@ export type GatwickEnd = {
   predictedUtc: string | null;
   runwayUtc: string | null;
   terminal: Terminal | null;
+  // True when the provider didn't say and we filled it from the same airline's other flights
+  // on today's board (only when they ALL use one terminal).
+  terminalInferred: boolean;
   gate: string | null;
   baggageBelt: string | null; // arrivals only
   checkInDesk: string | null; // departures only
@@ -65,6 +72,7 @@ export type BoardFlight = {
   id: string; // stable per flight: direction|number|scheduled
   direction: Direction;
   number: string; // provider format, e.g. "U2 8687"
+  displayNumber: string; // as on the ticket and Gatwick's screens, e.g. "EZY8687"
   keys: string[]; // every way a visitor might type it, as matchKey() values
   airline: { name: string | null; iata: string | null; icao: string | null };
   codeshare: Codeshare;
@@ -175,6 +183,22 @@ export function matchKey(input: string): string | null {
   return p ? p.code + p.num : null;
 }
 
+// Airlines whose tickets and Gatwick's screens use a different code from the IATA one the
+// provider sends (seen on Gatwick's board: easyJet = EZY). Everyone else: IATA, no space.
+const TICKET_CODE: Record<string, string> = { U2: "EZY", DS: "EZS", EC: "EJU" };
+
+/** "U2 8687" → "EZY8687"; "BA 2525" → "BA2525". */
+export function displayNumberFor(number: string, airlineIata: string | null): string {
+  const p = splitNumber(number);
+  if (!p) return number.replace(/\s/g, "");
+  const code = TICKET_CODE[(airlineIata ?? p.code).toUpperCase()] ?? TICKET_CODE[p.code] ?? p.code;
+  return code + p.num;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 function keysFor(number: string, iata: string | null, icao: string | null): string[] {
   const p = splitNumber(number);
   if (!p) return [];
@@ -229,6 +253,7 @@ function toBoardFlight(item: Raw, direction: Direction): BoardFlight | null {
     id: `${direction}|${number.replace(/\s/g, "")}|${g.scheduledUtc}`,
     direction,
     number,
+    displayNumber: displayNumberFor(number, airline.iata),
     keys: keysFor(number, airline.iata, airline.icao),
     airline,
     codeshare: codeshare(item.codeshareStatus),
@@ -244,6 +269,10 @@ function toBoardFlight(item: Raw, direction: Direction): BoardFlight | null {
       scheduledLocal: o.scheduledLocal,
       revisedLocal: o.revisedLocal,
       runwayLocal: o.runwayLocal,
+      countryCode: (text(o.airport?.countryCode) ?? "").toUpperCase().slice(0, 2) || null,
+      lat: num(o.airport?.location?.lat),
+      lon: num(o.airport?.location?.lon),
+      timeZone: text(o.airport?.timeZone),
     },
     lgw: {
       scheduledUtc: g.scheduledUtc,
@@ -251,6 +280,7 @@ function toBoardFlight(item: Raw, direction: Direction): BoardFlight | null {
       predictedUtc: g.predictedUtc,
       runwayUtc: g.runwayUtc,
       terminal: g.terminal,
+      terminalInferred: false,
       gate: g.gate,
       baggageBelt: direction === "ARRIVAL" ? g.baggageBelt : null,
       checkInDesk: direction === "DEPARTURE" ? g.checkInDesk : null,
@@ -281,7 +311,32 @@ export function parseBoard(body: unknown): BoardFlight[] {
   const seen = new Set<string>();
   const unique = all.filter((f) => (seen.has(f.id) ? false : (seen.add(f.id), true)));
   unique.sort((a, b2) => a.lgw.scheduledUtc.localeCompare(b2.lgw.scheduledUtc));
-  return linkCodeshares(unique);
+  return fillTerminals(linkCodeshares(unique));
+}
+
+/**
+ * The provider often leaves Gatwick's terminal blank (seen: many easyJet flights that Gatwick's
+ * own board lists as North). Terminals at Gatwick go by airline, so when an airline's flights
+ * that DO have a terminal on today's board all use the same one (and there are at least 2 of
+ * them), fill its blanks with that terminal. An airline seen at both terminals stays blank.
+ */
+export function fillTerminals(flights: BoardFlight[]): BoardFlight[] {
+  const seen = new Map<string, { terms: Set<Terminal>; count: number }>();
+  const airlineKey = (f: BoardFlight) => (f.airline.iata ?? f.airline.icao ?? f.number.slice(0, 2)).toUpperCase();
+  for (const f of flights) {
+    if (!f.lgw.terminal || f.codeshare === "CODESHARE") continue;
+    const k = airlineKey(f);
+    const s = seen.get(k) ?? { terms: new Set<Terminal>(), count: 0 };
+    s.terms.add(f.lgw.terminal);
+    s.count++;
+    seen.set(k, s);
+  }
+  return flights.map((f) => {
+    if (f.lgw.terminal) return f;
+    const s = seen.get(airlineKey(f));
+    if (!s || s.terms.size !== 1 || s.count < 2) return f;
+    return { ...f, lgw: { ...f.lgw, terminal: [...s.terms][0], terminalInferred: true } };
+  });
 }
 
 /** /flights/number response → only the legs that land at or leave from Gatwick. */

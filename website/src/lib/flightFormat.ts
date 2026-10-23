@@ -21,6 +21,7 @@ export type BoardFlight = {
   id: string;
   direction: Direction;
   number: string;
+  displayNumber?: string; // as on the ticket, e.g. "EZY8687" (older cached data may lack it)
   keys: string[];
   airline: { name: string | null; iata: string | null; icao: string | null };
   codeshare: "OPERATOR" | "CODESHARE" | "UNKNOWN";
@@ -36,6 +37,8 @@ export type BoardFlight = {
     scheduledLocal: string | null;
     revisedLocal: string | null;
     runwayLocal: string | null;
+    countryCode?: string | null;
+    timeZone?: string | null;
   };
   lgw: {
     scheduledUtc: string;
@@ -43,6 +46,7 @@ export type BoardFlight = {
     predictedUtc: string | null;
     runwayUtc: string | null;
     terminal: "NORTH" | "SOUTH" | null;
+    terminalInferred?: boolean; // filled from the airline's other flights today
     gate: string | null;
     baggageBelt: string | null;
     checkInDesk: string | null;
@@ -77,9 +81,12 @@ export type FlightWithView = { flight: BoardFlight; view: FlightView };
 export type BoardRow = {
   id: string;
   number: string;
+  displayNumber?: string;
   airline: string | null;
-  other: { iata: string | null; name: string | null };
+  airlineIata?: string | null;
+  other: { iata: string | null; name: string | null; countryCode?: string | null };
   terminal: "NORTH" | "SOUTH" | null;
+  terminalInferred?: boolean;
   gate: string | null;
   baggageBelt: string | null;
   view: Pick<
@@ -93,7 +100,27 @@ export type BoardData = {
   stale: boolean;
   arrivals: BoardRow[];
   departures: BoardRow[];
+  weather?: WeatherMap; // by airport code; "LGW" = Gatwick
 };
+
+// ── Weather (OpenWeather, cached by the backend) ───────────────────────────
+export type WeatherKind = "clear" | "partly" | "cloudy" | "rain" | "drizzle" | "snow" | "thunder" | "fog";
+export type Weather = { tempC: number; kind: WeatherKind; night: boolean; text: string; windMph: number; at: string };
+export type WeatherMap = Record<string, Weather>;
+export const WEATHER_CREDIT = "Weather data © OpenWeather";
+
+/** "U2 8687" → "EZY8687" when the backend sent it; otherwise the number without spaces. */
+export const shownNumber = (x: { number: string; displayNumber?: string }) => x.displayNumber ?? x.number.replace(/\s/g, "");
+
+/** Local time at an airport now, e.g. "22:31", from its IANA time zone. */
+export function localNow(timeZone: string | null | undefined, now: Date = new Date()): string | null {
+  if (!timeZone) return null;
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+  } catch {
+    return null;
+  }
+}
 
 // ── Flight numbers ──────────────────────────────────────────────────────────
 /**
@@ -235,7 +262,7 @@ export const TONE: Record<Tone, { pill: string; dot: string; soft: string; text:
 
 /** One or two plain-English sentences for the "In plain English" box. */
 export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date()): string {
-  const num = f.number;
+  const num = shownNumber(f);
   const place = placeName(f.other);
   const term = terminalName(f.lgw.terminal);
   const at = term ? ` ${term}` : "";
