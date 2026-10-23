@@ -49,6 +49,8 @@ import { adminVehicleRecordRoutes } from "./routes/admin/vehicleRecord";
 import { adminLostPropertyRoutes } from "./routes/admin/lostProperty";
 import { adminComplaintRoutes } from "./routes/admin/complaints";
 import { publicQuoteRoutes } from "./routes/publicQuote";
+import { publicFlightStatusRoutes } from "./routes/publicFlightStatus";
+import { startFlightBoardRefresh } from "./services/flightBoard.service";
 import { missingStorageConfig } from "./services/fileStorage";
 import { fileTokenSecretSet } from "./services/fileLinks";
 
@@ -162,6 +164,8 @@ async function buildServer() {
   fastify.register(adminComplaintRoutes, { prefix });
   // Website quote calculator (public; only orangeride.co.uk may call it in production)
   fastify.register(publicQuoteRoutes, { prefix });
+  // Website flight status page (website server only: x-site-key header)
+  fastify.register(publicFlightStatusRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
@@ -394,6 +398,8 @@ async function start() {
     // Start background cleanup job
     startStaleBiookingCleanup(server);
     reseedOnlineDrivers(server);
+    // Website flight status board: one AeroDataBox call per FLIGHT_BOARD_REFRESH_MIN (off unless FLIGHT_BOARD_ENABLED=true)
+    startFlightBoardRefresh({ redis: server.redis, prisma: server.prisma, log: server.log });
   } catch (err) {
     server.log.error(err);
     process.exit(1);
