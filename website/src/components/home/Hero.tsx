@@ -10,7 +10,7 @@ export default function Hero() {
   return (
     <section
       id="top"
-      className="mx-auto grid max-w-site grid-cols-[repeat(auto-fit,minmax(min(520px,100%),1fr))] items-center gap-14 px-6 pb-[88px] pt-10"
+      className="mx-auto grid max-w-site grid-cols-[repeat(auto-fit,minmax(min(520px,100%),1fr))] items-center gap-14 px-6 pb-10 pt-8 sm:pb-16 sm:pt-10"
     >
       <div className="flex min-w-0 flex-col gap-6">
         <span className="inline-flex items-center gap-2 self-start rounded-full border border-line bg-white py-[6px] pl-[6px] pr-[14px] text-[14px] font-semibold text-soft">
@@ -44,8 +44,14 @@ export default function Hero() {
 
         <div className="flex flex-wrap gap-3">
           <a
+            href="#quote"
+            className="inline-flex min-h-[56px] items-center justify-center gap-[10px] rounded-[16px] bg-amber px-6 py-[15px] text-[17px] font-extrabold max-sm:w-full max-sm:whitespace-nowrap max-sm:px-4 text-ink no-underline hover:text-ink"
+          >
+            Get a price
+          </a>
+          <a
             href={WHATSAPP_HREF}
-            className="inline-flex min-h-[56px] items-center justify-center gap-[10px] rounded-[16px] bg-amber px-6 py-[15px] text-[17px] font-extrabold max-sm:flex-auto max-sm:whitespace-nowrap max-sm:px-4 text-ink no-underline hover:text-ink"
+            className="inline-flex min-h-[56px] items-center justify-center gap-[10px] rounded-[16px] border-[1.5px] border-[#d1d5db] bg-white px-[22px] py-[15px] text-[17px] font-bold max-sm:flex-auto max-sm:whitespace-nowrap max-sm:px-4 text-ink no-underline hover:text-ink"
           >
             <ChatIcon />
             WhatsApp us
@@ -78,7 +84,10 @@ export default function Hero() {
         </ul>
       </div>
 
-      <HeroPhone />
+      {/* Phones: skip the mock-up so the quote form follows the hero (the flight section shows the app). */}
+      <div className="hidden min-w-0 sm:block">
+        <HeroPhone />
+      </div>
     </section>
   );
 }

@@ -55,7 +55,8 @@ export type TapKind =
   | "app_store"
   | "driver_app"
   | "driver_apply"
-  | "driver_question";
+  | "driver_question"
+  | "quote_whatsapp";
 
 /** Links can override how they're counted with data-tap="<kind>" (e.g. WhatsApp on the driver page). */
 export function isTapKind(v: string | undefined): v is TapKind {
@@ -66,7 +67,8 @@ export function isTapKind(v: string | undefined): v is TapKind {
     v === "app_store" ||
     v === "driver_app" ||
     v === "driver_apply" ||
-    v === "driver_question"
+    v === "driver_question" ||
+    v === "quote_whatsapp"
   );
 }
 
@@ -85,6 +87,18 @@ export function classifyHref(href: string): TapKind | null {
   if (href.includes("apps.apple.com") || href.includes("play.google.com"))
     return "app_store";
   return null;
+}
+
+/**
+ * A price was shown by the quote calculator (status QUOTED / OUT_OF_AREA / BUSY / ERROR).
+ * Reported as an event only — NOT a Google Ads conversion. The conversion is the
+ * "Book this on WhatsApp" tap that may follow (data-tap="quote_whatsapp").
+ */
+export function trackQuoteShown(status: string, fromPrice?: number) {
+  gtag("event", "quote_shown", {
+    quote_status: status,
+    ...(fromPrice !== undefined ? { value: fromPrice, currency: "GBP" } : {}),
+  });
 }
 
 /**

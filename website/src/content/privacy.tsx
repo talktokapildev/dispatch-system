@@ -3,7 +3,7 @@ import { EMAIL, EMAIL_HREF, OPERATING_CENTRE, PHONE_DISPLAY, PHONE_HREF } from "
 
 // Word for word from the approved Privacy artboard (Privacy.dc.html). Do not reword.
 
-export const PRIVACY_UPDATED = "14 October 2026";
+export const PRIVACY_UPDATED = "23 October 2026";
 
 export const PRIVACY_INTRO =
   "How OrangeRide collects, uses and protects your personal data when you book a ride, use our apps or drive with us.";
@@ -90,6 +90,11 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           <li>
             <strong>App and device data:</strong> a notification token so we can send you booking
             updates, and basic technical logs that help us fix problems.
+          </li>
+          <li>
+            <strong>Website quotes:</strong> when you ask for a price on our website, the pickup and
+            drop-off you chose, the date and time if you gave one, the number of passengers and bags,
+            and the price we showed. We don&apos;t ask for your name or phone number for a quote.
           </li>
         </ul>
         <h3>If you drive with us or apply to</h3>
@@ -230,6 +235,9 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
         <li>
           <strong>Flight-tracking data</strong> from our flight data provider: deleted
           automatically after 6 days.
+        </li>
+        <li>
+          <strong>Website quotes:</strong> deleted automatically after 30 days.
         </li>
         <li>
           <strong>Driver records:</strong> for as long as the driver works with us and at least 12

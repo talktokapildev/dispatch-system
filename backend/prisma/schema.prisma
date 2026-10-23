@@ -1343,3 +1343,31 @@ model ComplaintContact {
 
   @@index([complaintId])
 }
+
+// Website quote calculator (orangeride.co.uk). One row per answer shown, so a WhatsApp message
+// quoting the ref ("Q-7K3M") can be looked up. Route, time and price only — no name or phone.
+// Kept 30 days (deleted in the 5-minute cleanup loop).
+model WebQuote {
+  id             String    @id @default(uuid())
+  ref            String    @unique // Q-XXXX
+  status         String // QUOTED | OUT_OF_AREA
+  pickupPlaceId  String
+  pickupAddress  String
+  pickupLat      Float
+  pickupLng      Float
+  dropoffPlaceId String
+  dropoffAddress String
+  dropoffLat     Float
+  dropoffLng     Float
+  pickupAt       DateTime? // when the visitor chose a date + time
+  passengers     Int
+  bags           Int
+  miles          Float?
+  minutes        Int?
+  fareTotal      Float? // exact estimateFare total
+  fromPrice      Int? // whole pounds shown ("From £X")
+  premiumLabel   String? // e.g. "Night rate premium (25%)"
+  createdAt      DateTime  @default(now())
+
+  @@index([createdAt])
+}
