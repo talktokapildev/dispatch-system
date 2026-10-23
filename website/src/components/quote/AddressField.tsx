@@ -35,6 +35,7 @@ export default function AddressField({
   const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Parent can set the value (swap, area-page preset). To clear it, the parent remounts us (key).
@@ -84,6 +85,8 @@ export default function AddressField({
     setText(label);
     setItems([]);
     setOpen(false);
+    // Close the phone keyboard, so iOS doesn't jump straight into the next field (the date picker).
+    inputRef.current?.blur();
   };
 
   const showList = open && text.trim().length >= 3 && (!value || text !== value.label);
@@ -99,6 +102,8 @@ export default function AddressField({
       <div className="flex min-h-[52px] items-center gap-[10px] rounded-[14px] border-[1.5px] border-[#d1d5db] bg-[#f8fafc] px-[14px] transition-colors focus-within:border-amber focus-within:bg-white">
         <PinIcon color={pinColor} />
         <input
+          ref={inputRef}
+          enterKeyHint="done"
           id={id}
           type="text"
           role="combobox"
