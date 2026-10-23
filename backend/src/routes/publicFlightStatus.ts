@@ -1,12 +1,14 @@
 // backend/src/routes/publicFlightStatus.ts
 //
 // Website flight status page — read by the WEBSITE SERVER only (Next.js renders the
-// pages, and the browser's 60-second refresh goes through the website's own route).
+// pages on the server, including the browser's 60-second refresh; "Check flight" goes
+// through the website's /api/flight-status/lookup route).
 // Every request must carry the header  x-site-key: <FLIGHT_STATUS_SITE_KEY>.
 // Production refuses everything while that variable is unset.
 //
 //   GET  /public/flight-status/board                      Gatwick arrivals + departures (cached)
-//   GET  /public/flight-status/flight/:number?date=       one flight, from the cached board only
+//   GET  /public/flight-status/flight/:number?date=       one flight: the cached board, else (with a
+//                                                         date) a cached "Check flight" result
 //   POST /public/flight-status/lookup { number, date }    a person pressed "Check flight":
 //                                                         board first, else ONE provider lookup
 //
@@ -21,6 +23,7 @@ import { overHourlyLimit } from "../lib/clientIp";
 import {
   BoardDeps,
   boardBuffers,
+  cachedLookup,
   getBoard,
   lookupFlight,
 } from "../services/flightBoard.service";
@@ -133,6 +136,14 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
     const now = new Date();
     const board = await getBoard(fastify.redis);
     const found = board ? findInBoard(board.flights, number, date.data ?? null, now) : [];
+    if (!found.length && date.data) {
+      const cached = await cachedLookup(fastify.redis, number, date.data);
+      if (cached)
+        return reply.send({
+          success: true,
+          data: { status: "FOUND", source: "LOOKUP", fetchedAt: cached.fetchedAt, flights: await withViews(cached.flights, now) },
+        });
+    }
     if (!found.length)
       return reply.send({
         success: true,
