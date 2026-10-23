@@ -156,10 +156,11 @@ export default function AddressField({
                 id={`${listId}-${i}`}
                 role="option"
                 aria-selected={i === active}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  choose(s);
-                }}
+                // Keep focus in the box on press (so the list stays open), but choose on the
+                // click itself. Choosing on press let the rest of the tap fall through the closing
+                // list onto the field underneath, which opened the iPhone's time picker.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(s)}
                 onMouseEnter={() => setActive(i)}
                 className={`cursor-pointer rounded-[10px] px-3 py-[10px] ${i === active ? "bg-[#fffbeb]" : ""}`}
               >

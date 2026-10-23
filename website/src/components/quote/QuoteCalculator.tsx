@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { trackQuoteShown } from "@/lib/analytics";
 import {
   durationText,
@@ -24,16 +24,92 @@ const PROMISES = ["No surge pricing", "10 min free wait", "Free cancellation"];
 const fieldClass =
   "min-h-[52px] w-full rounded-[14px] border-[1.5px] border-[#d1d5db] bg-[#f8fafc] px-[14px] text-[16px] text-ink outline-none transition-colors focus:border-amber focus:bg-white";
 
-/**
- * Date/time inputs: iOS Safari gives them a minimum width (they overflowed their column) and
- * centred text. Reset both so they fit the grid like the other fields.
- */
-const dateTimeClass =
-  "block min-w-0 appearance-none text-left [-webkit-appearance:none] [&::-webkit-date-and-time-value]:text-left";
+/** True only in iOS Safari (the only browser with -webkit-touch-callout). */
+const IOS = "supports-[-webkit-touch-callout:none]";
 
-/** iOS shows an empty date/time box with no hint; other browsers show their own (dd/mm/yyyy). */
-const iosPlaceholderClass =
-  "pointer-events-none absolute inset-y-0 left-[15px] hidden items-center text-[16px] font-normal text-muted supports-[-webkit-touch-callout:none]:flex";
+/**
+ * Date/time inputs. iOS Safari gives them a minimum width (they overflowed their column), puts
+ * the value at the top of the box and shows nothing when empty. So on iOS the input's own text is
+ * hidden and we draw the value (or "Any date") ourselves, centred like every other field.
+ * Other browsers show their own text (dd/mm/yyyy, --:--) and our overlay stays hidden.
+ */
+const dateTimeClass = `block min-w-0 appearance-none text-left [-webkit-appearance:none] ${IOS}:text-transparent`;
+const iosOverlayClass = `pointer-events-none absolute inset-y-0 left-[15px] right-3 hidden items-center overflow-hidden whitespace-nowrap text-[16px] ${IOS}:flex`;
+
+/** "2026-10-24" → "Sat 24 Oct" */
+function shortDate(d: string): string {
+  const [y, m, day] = d.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
+    .format(new Date(Date.UTC(y, m - 1, day, 12)))
+    .replace(",", "");
+}
+
+/** Date or time box with its label, a Clear link once set, and the iOS fixes above. */
+function PickerField({
+  type,
+  label,
+  hint,
+  value,
+  onChange,
+  shown,
+  placeholder,
+  min,
+  step,
+}: {
+  type: "date" | "time";
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  shown: string;
+  placeholder: string;
+  min?: string;
+  step?: number;
+}) {
+  const id = useId();
+  return (
+    <div className="flex min-w-0 flex-col gap-[6px]">
+      <div className="flex min-h-[21px] items-center justify-between gap-2">
+        <label htmlFor={id} className="whitespace-nowrap text-[14px] font-bold text-soft">
+          {label}
+          {/* Once set, the hint makes way for "Clear" (both don't fit on narrow phones). */}
+          {!value && <span className="font-semibold text-muted"> · {hint}</span>}
+        </label>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="text-[13px] font-bold text-accent-dark"
+            aria-label={`Clear ${label.toLowerCase()}`}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <span className="relative block">
+        <input
+          id={id}
+          type={type}
+          min={min}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          // iOS's own "Reset" doesn't always fire a change event; read the box when it closes.
+          onBlur={(e) => e.target.value !== value && onChange(e.target.value)}
+          className={`${fieldClass} ${dateTimeClass}`}
+        />
+        <span className={`${iosOverlayClass} ${shown ? "text-ink" : "text-muted"}`} aria-hidden>
+          {shown || placeholder}
+        </span>
+      </span>
+    </div>
+  );
+}
 
 const ctaClass =
   "inline-flex min-h-[58px] items-center justify-center gap-[10px] whitespace-nowrap rounded-[16px] bg-amber px-6 py-[15px] text-[17px] font-extrabold text-ink no-underline shadow-[0_10px_24px_-12px_rgba(245,158,11,0.9)] transition hover:-translate-y-[1px] hover:text-ink hover:shadow-[0_14px_28px_-12px_rgba(245,158,11,0.95)] active:translate-y-0 disabled:translate-y-0 disabled:opacity-60";
@@ -366,36 +442,26 @@ export default function QuoteCalculator({
         </div>
 
         <div className="grid grid-cols-2 gap-3 min-[900px]:col-span-9 min-[900px]:grid-cols-4">
-          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
-            <span>
-              Date <span className="font-semibold text-muted">· optional</span>
-            </span>
-            <span className="relative block">
-              <input
-                type="date"
-                min={ukToday()}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={`${fieldClass} ${dateTimeClass}`}
-              />
-              {!date && <span className={iosPlaceholderClass}>Any date</span>}
-            </span>
-          </label>
-          <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
-            <span>
-              Time <span className="font-semibold text-muted">· UK</span>
-            </span>
-            <span className="relative block">
-              <input
-                type="time"
-                step={300}
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className={`${fieldClass} ${dateTimeClass}`}
-              />
-              {!time && <span className={iosPlaceholderClass}>Any time</span>}
-            </span>
-          </label>
+          <PickerField
+            type="date"
+            label="Date"
+            hint="optional"
+            value={date}
+            onChange={setDate}
+            shown={date ? shortDate(date) : ""}
+            placeholder="Any date"
+            min={ukToday()}
+          />
+          <PickerField
+            type="time"
+            label="Time"
+            hint="UK"
+            value={time}
+            onChange={setTime}
+            shown={time}
+            placeholder="Any time"
+            step={300}
+          />
           <label className="flex min-w-0 flex-col gap-[6px] text-[14px] font-bold text-soft">
             Passengers
             <select
