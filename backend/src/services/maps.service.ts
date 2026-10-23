@@ -128,12 +128,14 @@ export class MapsService {
     }));
   }
 
-  async getPlaceDetails(placeId: string): Promise<GeocodeResult> {
+  async getPlaceDetails(placeId: string, sessionToken?: string): Promise<GeocodeResult> {
     const { data } = await axios.get(`${this.baseUrl}/place/details/json`, {
       params: {
         place_id: placeId,
         key: this.apiKey,
         fields: "formatted_address,geometry",
+        // Ends an autocomplete session (billed once per session instead of per keystroke).
+        ...(sessionToken ? { sessiontoken: sessionToken } : {}),
       },
     });
 

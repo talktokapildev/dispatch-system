@@ -48,6 +48,7 @@ import { adminDriverRegisterRoutes } from "./routes/admin/driverRegister";
 import { adminVehicleRecordRoutes } from "./routes/admin/vehicleRecord";
 import { adminLostPropertyRoutes } from "./routes/admin/lostProperty";
 import { adminComplaintRoutes } from "./routes/admin/complaints";
+import { publicQuoteRoutes } from "./routes/publicQuote";
 import { missingStorageConfig } from "./services/fileStorage";
 import { fileTokenSecretSet } from "./services/fileLinks";
 
@@ -159,6 +160,8 @@ async function buildServer() {
   fastify.register(adminVehicleRecordRoutes, { prefix });
   fastify.register(adminLostPropertyRoutes, { prefix });
   fastify.register(adminComplaintRoutes, { prefix });
+  // Website quote calculator (public; only orangeride.co.uk may call it in production)
+  fastify.register(publicQuoteRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
@@ -239,6 +242,16 @@ async function startStaleBiookingCleanup(
       });
     } catch (err) {
       fastify.log.error({ err }, "[Cleanup] SMS log retention error");
+    }
+    // ── Website quotes retention (30 days; Google allows caching coordinates up to 30 days) ──
+    try {
+      await fastify.prisma.webQuote.deleteMany({
+        where: {
+          createdAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        },
+      });
+    } catch (err) {
+      fastify.log.error({ err }, "[Cleanup] Web quote retention error");
     }
     // ── Flight tracking (Phase 2): watches + safety-net lookups ─────────
     try {

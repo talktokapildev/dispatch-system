@@ -5,6 +5,7 @@ import FinalCta from "@/components/home/FinalCta";
 import Gatwick from "@/components/home/Gatwick";
 import Hero from "@/components/home/Hero";
 import HowToBook from "@/components/home/HowToBook";
+import QuoteSection from "@/components/home/QuoteSection";
 import TrustRow from "@/components/home/TrustRow";
 import WhyOrangeRide from "@/components/home/WhyOrangeRide";
 
@@ -13,6 +14,7 @@ export default function HomePage() {
   return (
     <>
       <Hero />
+      <QuoteSection />
       <TrustRow />
       <Arrivals />
       <WhyOrangeRide />
