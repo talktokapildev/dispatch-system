@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NAV } from "@/lib/nav";
 import { PHONE_DISPLAY, PHONE_HREF, WHATSAPP_HREF } from "@/lib/site";
-import { ChatIcon, PhoneIcon } from "./Icons";
+import { ChatIcon, LiveDot, PhoneIcon } from "./Icons";
 
 /**
  * Header controls below 1100px: a round call button and a Menu button.
@@ -108,9 +108,12 @@ export default function MobileMenu() {
                     <Link
                       href={item.href}
                       onClick={() => close(false)}
-                      className="flex min-h-[48px] items-center rounded-[14px] px-[14px] text-[17px] font-semibold text-soft no-underline hover:bg-page hover:text-ink"
+                      className={`flex min-h-[48px] items-center gap-[9px] rounded-[14px] px-[14px] text-[17px] no-underline hover:bg-page hover:text-ink ${
+                        item.live ? "font-extrabold text-ink" : "font-semibold text-soft"
+                      }`}
                     >
                       {item.label}
+                      {item.live && <LiveDot />}
                     </Link>
                   </li>
                 ))}

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { NAV } from "@/lib/nav";
 import { PHONE_DISPLAY, PHONE_HREF } from "@/lib/site";
-import { PhoneIcon } from "./Icons";
+import { LiveDot, PhoneIcon } from "./Icons";
 import MobileMenu from "./MobileMenu";
 
 /**
@@ -29,8 +29,11 @@ export default function Header() {
           <Link
             key={item.href}
             href={item.href}
-            className="inline-flex min-h-[44px] items-center px-[14px] py-[10px] text-soft no-underline hover:text-ink"
+            className={`inline-flex min-h-[44px] items-center gap-[7px] px-[14px] py-[10px] no-underline hover:text-ink ${
+              item.live ? "font-extrabold text-ink" : "text-soft"
+            }`}
           >
+            {item.live && <LiveDot />}
             {item.label}
           </Link>
         ))}
