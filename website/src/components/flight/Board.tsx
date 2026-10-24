@@ -35,6 +35,9 @@ export default function Board({
   now,
   tabHref,
   highlightId,
+  title,
+  emptyText,
+  showAll = false,
 }: {
   data: BoardData;
   direction: Direction;
@@ -42,6 +45,9 @@ export default function Board({
   now: Date;
   tabHref: (d: Direction) => string;
   highlightId?: string;
+  title?: string; // replaces the heading (e.g. "easyJet at Gatwick today")
+  emptyText?: string; // replaces "No more arrivals in the next few hours."
+  showAll?: boolean; // not full: list every coming flight, not just the next 6
 }) {
   const rows = direction === "ARRIVAL" ? data.arrivals : data.departures;
   const weather = data.weather ?? {};
@@ -52,7 +58,7 @@ export default function Board({
   const rest = rows.filter((r) => !earlier.includes(r));
   // Full board: everything in the next hour, and never fewer than 8 rows.
   const soon = rest.filter((r) => key(r) <= t + 60 * 60_000);
-  const shown = full ? rest.slice(0, Math.max(soon.length, 8)) : rest.slice(0, 6);
+  const shown = full ? rest.slice(0, Math.max(soon.length, 8)) : showAll ? rest : rest.slice(0, 6);
   const laterRest = full ? rest.slice(shown.length) : [];
   const showBelt = direction === "ARRIVAL" && rows.some((r) => r.baggageBelt);
   const showGate = direction === "DEPARTURE" && rows.some((r) => r.gate);
@@ -88,7 +94,7 @@ export default function Board({
     <section className="flex flex-col gap-[14px]" aria-labelledby="board-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="board-heading" className={h2}>
-          {full ? `Gatwick ${direction === "ARRIVAL" ? "arrivals" : "departures"} today` : "More flights at Gatwick"}
+          {title ?? (full ? `Gatwick ${direction === "ARRIVAL" ? "arrivals" : "departures"} today` : "More flights at Gatwick")}
         </h2>
         <nav aria-label="Arrivals or departures" className="flex gap-1 rounded-full bg-[#e2e8f0] p-1">
           <KeepScrollLink href={tabHref("ARRIVAL")} current={direction === "ARRIVAL"} className={tabClass(direction === "ARRIVAL")}>
@@ -122,7 +128,9 @@ export default function Board({
         {shown.length ? (
           list(shown)
         ) : (
-          <p className="m-0 border-t border-[#eef0f3] px-[18px] py-5 text-[15.5px]">No more {direction === "ARRIVAL" ? "arrivals" : "departures"} in the next few hours.</p>
+          <p className="m-0 border-t border-[#eef0f3] px-[18px] py-5 text-[15.5px]">
+            {emptyText ?? `No more ${direction === "ARRIVAL" ? "arrivals" : "departures"} in the next few hours.`}
+          </p>
         )}
         {laterRest.length > 0 && (
           <details className="group border-t border-[#eef0f3]">

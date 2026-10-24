@@ -5,7 +5,7 @@ import AutoRefresh from "@/components/flight/AutoRefresh";
 import Board from "@/components/flight/Board";
 import { boardHref } from "@/components/flight/BoardPage";
 import FlightCard from "@/components/flight/FlightCard";
-import { BookPanel, GatwickFacts, PlainEnglish, Tips } from "@/components/flight/FlightDetails";
+import { AirlineTerminalLink, BookPanel, GatwickFacts, PlainEnglish, Tips } from "@/components/flight/FlightDetails";
 import FlightFaq from "@/components/flight/FlightFaq";
 import FlightSearch from "@/components/flight/FlightSearch";
 import { breadcrumbs, JsonLd } from "@/components/flight/JsonLd";
@@ -171,6 +171,7 @@ export default async function FlightPage({ params, searchParams }: Props) {
                   In plain English
                 </h2>
                 <p className="m-0 text-[17px] text-soft">{seenSentence(s)}</p>
+                <AirlineTerminalLink slug={s.airlineSlug} name={s.airline.name} />
               </section>
               {board?.fetchedAt && !board.stale && (
                 <Board data={board} direction={s.direction} full={false} now={now} tabHref={boardHref} />

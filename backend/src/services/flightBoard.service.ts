@@ -23,6 +23,9 @@
 //
 // Weather at each airport on the board (weather.service.ts, OpenWeather) is topped up on the
 // same 1-minute tick, separately from AeroDataBox units.
+//
+// Each refresh also feeds the 7-day "seen" memory (flightSeen.service.ts) and the airline
+// terminal summary (airlineTerminals.service.ts), both from the same response.
 import axios from "axios";
 import Redis from "ioredis";
 import { PrismaClient } from "@prisma/client";
@@ -30,6 +33,7 @@ import { alertAdmin } from "./flightAlerts.service";
 import { getFlightBuffers, BUFFER_DEFAULTS } from "../utils/airportPickup";
 import { ensureWeather, LGW_PLACE, Place, refreshWeather } from "./weather.service";
 import { recordSeen } from "./flightSeen.service";
+import { recordAirlineTerminals } from "./airlineTerminals.service";
 import {
   AIRPORT_IATA,
   BoardFlight,
@@ -174,6 +178,10 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
     // Remember these flights for 7 days, so their pages stay useful between live windows.
     await recordSeen(redis, flights, now).catch((err) =>
       log.warn(`[FlightBoard] could not record seen flights: ${(err as Error)?.message ?? err}`)
+    );
+    // Which terminal each airline uses (the website's /gatwick/terminals pages).
+    await recordAirlineTerminals(redis, flights, now).catch((err) =>
+      log.warn(`[FlightBoard] could not record airline terminals: ${(err as Error)?.message ?? err}`)
     );
     const arr = flights.filter((f) => f.direction === "ARRIVAL").length;
     log.warn(

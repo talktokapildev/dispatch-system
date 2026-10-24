@@ -28,6 +28,7 @@ export type BoardFlight = {
   operatedBy: string | null;
   status: string | null;
   aircraft: string | null;
+  airlineSlug?: string | null; // its /gatwick/terminals/<slug> page (older backends: absent)
   other: {
     iata: string | null;
     name: string | null;
@@ -91,6 +92,7 @@ export type SeenFlight = {
   aircraft: string | null;
   lastDate: string; // "2026-10-23"
   seenAt: string;
+  airlineSlug?: string | null;
 };
 
 export type BoardRow = {
@@ -117,6 +119,93 @@ export type BoardData = {
   departures: BoardRow[];
   weather?: WeatherMap; // by airport code; "LGW" = Gatwick
 };
+
+// ── Which terminal (/gatwick/terminals) ─────────────────────────────────────
+export type TerminalAnswer = "NORTH" | "SOUTH" | "BOTH";
+
+/** One airline at Gatwick over the last 7 days (backend airlineTerminalRules.ts). */
+export type AirlineTerminal = {
+  slug: string;
+  name: string;
+  codes: string[];
+  flights: number;
+  arrivals: number;
+  departures: number;
+  north: number; // flights with a stated North terminal
+  south: number;
+  terminal: TerminalAnswer | null;
+  mainShare: number | null;
+  moved: { from: "NORTH" | "SOUTH"; to: "NORTH" | "SOUTH"; since: string } | null;
+  firstDate: string;
+  lastDate: string;
+  hasPage: boolean; // enough flights for its own (indexed) page
+};
+
+export type TerminalSummary = { updatedAt: string | null; airlines: AirlineTerminal[] };
+
+export type AirlineTerminalPage =
+  | {
+      status: "FOUND";
+      updatedAt: string;
+      airline: AirlineTerminal;
+      board: BoardData; // only this airline's flights; empty when the board is old
+      sameTerminal: { slug: string; name: string }[];
+    }
+  | { status: "NOT_FOUND" | "ERROR" };
+
+// Our own meeting points (same as the home page "Gatwick specialists" section).
+export const MEETING_POINT = { NORTH: "Car Park 6, Level 4", SOUTH: "Orange Car Park, Level 3" } as const;
+
+export const terminalShort = (t: TerminalAnswer | null) =>
+  t === "NORTH" ? "North" : t === "SOUTH" ? "South" : t === "BOTH" ? "Both" : "Not known yet";
+
+/** Days the figures cover, 1–7 ("in the last 3 days" while the record is still filling up). */
+export function daysCovered(firstDate: string, now: Date = new Date()): number {
+  const first = Date.parse(`${firstDate}T12:00:00Z`);
+  const today = Date.parse(`${ukDate(now)}T12:00:00Z`);
+  return Math.min(7, Math.max(1, Math.round((today - first) / 86_400_000) + 1));
+}
+
+export const lastDays = (n: number) => (n === 1 ? "today" : `in the last ${n} days`);
+
+/** "easyJet's" / "British Airways'" */
+export const possessive = (name: string) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
+
+/** "easyJet uses the North Terminal." */
+export function terminalAnswer(a: AirlineTerminal): string {
+  switch (a.terminal) {
+    case "NORTH":
+    case "SOUTH":
+      return `${a.name} uses the ${terminalName(a.terminal)}.`;
+    case "BOTH":
+      return `${a.name} uses both terminals.`;
+    default:
+      return `We haven't seen a terminal for ${a.name} yet.`;
+  }
+}
+
+/** The evidence under the answer, e.g. "From 312 flights in the last 7 days: 309 North, 3 South." */
+export function terminalEvidence(a: AirlineTerminal, now: Date = new Date()): string {
+  const days = lastDays(daysCovered(a.firstDate, now));
+  const flights = `${a.flights} ${a.name} ${a.flights === 1 ? "flight" : "flights"} at Gatwick ${days}`;
+  const stated = a.north + a.south;
+  if (!stated) return `From ${flights}. Gatwick hadn't published the terminal for any of them yet, so check your booking.`;
+  const parts = [a.north ? `${a.north} North` : null, a.south ? `${a.south} South` : null].filter(Boolean).join(", ");
+  const unknown = a.flights - stated;
+  const counts = `${parts}${unknown ? ` (${unknown} not shown yet)` : ""}`;
+  if (a.moved)
+    return `Since ${dayLabel(a.moved.since)}, ${possessive(a.name)} flights have used the ${terminalName(a.moved.to)}. All ${a.flights} ${a.flights === 1 ? "flight" : "flights"} ${days}: ${counts}.`;
+  return `From ${flights}: ${counts}.`;
+}
+
+/** The exception line, when there is one. */
+export function terminalCaveat(a: AirlineTerminal): string | null {
+  if (a.terminal === "BOTH") return "Which one depends on the flight: find yours below, or check your booking.";
+  if (a.terminal !== "NORTH" && a.terminal !== "SOUTH") return null;
+  const other = a.terminal === "NORTH" ? a.south : a.north;
+  if (!other || a.moved) return null;
+  return `A few flights use the ${a.terminal === "NORTH" ? "South" : "North"} Terminal, so check your booking before you set off.`;
+}
 
 // ── Weather (OpenWeather, cached by the backend) ───────────────────────────
 export type WeatherKind = "clear" | "partly" | "cloudy" | "rain" | "drizzle" | "snow" | "thunder" | "fog";
