@@ -51,6 +51,8 @@ import { adminComplaintRoutes } from "./routes/admin/complaints";
 import { publicQuoteRoutes } from "./routes/publicQuote";
 import { publicFlightStatusRoutes } from "./routes/publicFlightStatus";
 import { startFlightBoardRefresh } from "./services/flightBoard.service";
+import { publicTrainTimesRoutes } from "./routes/publicTrainTimes";
+import { startTrainBoardRefresh } from "./services/trainBoard.service";
 import { missingStorageConfig } from "./services/fileStorage";
 import { fileTokenSecretSet } from "./services/fileLinks";
 
@@ -166,6 +168,8 @@ async function buildServer() {
   fastify.register(publicQuoteRoutes, { prefix });
   // Website flight status page (website server only: x-site-key header)
   fastify.register(publicFlightStatusRoutes, { prefix });
+  // Website live train times pages (website server only: same x-site-key header)
+  fastify.register(publicTrainTimesRoutes, { prefix });
   // Provider callback — no /api/v1 prefix (URL contains FLIGHT_WEBHOOK_SECRET)
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
@@ -400,6 +404,8 @@ async function start() {
     reseedOnlineDrivers(server);
     // Website flight status board: one AeroDataBox call per FLIGHT_BOARD_REFRESH_MIN (off unless FLIGHT_BOARD_ENABLED=true)
     startFlightBoardRefresh({ redis: server.redis, prisma: server.prisma, log: server.log });
+    // Website train times: National Rail boards every minute (off unless RAIL_DATA_API_KEY is set)
+    startTrainBoardRefresh({ redis: server.redis, log: server.log });
   } catch (err) {
     server.log.error(err);
     process.exit(1);

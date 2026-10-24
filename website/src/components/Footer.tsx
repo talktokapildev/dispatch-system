@@ -53,6 +53,9 @@ export default function Footer() {
             <Link href="/flight-status" className={link}>
               Gatwick flight status
             </Link>
+            <Link href="/trains/three-bridges" className={link}>
+              Three Bridges train times
+            </Link>
             <Link href="/#arrivals" className={link}>
               Flight tracking
             </Link>

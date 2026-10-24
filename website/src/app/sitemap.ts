@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { fetchSitemapNumbers } from "@/lib/flightStatus";
 import { SITE_URL } from "@/lib/site";
+import { boardPath, TRAIN_STATIONS } from "@/lib/trainFormat";
 
 // Built on each request (Google fetches it now and then): the flight list changes through the day.
 // Reading it from the backend is cheap (Redis only) and never costs flight-provider units.
@@ -15,6 +16,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/`, changeFrequency: "monthly", priority: 1 },
     { url: `${SITE_URL}/flight-status`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/flight-status/departures`, lastModified: now, changeFrequency: "always", priority: 0.8 },
+    ...TRAIN_STATIONS.flatMap((st) =>
+      (["ARRIVALS", "DEPARTURES"] as const).map((way) => ({
+        url: `${SITE_URL}${boardPath(st.slug, way)}`,
+        lastModified: now,
+        changeFrequency: "always" as const,
+        priority: 0.7,
+      })),
+    ),
     { url: `${SITE_URL}/drivers`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/privacy`, lastModified: privacyUpdated, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE_URL}/terms`, lastModified: termsUpdated, changeFrequency: "yearly", priority: 0.3 },
