@@ -29,6 +29,7 @@ import { PrismaClient } from "@prisma/client";
 import { alertAdmin } from "./flightAlerts.service";
 import { getFlightBuffers, BUFFER_DEFAULTS } from "../utils/airportPickup";
 import { ensureWeather, LGW_PLACE, Place, refreshWeather } from "./weather.service";
+import { recordSeen } from "./flightSeen.service";
 import {
   AIRPORT_IATA,
   BoardFlight,
@@ -170,6 +171,10 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
     const flights = r.status === 204 ? [] : parseBoard(r.body);
     const stored: StoredBoard = { fetchedAt: now.toISOString(), fromLocal: w.fromLocal, toLocal: w.toLocal, flights };
     await redis.set(KEY_DATA, JSON.stringify(stored), "EX", DATA_TTL_S);
+    // Remember these flights for 7 days, so their pages stay useful between live windows.
+    await recordSeen(redis, flights, now).catch((err) =>
+      log.warn(`[FlightBoard] could not record seen flights: ${(err as Error)?.message ?? err}`)
+    );
     const arr = flights.filter((f) => f.direction === "ARRIVAL").length;
     log.warn(
       `[FlightBoard] refreshed ${w.fromLocal}..${w.toLocal}: ${arr} arrivals, ${flights.length - arr} departures; units left ${await redis.get(KEY_UNITS)}`

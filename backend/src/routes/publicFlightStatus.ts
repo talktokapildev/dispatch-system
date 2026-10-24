@@ -8,7 +8,9 @@
 //
 //   GET  /public/flight-status/board                      Gatwick arrivals + departures (cached)
 //   GET  /public/flight-status/flight/:number?date=       one flight: the cached board, else (with a
-//                                                         date) a cached "Check flight" result
+//                                                         date) a cached "Check flight" result, else
+//                                                         what we remember from the last 7 days (SEEN)
+//   GET  /public/flight-status/sitemap                    flight page numbers seen in the last 7 days
 //   POST /public/flight-status/lookup { number, date }    a person pressed "Check flight":
 //                                                         board first, else ONE provider lookup
 //
@@ -36,6 +38,7 @@ import {
   matchKey,
 } from "../services/flightBoardRules";
 import { readWeather } from "../services/weather.service";
+import { listSeen, readSeen } from "../services/flightSeen.service";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -161,12 +164,32 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
       const cached = await cachedLookup(fastify.redis, number, date.data);
       if (cached) return reply.send({ success: true, data: await found("LOOKUP", cached.fetchedAt, cached.flights, now) });
     }
-    if (!inBoard.length)
+    if (!inBoard.length) {
+      // Not live right now: what we remember about this flight from the last 7 days, if anything.
+      const seen = await readSeen(fastify.redis, number);
+      if (seen.length)
+        return reply.send({
+          success: true,
+          data: {
+            status: "SEEN",
+            seen,
+            boardFrom: board?.fromLocal ?? null,
+            boardTo: board?.toLocal ?? null,
+            weather: await readWeather(fastify.redis, ["LGW", ...seen.map((s) => s.other.iata)]),
+          },
+        });
       return reply.send({
         success: true,
         data: { status: "NOT_IN_BOARD", boardFrom: board?.fromLocal ?? null, boardTo: board?.toLocal ?? null },
       });
+    }
     return reply.send({ success: true, data: await found("BOARD", board!.fetchedAt, inBoard, now) });
+  });
+
+  // Flight page numbers seen in the last 7 days, for the website's sitemap.
+  fastify.get("/public/flight-status/sitemap", { config: { rateLimit: false } }, async (request, reply) => {
+    if (refuse(request, reply)) return;
+    return reply.send({ success: true, data: { numbers: await listSeen(fastify.redis) } });
   });
 
   fastify.post("/public/flight-status/lookup", { config: { rateLimit: false } }, async (request, reply) => {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PinIcon, PlaneIcon } from "../Icons";
 import { PhoneText } from "../Responsive";
 
@@ -188,6 +189,14 @@ export default function Arrivals() {
             </div>
           </div>
         </div>
+
+        {/* Link to the live flight status page (the home page is the site's strongest page for Google). */}
+        <p className="m-0 text-[17px]">
+          Just checking a flight?{" "}
+          <Link href="/flight-status" className="font-bold text-[#fbbf24] hover:text-[#fde68a]">
+            See live Gatwick arrivals and departures →
+          </Link>
+        </p>
       </div>
     </section>
   );

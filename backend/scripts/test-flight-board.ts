@@ -23,6 +23,22 @@ class FakeRedis {
   async mget(...ks: string[]) {
     return ks.map((k) => this.store.get(k) ?? null);
   }
+  zsets = new Map<string, Map<string, number>>();
+  async zadd(k: string, score: number, m: string) {
+    const z = this.zsets.get(k) ?? new Map();
+    z.set(m, score);
+    this.zsets.set(k, z);
+    return 1;
+  }
+  async zremrangebyscore(k: string, min: number, max: number) {
+    const z = this.zsets.get(k);
+    if (z) for (const [m, sc] of z) if (sc >= min && sc <= max) z.delete(m);
+    return 1;
+  }
+  async zrangebyscore(k: string, min: number) {
+    const z = this.zsets.get(k) ?? new Map<string, number>();
+    return [...z].filter(([, sc]) => sc >= min).map(([m]) => m);
+  }
   async set(k: string, v: string, ...args: unknown[]) {
     if (args.includes("NX") && this.store.has(k)) return null;
     this.store.set(k, v);
@@ -197,6 +213,10 @@ async function main() {
   const callsBefore = calls.length;
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/BA9999?date=2026-10-24", headers: H });
   check("page load never calls provider", r.json().data.status === "NOT_IN_BOARD" && calls.length === callsBefore);
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687?date=2026-10-30", headers: H });
+  check("remembered flight on another day → SEEN", r.json().data.status === "SEEN" && r.json().data.seen[0].usualTimeUk === "21:10", r.json().data.status);
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/sitemap", headers: H });
+  check("sitemap lists seen flights", r.json().data.numbers.includes("EZY8687"), JSON.stringify(r.json().data));
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/nonsense", headers: H });
   check("bad number", r.json().data.status === "INVALID");
 
