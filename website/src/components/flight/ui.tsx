@@ -53,13 +53,25 @@ export function Fact({ label, value, note }: { label: string; value: ReactNode; 
   );
 }
 
-/** The dark band at the top of both pages (heading, Gatwick's weather now, search form). */
-export function DarkBand({ heading, children, gatwick }: { heading: ReactNode; children: ReactNode; gatwick?: Weather }) {
+/** The dark band at the top of the flight and train pages (heading, weather there now, search form). */
+export function DarkBand({
+  heading,
+  children,
+  gatwick,
+  eyebrow: label = "LIVE FLIGHT STATUS · LONDON GATWICK",
+  weatherLabel = "Gatwick now",
+}: {
+  heading: ReactNode;
+  children: ReactNode;
+  gatwick?: Weather | null;
+  eyebrow?: string;
+  weatherLabel?: string;
+}) {
   return (
     <section className="bg-ink text-[#d1d5db]">
       <div className="mx-auto flex max-w-site flex-col gap-[18px] px-4 pb-[104px] pt-9 sm:gap-[22px] sm:px-6 sm:pb-[132px] sm:pt-14">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <span className={`${eyebrow} text-[#fbbf24]`}>LIVE FLIGHT STATUS · LONDON GATWICK</span>
+          <span className={`${eyebrow} text-[#fbbf24]`}>{label}</span>
           {gatwick && (
             <p
               className="m-0 inline-flex items-center gap-[10px] rounded-[16px] bg-ink-2 py-2 pl-[10px] pr-4 sm:rounded-full"
@@ -70,7 +82,7 @@ export function DarkBand({ heading, children, gatwick }: { heading: ReactNode; c
               </span>
               <span className="flex flex-col leading-tight sm:flex-row sm:items-center sm:gap-[10px]">
                 <span className="whitespace-nowrap font-bold text-white">
-                  Gatwick now <span className="font-heading text-[20px]">{gatwick.tempC}°</span>
+                  {weatherLabel} <span className="font-heading text-[20px]">{gatwick.tempC}°</span>
                 </span>
                 <span className="whitespace-nowrap text-[14px] text-[#c4c9d1] sm:text-[15px]">
                   {gatwick.text} · Wind {gatwick.windMph} mph

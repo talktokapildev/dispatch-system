@@ -17,11 +17,11 @@
 // None of these GETs ever calls the flight provider (see flightBoard.service.ts).
 // The website forwards the visitor's IP in x-visitor-ip (trusted only because the
 // site key is checked first) for the per-visitor lookup limit.
-import crypto from "crypto";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { RedisKeys } from "../plugins/redis";
 import { overHourlyLimit } from "../lib/clientIp";
+import { siteKeyOk } from "../lib/siteKey";
 import {
   BoardDeps,
   boardBuffers,
@@ -42,15 +42,6 @@ import { listSeen, readSeen } from "../services/flightSeen.service";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
-
-function siteKeyOk(request: FastifyRequest): boolean | "unset" {
-  const expected = process.env.FLIGHT_STATUS_SITE_KEY ?? "";
-  if (!expected) return process.env.NODE_ENV === "production" ? "unset" : true;
-  const got = String(request.headers["x-site-key"] ?? "");
-  const a = Buffer.from(got);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
 
 const dateParam = z
   .string()
