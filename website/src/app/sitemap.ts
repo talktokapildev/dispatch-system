@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { fetchSitemapNumbers } from "@/lib/flightStatus";
+import { fetchSitemapLists } from "@/lib/flightStatus";
 import { SITE_URL } from "@/lib/site";
 import { boardPath, TRAIN_STATIONS } from "@/lib/trainFormat";
 
@@ -10,12 +10,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const privacyUpdated = new Date("2026-10-14");
   const termsUpdated = new Date("2026-10-14");
   const now = new Date();
-  // Flight pages seen on the Gatwick board in the last 7 days (empty if the backend can't be reached).
-  const flights = await fetchSitemapNumbers();
+  // Flight pages seen on the Gatwick board in the last 7 days, and airlines with enough flights
+  // for their own terminal page (both empty if the backend can't be reached).
+  const { numbers: flights, airlines } = await fetchSitemapLists();
   return [
     { url: `${SITE_URL}/`, changeFrequency: "monthly", priority: 1 },
     { url: `${SITE_URL}/flight-status`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/flight-status/departures`, lastModified: now, changeFrequency: "always", priority: 0.8 },
+    { url: `${SITE_URL}/gatwick/terminals`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
+    ...airlines.map((slug) => ({
+      url: `${SITE_URL}/gatwick/terminals/${encodeURIComponent(slug)}`,
+      lastModified: now,
+      changeFrequency: "daily" as const,
+      priority: 0.6,
+    })),
     ...TRAIN_STATIONS.flatMap((st) =>
       (["ARRIVALS", "DEPARTURES"] as const).map((way) => ({
         url: `${SITE_URL}${boardPath(st.slug, way)}`,

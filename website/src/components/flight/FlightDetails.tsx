@@ -12,11 +12,9 @@ import {
   ukDate,
   ukTime,
 } from "@/lib/flightFormat";
+import { MEETING_POINT as MEET } from "@/lib/flightFormat";
 import { WHATSAPP_HREF } from "@/lib/site";
 import { Fact, h2 } from "./ui";
-
-// Our own meeting points (same as the home page "Gatwick specialists" section).
-const MEET = { NORTH: "Car Park 6, Level 4", SOUTH: "Orange Car Park, Level 3" } as const;
 const BOOK_AHEAD_HOURS = 24;
 
 /** "At Gatwick" facts. Anything the airport hasn't published is left out, not shown empty. */
@@ -53,7 +51,20 @@ export function GatwickFacts({ f }: { f: BoardFlight }) {
           <Fact key={x.label} label={x.label} value={x.value} note={x.note} />
         ))}
       </div>
+      <AirlineTerminalLink slug={f.airlineSlug} name={f.airline.name} />
     </section>
+  );
+}
+
+/** "easyJet at Gatwick: which terminal?" — the airline's own page (links both ways help Google). */
+export function AirlineTerminalLink({ slug, name }: { slug?: string | null; name: string | null }) {
+  if (!slug) return null;
+  return (
+    <p className="m-0 text-[15px]">
+      <Link href={`/gatwick/terminals/${slug}`} className="font-bold">
+        {name ?? "This airline"} at Gatwick: which terminal, and its other flights
+      </Link>
+    </p>
   );
 }
 

@@ -217,6 +217,31 @@ async function main() {
   check("remembered flight on another day → SEEN", r.json().data.status === "SEEN" && r.json().data.seen[0].usualTimeUk === "21:10", r.json().data.status);
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/sitemap", headers: H });
   check("sitemap lists seen flights", r.json().data.numbers.includes("EZY8687"), JSON.stringify(r.json().data));
+  check("sitemap: no airline page below the flight minimum", Array.isArray(r.json().data.airlines) && r.json().data.airlines.length === 0);
+
+  // ── Which terminal (airline pages) ──
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687", headers: H });
+  check("flight reply carries its airline page", r.json().data.flights[0].flight.airlineSlug === "easyjet");
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687?date=2026-10-30", headers: H });
+  check("seen reply carries its airline page", r.json().data.seen[0].airlineSlug === "easyjet");
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals", headers: { "x-site-key": "wrong" } });
+  check("terminals: wrong key → 403", r.statusCode === 403);
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals", headers: H });
+  const ezyLine = r.json().data.airlines.find((a: any) => a.slug === "easyjet");
+  check("terminals: easyJet recorded by the refresh", !!ezyLine && ezyLine.flights === 1 && ezyLine.hasPage === false, JSON.stringify(ezyLine));
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals/easyjet", headers: H });
+  check("airline page: found, old board not used", r.json().data.status === "FOUND" && r.json().data.board.stale === true && r.json().data.board.arrivals.length === 0);
+  const storedBoard = JSON.parse((await redis.get("flightboard:LGW:data"))!);
+  await redis.set("flightboard:LGW:data", JSON.stringify({ ...storedBoard, fetchedAt: "2026-10-23T19:35:00.000Z" }));
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals/easyjet", headers: H });
+  const ap = r.json().data;
+  check("airline page: its flights from a fresh board", ap.board.stale === false && ap.board.arrivals.length === 1 && ap.board.arrivals[0].displayNumber === "EZY8687");
+  check("airline page: no other airline's flights", ap.board.departures.length === 0);
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals/no-such-airline", headers: H });
+  check("airline page: unknown → NOT_FOUND", r.json().data.status === "NOT_FOUND");
+  r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals/BAD%20slug!", headers: H });
+  check("airline page: bad slug → NOT_FOUND", r.json().data.status === "NOT_FOUND");
+  await redis.set("flightboard:LGW:data", JSON.stringify(storedBoard));
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/nonsense", headers: H });
   check("bad number", r.json().data.status === "INVALID");
 

@@ -4,7 +4,7 @@
 // Env (website service on Railway): FLIGHT_STATUS_SITE_KEY — the same value as the backend's.
 
 import { API_URL } from "./quote";
-import type { BoardData, FlightWithView, SeenFlight, WeatherMap } from "./flightFormat";
+import type { AirlineTerminalPage, BoardData, FlightWithView, SeenFlight, TerminalSummary, WeatherMap } from "./flightFormat";
 
 export type FlightResult =
   | { status: "FOUND"; source: "BOARD" | "LOOKUP"; fetchedAt: string; flights: FlightWithView[]; weather?: WeatherMap }
@@ -48,10 +48,22 @@ export async function fetchFlight(number: string, date: string | null): Promise<
   return data ?? { status: "ERROR" };
 }
 
-/** Page numbers (e.g. "EZY8687") of flights seen in the last 7 days, for the sitemap. */
-export async function fetchSitemapNumbers(): Promise<string[]> {
+/** For the sitemap: flight page numbers (e.g. "EZY8687") seen in the last 7 days, and airlines with a terminal page. */
+export async function fetchSitemapLists(): Promise<{ numbers: string[]; airlines: string[] }> {
   const data = await getJson("/public/flight-status/sitemap");
-  return Array.isArray(data?.numbers) ? data.numbers.filter((n: unknown) => typeof n === "string") : [];
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is string => typeof n === "string") : []);
+  return { numbers: strings(data?.numbers), airlines: strings(data?.airlines) };
+}
+
+/** Which terminal each airline uses (last 7 days); null if the backend can't be reached. */
+export async function fetchTerminals(): Promise<TerminalSummary | null> {
+  return getJson("/public/flight-status/terminals");
+}
+
+/** One airline: its terminal and its flights on the live board. */
+export async function fetchAirlineTerminal(slug: string): Promise<AirlineTerminalPage> {
+  const data = await getJson(`/public/flight-status/terminals/${encodeURIComponent(slug)}`);
+  return data ?? { status: "ERROR" };
 }
 
 /** A person pressed "Check flight": the board first, otherwise ONE provider lookup (2 units). */

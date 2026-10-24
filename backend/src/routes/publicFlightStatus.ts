@@ -10,7 +10,10 @@
 //   GET  /public/flight-status/flight/:number?date=       one flight: the cached board, else (with a
 //                                                         date) a cached "Check flight" result, else
 //                                                         what we remember from the last 7 days (SEEN)
-//   GET  /public/flight-status/sitemap                    flight page numbers seen in the last 7 days
+//   GET  /public/flight-status/sitemap                    flight page numbers seen in the last 7 days,
+//                                                         and airlines with their own terminal page
+//   GET  /public/flight-status/terminals                  which terminal each airline uses (last 7 days)
+//   GET  /public/flight-status/terminals/:slug            one airline: its terminal + its flights on the board
 //   POST /public/flight-status/lookup { number, date }    a person pressed "Check flight":
 //                                                         board first, else ONE provider lookup
 //
@@ -39,6 +42,8 @@ import {
 } from "../services/flightBoardRules";
 import { readWeather } from "../services/weather.service";
 import { listSeen, readSeen } from "../services/flightSeen.service";
+import { getTerminalSummary } from "../services/airlineTerminals.service";
+import { airlineSlug } from "../services/airlineTerminalRules";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -101,7 +106,11 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
   const withViews = async (flights: BoardFlight[], now: Date) => {
     const buffers = await boardBuffers(deps);
     return flights.map((flight) => ({
-      flight: { ...flight, displayNumber: flight.displayNumber ?? displayNumberFor(flight.number, flight.airline.iata) },
+      flight: {
+        ...flight,
+        displayNumber: flight.displayNumber ?? displayNumberFor(flight.number, flight.airline.iata),
+        airlineSlug: airlineSlug(flight.airline), // its /gatwick/terminals/<slug> page
+      },
       view: describe(flight, now, buffers),
     }));
   };
@@ -163,7 +172,7 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
           success: true,
           data: {
             status: "SEEN",
-            seen,
+            seen: seen.map((s) => ({ ...s, airlineSlug: airlineSlug(s.airline) })),
             boardFrom: board?.fromLocal ?? null,
             boardTo: board?.toLocal ?? null,
             weather: await readWeather(fastify.redis, ["LGW", ...seen.map((s) => s.other.iata)]),
@@ -180,7 +189,71 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
   // Flight page numbers seen in the last 7 days, for the website's sitemap.
   fastify.get("/public/flight-status/sitemap", { config: { rateLimit: false } }, async (request, reply) => {
     if (refuse(request, reply)) return;
-    return reply.send({ success: true, data: { numbers: await listSeen(fastify.redis) } });
+    const terminals = await getTerminalSummary(fastify.redis);
+    return reply.send({
+      success: true,
+      data: {
+        numbers: await listSeen(fastify.redis),
+        airlines: (terminals?.airlines ?? []).filter((a) => a.hasPage).map((a) => a.slug),
+      },
+    });
+  });
+
+  // Which terminal each airline uses, from the board's last 7 days (Redis only).
+  fastify.get("/public/flight-status/terminals", { config: { rateLimit: false } }, async (request, reply) => {
+    if (refuse(request, reply)) return;
+    const summary = await getTerminalSummary(fastify.redis);
+    return reply.send({ success: true, data: summary ?? { updatedAt: null, airlines: [] } });
+  });
+
+  // One airline's page: its terminal, and its flights on the live board (arrivals and departures).
+  fastify.get("/public/flight-status/terminals/:slug", { config: { rateLimit: false } }, async (request, reply) => {
+    if (refuse(request, reply)) return;
+    const slug = String((request.params as { slug?: string }).slug ?? "").toLowerCase();
+    if (!/^[a-z0-9-]{1,60}$/.test(slug)) return reply.send({ success: true, data: { status: "NOT_FOUND" } });
+    const summary = await getTerminalSummary(fastify.redis);
+    const airline = summary?.airlines.find((a) => a.slug === slug);
+    if (!summary || !airline) return reply.send({ success: true, data: { status: "NOT_FOUND" } });
+
+    const now = new Date();
+    const board = await getBoard(fastify.redis);
+    const fresh = !!board && (now.getTime() - Date.parse(board.fetchedAt)) / 60_000 <= staleAfterMin();
+    const buffers = await boardBuffers(deps);
+    const from = now.getTime() - BOARD_BACK_MIN * 60_000;
+    const rows = (dir: "ARRIVAL" | "DEPARTURE") =>
+      fresh
+        ? boardList(board!.flights, dir)
+            .filter((f) => airlineSlug(f.airline) === slug && Date.parse(f.lgw.scheduledUtc) >= from)
+            .map((f) => boardRow(f, now, buffers))
+        : [];
+    const arrivals = rows("ARRIVAL");
+    const departures = rows("DEPARTURE");
+    // Other airlines with their own page at the same terminal (links between the pages).
+    const sameTerminal =
+      airline.terminal === "NORTH" || airline.terminal === "SOUTH"
+        ? summary.airlines
+            .filter((a) => a.slug !== slug && a.hasPage && a.terminal === airline.terminal)
+            .slice(0, 12)
+            .map((a) => ({ slug: a.slug, name: a.name }))
+        : [];
+    return reply.send({
+      success: true,
+      data: {
+        status: "FOUND",
+        updatedAt: summary.updatedAt,
+        airline,
+        board: {
+          fetchedAt: fresh ? board!.fetchedAt : null,
+          stale: !fresh,
+          arrivals,
+          departures,
+          weather: fresh
+            ? await readWeather(fastify.redis, ["LGW", ...[...arrivals, ...departures].map((r) => r.other.iata)])
+            : await readWeather(fastify.redis, ["LGW"]),
+        },
+        sameTerminal,
+      },
+    });
   });
 
   fastify.post("/public/flight-status/lookup", { config: { rateLimit: false } }, async (request, reply) => {
