@@ -4,10 +4,11 @@
 // Env (website service on Railway): FLIGHT_STATUS_SITE_KEY — the same value as the backend's.
 
 import { API_URL } from "./quote";
-import type { BoardData, FlightWithView, WeatherMap } from "./flightFormat";
+import type { BoardData, FlightWithView, SeenFlight, WeatherMap } from "./flightFormat";
 
 export type FlightResult =
   | { status: "FOUND"; source: "BOARD" | "LOOKUP"; fetchedAt: string; flights: FlightWithView[]; weather?: WeatherMap }
+  | { status: "SEEN"; seen: SeenFlight[]; weather?: WeatherMap }
   | { status: "NOT_IN_BOARD" }
   | { status: "INVALID" }
   | { status: "ERROR" };
@@ -45,6 +46,12 @@ export async function fetchFlight(number: string, date: string | null): Promise<
   const q = date ? `?date=${encodeURIComponent(date)}` : "";
   const data = await getJson(`/public/flight-status/flight/${encodeURIComponent(number)}${q}`);
   return data ?? { status: "ERROR" };
+}
+
+/** Page numbers (e.g. "EZY8687") of flights seen in the last 7 days, for the sitemap. */
+export async function fetchSitemapNumbers(): Promise<string[]> {
+  const data = await getJson("/public/flight-status/sitemap");
+  return Array.isArray(data?.numbers) ? data.numbers.filter((n: unknown) => typeof n === "string") : [];
 }
 
 /** A person pressed "Check flight": the board first, otherwise ONE provider lookup (2 units). */

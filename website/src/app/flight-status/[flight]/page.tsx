@@ -3,23 +3,29 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import AutoRefresh from "@/components/flight/AutoRefresh";
 import Board from "@/components/flight/Board";
+import { boardHref } from "@/components/flight/BoardPage";
 import FlightCard from "@/components/flight/FlightCard";
 import { BookPanel, GatwickFacts, PlainEnglish, Tips } from "@/components/flight/FlightDetails";
 import FlightFaq from "@/components/flight/FlightFaq";
 import FlightSearch from "@/components/flight/FlightSearch";
+import { breadcrumbs, JsonLd } from "@/components/flight/JsonLd";
+import SeenCard, { SeenBookPanel, seenSentence } from "@/components/flight/SeenCard";
 import { DarkBand, h2 } from "@/components/flight/ui";
 import {
   cleanFlightNumber,
   dayLabel,
+  Direction,
   FlightWithView,
   placeName,
+  SeenFlight,
   shownNumber,
+  terminalName,
   ukDate,
   ukTime,
   urlNumber,
   WEATHER_CREDIT,
 } from "@/lib/flightFormat";
-import { fetchBoard, fetchFlight } from "@/lib/flightStatus";
+import { fetchBoard, fetchFlight, FlightResult } from "@/lib/flightStatus";
 import { pageMetadata } from "@/lib/seo";
 
 // Rendered on every request from the backend's cache. Loading this page never spends provider
@@ -30,17 +36,89 @@ type Props = { params: { flight: string }; searchParams: { date?: string; dir?: 
 
 const validDate = (d: string | undefined) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
 
+/** What the page is about, from a live flight or one we remember. */
+type About = {
+  number: string; // as on the ticket, "EZY8687"
+  direction: Direction;
+  other: string; // "Amsterdam"
+  otherIata: string | null;
+  terminal: "NORTH" | "SOUTH" | null;
+  airline: { name: string | null; iata: string | null };
+};
+
+function aboutOf(result: FlightResult, wanted: Direction | null): About | null {
+  if (result.status === "FOUND") {
+    const f = (result.flights.find((x) => x.flight.direction === wanted) ?? result.flights[0]).flight;
+    return {
+      number: shownNumber(f),
+      direction: f.direction,
+      other: placeName(f.other),
+      otherIata: f.other.iata,
+      terminal: f.lgw.terminal,
+      airline: f.airline,
+    };
+  }
+  if (result.status === "SEEN") {
+    const s = result.seen.find((x) => x.direction === wanted) ?? result.seen[0];
+    return {
+      number: s.displayNumber,
+      direction: s.direction,
+      other: s.other.name ?? s.other.iata ?? "",
+      otherIata: s.other.iata,
+      terminal: s.terminal,
+      airline: s.airline,
+    };
+  }
+  return null;
+}
+
+function titleFor(a: About): string {
+  const term = terminalName(a.terminal);
+  const route = a.direction === "ARRIVAL" ? `${a.other} to Gatwick` : `Gatwick to ${a.other}`;
+  return `${a.number} ${route}: Live Status${term ? `, ${term}` : ""}`;
+}
+
+function descriptionFor(a: About): string {
+  const at = terminalName(a.terminal) ? ` ${terminalName(a.terminal)}` : "";
+  return a.direction === "ARRIVAL"
+    ? `Is ${a.number} from ${a.other} on time? Live landing time at Gatwick${at}, when passengers will be out of arrivals, and the weather in ${a.other} and at Gatwick.`
+    : `Is ${a.number} to ${a.other} on time? Live departure time from Gatwick${at}, gate and check-in, when to be at the airport, and the weather in ${a.other}.`;
+}
+
+/** schema.org Flight: the route and, for a live flight, today's times. */
+function flightLd(a: About, times?: { departureTime: string | null; arrivalTime: string | null }) {
+  const lgw = { "@type": "Airport", iataCode: "LGW", name: "London Gatwick Airport" };
+  const other = { "@type": "Airport", ...(a.otherIata ? { iataCode: a.otherIata } : {}), name: a.other };
+  return {
+    "@context": "https://schema.org",
+    "@type": "Flight",
+    flightNumber: a.number,
+    ...(a.airline.name
+      ? { provider: { "@type": "Airline", name: a.airline.name, ...(a.airline.iata ? { iataCode: a.airline.iata } : {}) } }
+      : {}),
+    departureAirport: a.direction === "ARRIVAL" ? other : lgw,
+    arrivalAirport: a.direction === "ARRIVAL" ? lgw : other,
+    ...(times?.departureTime ? { departureTime: times.departureTime } : {}),
+    ...(times?.arrivalTime ? { arrivalTime: times.arrivalTime } : {}),
+  };
+}
+
+const wantedDir = (dir: string | undefined): Direction | null =>
+  dir === "departure" ? "DEPARTURE" : dir === "arrival" ? "ARRIVAL" : null;
+
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const number = cleanFlightNumber(decodeURIComponent(params.flight));
   if (!number) return { title: "Flight not found", robots: { index: false } };
   const result = await fetchFlight(number, validDate(searchParams.date));
-  const base = pageMetadata(
-    `/flight-status/${number}`,
-    `${number} flight status at Gatwick`,
-    `Is ${number} on time? Live status at London Gatwick in plain English: landing or departure time, terminal, gate and baggage belt.`,
-  );
-  // Only index flights we can actually show; a page for any typed number would be thin.
-  return result.status === "FOUND" ? base : { ...base, robots: { index: false } };
+  const a = aboutOf(result, wantedDir(searchParams.dir));
+  if (!a)
+    // Nothing to show: a page for any typed number would be thin, so keep it out of Google.
+    return {
+      ...pageMetadata(`/flight-status/${number}`, `${number} flight status at Gatwick`, `Live status for ${number} at London Gatwick.`),
+      robots: { index: false },
+    };
+  // One address per flight: U28687 and EZY8687 both point Google at /flight-status/EZY8687.
+  return pageMetadata(`/flight-status/${urlNumber(a.number)}`, titleFor(a), descriptionFor(a));
 }
 
 export default async function FlightPage({ params, searchParams }: Props) {
@@ -52,7 +130,67 @@ export default async function FlightPage({ params, searchParams }: Props) {
 
   const now = new Date();
   const [result, board] = await Promise.all([fetchFlight(number, date), fetchBoard()]);
+  const wanted = wantedDir(searchParams.dir);
+  const a = aboutOf(result, wanted);
+  const crumbs = (
+    <JsonLd
+      data={breadcrumbs([
+        { name: "Flight status", path: "/flight-status" },
+        { name: `${a?.number ?? number}`, path: `/flight-status/${urlNumber(a?.number ?? number)}` },
+      ])}
+    />
+  );
 
+  // ── Not live now, but seen in the last 7 days ──────────────────────────────
+  if (result.status === "SEEN" && a) {
+    const s: SeenFlight = result.seen.find((x) => x.direction === wanted) ?? result.seen[0];
+    const weather = { ...(board?.weather ?? {}), ...(result.weather ?? {}) };
+    const hasWeather = !!weather.LGW || (!!s.other.iata && !!weather[s.other.iata]);
+    const otherSeen = result.seen.filter((x) => x !== s);
+    return (
+      <>
+        {crumbs}
+        <JsonLd data={flightLd(a)} />
+        <DarkBand heading={`${number} flight status`} gatwick={weather.LGW}>
+          <FlightSearch defaultNumber={number} defaultDate={date ?? undefined} />
+        </DarkBand>
+        <div className="mx-auto -mt-[72px] flex max-w-site flex-col gap-7 px-3 pb-24 sm:-mt-24 sm:px-6">
+          <SeenCard s={s} weather={weather} now={now} />
+          {otherSeen.map((o) => (
+            <p key={o.direction} className="m-0 rounded-[18px] border border-line bg-white px-5 py-4 text-[15.5px]">
+              {o.displayNumber} also {o.direction === "ARRIVAL" ? "lands at" : "leaves"} Gatwick, usually around {o.usualTimeUk}.{" "}
+              <Link href={`/flight-status/${urlNumber(o.displayNumber)}?dir=${o.direction === "ARRIVAL" ? "arrival" : "departure"}`}>
+                Show that flight
+              </Link>
+            </p>
+          ))}
+          <div className="flex flex-wrap items-start gap-7">
+            <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7">
+              <section className="flex flex-col gap-3 rounded-[22px] border border-line bg-white px-5 py-5 sm:px-[26px] sm:py-6" aria-labelledby="plain">
+                <h2 id="plain" className="m-0 font-heading text-[22px] font-bold tracking-[-0.02em] text-ink">
+                  In plain English
+                </h2>
+                <p className="m-0 text-[17px] text-soft">{seenSentence(s)}</p>
+              </section>
+              {board?.fetchedAt && !board.stale && (
+                <Board data={board} direction={s.direction} full={false} now={now} tabHref={boardHref} />
+              )}
+            </div>
+            <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
+              <SeenBookPanel s={s} />
+            </aside>
+          </div>
+          <FlightFaq only={s.direction} />
+          <p className="m-0 text-[13.5px] text-muted">
+            Last seen on our Gatwick board on {dayLabel(s.lastDate)}. Times are UK time. Flight details can change: always
+            check with your airline.{hasWeather ? ` ${WEATHER_CREDIT}.` : ""}
+          </p>
+        </div>
+      </>
+    );
+  }
+
+  // ── Not on the board and not seen recently (or the backend is unreachable) ─
   if (result.status !== "FOUND") {
     return (
       <>
@@ -81,8 +219,7 @@ export default async function FlightPage({ params, searchParams }: Props) {
     );
   }
 
-  // A flight number can pass through Gatwick twice in a day (arrives, then leaves again).
-  const wanted = searchParams.dir === "departure" ? "DEPARTURE" : searchParams.dir === "arrival" ? "ARRIVAL" : null;
+  // ── Live ───────────────────────────────────────────────────────────────────
   const main: FlightWithView = result.flights.find((x) => x.flight.direction === wanted) ?? result.flights[0];
   const others = result.flights.filter((x) => x !== main);
   const { flight: f, view: v } = main;
@@ -93,9 +230,16 @@ export default async function FlightPage({ params, searchParams }: Props) {
   const hasWeather = !!weather.LGW || (!!f.other.iata && !!weather[f.other.iata]);
   const boardDir =
     searchParams.board === "departures" ? "DEPARTURE" : searchParams.board === "arrivals" ? "ARRIVAL" : f.direction;
+  const arrival = f.direction === "ARRIVAL";
+  const ld = flightLd(a!, {
+    departureTime: arrival ? f.other.revisedUtc ?? f.other.scheduledUtc : v.expectedAt ?? f.lgw.scheduledUtc,
+    arrivalTime: arrival ? v.expectedAt ?? f.lgw.scheduledUtc : f.other.revisedUtc ?? f.other.scheduledUtc,
+  });
 
   return (
     <>
+      {crumbs}
+      <JsonLd data={ld} />
       <AutoRefresh />
       <DarkBand heading={`${number} flight status`} gatwick={weather.LGW}>
         <FlightSearch defaultNumber={number} defaultDate={flightDate} />

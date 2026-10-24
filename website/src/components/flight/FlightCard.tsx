@@ -180,7 +180,7 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
   );
 }
 
-function End({
+export function End({
   label,
   code,
   name,

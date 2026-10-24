@@ -14,6 +14,7 @@ import {
   WeatherMap,
 } from "@/lib/flightFormat";
 import { AirlineTag, Flag, WeatherInline } from "./bits";
+import { KeepScrollLink } from "./KeepScroll";
 import { StatusPill, h2 } from "./ui";
 
 const tabClass = (on: boolean) =>
@@ -87,15 +88,15 @@ export default function Board({
     <section className="flex flex-col gap-[14px]" aria-labelledby="board-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="board-heading" className={h2}>
-          {full ? "Gatwick arrivals and departures" : "More flights at Gatwick"}
+          {full ? `Gatwick ${direction === "ARRIVAL" ? "arrivals" : "departures"} today` : "More flights at Gatwick"}
         </h2>
         <nav aria-label="Arrivals or departures" className="flex gap-1 rounded-full bg-[#e2e8f0] p-1">
-          <Link href={tabHref("ARRIVAL")} scroll={false} aria-current={direction === "ARRIVAL" ? "page" : undefined} className={tabClass(direction === "ARRIVAL")}>
+          <KeepScrollLink href={tabHref("ARRIVAL")} current={direction === "ARRIVAL"} className={tabClass(direction === "ARRIVAL")}>
             Arrivals
-          </Link>
-          <Link href={tabHref("DEPARTURE")} scroll={false} aria-current={direction === "DEPARTURE" ? "page" : undefined} className={tabClass(direction === "DEPARTURE")}>
+          </KeepScrollLink>
+          <KeepScrollLink href={tabHref("DEPARTURE")} current={direction === "DEPARTURE"} className={tabClass(direction === "DEPARTURE")}>
             Departures
-          </Link>
+          </KeepScrollLink>
         </nav>
       </div>
 
@@ -140,7 +141,7 @@ export default function Board({
         {!full && (
           <>
             {" "}
-            <Link href={`/flight-status${direction === "DEPARTURE" ? "?dir=departures" : ""}`}>See the full board</Link>
+            <Link href={direction === "DEPARTURE" ? "/flight-status/departures" : "/flight-status"}>See the full board</Link>
           </>
         )}
       </p>

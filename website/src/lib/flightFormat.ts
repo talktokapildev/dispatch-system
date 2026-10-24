@@ -78,6 +78,21 @@ export type FlightView = {
 
 export type FlightWithView = { flight: BoardFlight; view: FlightView };
 
+/** What we remember about a flight seen on the board in the last 7 days (no live times). */
+export type SeenFlight = {
+  number: string;
+  displayNumber: string;
+  direction: Direction;
+  airline: { name: string | null; iata: string | null };
+  other: { iata: string | null; name: string | null; countryCode: string | null; timeZone: string | null };
+  terminal: "NORTH" | "SOUTH" | null;
+  terminalInferred: boolean;
+  usualTimeUk: string; // "21:10"
+  aircraft: string | null;
+  lastDate: string; // "2026-10-23"
+  seenAt: string;
+};
+
 export type BoardRow = {
   id: string;
   number: string;
