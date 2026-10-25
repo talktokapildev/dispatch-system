@@ -222,6 +222,9 @@ async function main() {
   // ── Which terminal (airline pages) ──
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687", headers: H });
   check("flight reply carries its airline page", r.json().data.flights[0].flight.airlineSlug === "easyjet");
+  const fx = r.json().data.flights[0];
+  check("flight reply: forecast block (arrival: Gatwick only)", !!fx.forecast && "lgw" in fx.forecast && fx.forecast.otherAt === null);
+  check("flight reply: no return flights for an arrival", Array.isArray(fx.returns) && fx.returns.length === 0);
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/flight/EZY8687?date=2026-10-30", headers: H });
   check("seen reply carries its airline page", r.json().data.seen[0].airlineSlug === "easyjet");
   r = await app.inject({ method: "GET", url: "/api/v1/public/flight-status/terminals", headers: { "x-site-key": "wrong" } });

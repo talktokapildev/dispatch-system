@@ -80,6 +80,41 @@ export async function requestQuote(
   }
 }
 
+export type DriveTimeResult =
+  | { status: "OK"; from: string; minutes: number; miles: number }
+  | { status: "OUT_OF_AREA"; from: string }
+  | { status: "BUSY" };
+
+/** Driving minutes from a town (quick pick) or a chosen address to a Gatwick terminal. */
+export async function requestDriveTime(
+  body: { terminal: "NORTH" | "SOUTH"; town?: string; placeId?: string; session?: string }
+): Promise<{ ok: true; data: DriveTimeResult } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${API_URL}/public/drive-time`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success) return { ok: true, data: json.data as DriveTimeResult };
+    return { ok: false, error: json?.error ?? "We couldn't work that out just now." };
+  } catch {
+    return { ok: false, error: "We couldn't work that out just now." };
+  }
+}
+
+/** Quick-pick towns for "When to leave home" (slugs the backend knows). */
+export const LEAVE_TOWNS: { slug: string; name: string }[] = [
+  { slug: "crawley", name: "Crawley" },
+  { slug: "horley", name: "Horley" },
+  { slug: "horsham", name: "Horsham" },
+  { slug: "redhill", name: "Redhill" },
+  { slug: "reigate", name: "Reigate" },
+  { slug: "east-grinstead", name: "East Grinstead" },
+  { slug: "haywards-heath", name: "Haywards Heath" },
+  { slug: "brighton", name: "Brighton" },
+];
+
 /** "Sat 24 Oct, 09:00" from the form's date + time (already UK time). */
 export function whenText(date: string, time: string): string {
   const [y, m, d] = date.split("-").map(Number);

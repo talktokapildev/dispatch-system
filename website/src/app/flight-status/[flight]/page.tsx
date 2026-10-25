@@ -10,6 +10,9 @@ import FlightFaq from "@/components/flight/FlightFaq";
 import FlightSearch from "@/components/flight/FlightSearch";
 import { breadcrumbs, JsonLd } from "@/components/flight/JsonLd";
 import SeenCard, { SeenBookPanel, seenSentence } from "@/components/flight/SeenCard";
+import TripExtras from "@/components/flight/TripExtras";
+import LeavePlanner from "@/components/flight/LeavePlanner";
+import ReturnPickup from "@/components/flight/ReturnPickup";
 import { DarkBand, h2 } from "@/components/flight/ui";
 import {
   cleanFlightNumber,
@@ -224,6 +227,10 @@ export default async function FlightPage({ params, searchParams }: Props) {
   const main: FlightWithView = result.flights.find((x) => x.flight.direction === wanted) ?? result.flights[0];
   const others = result.flights.filter((x) => x !== main);
   const { flight: f, view: v } = main;
+  // Departures still ahead: "When to leave home" (while there's time to plan) and "Coming back?".
+  const upcomingDeparture =
+    f.direction === "DEPARTURE" && !["DEPARTED", "CANCELLED", "MAYBE_CANCELLED", "DIVERTED", "GATE_CLOSED", "BOARDING"].includes(v.state);
+  const showLeave = upcomingDeparture && !!v.beThereBy && Date.parse(v.beThereBy) - now.getTime() > 30 * 60_000;
   const flightDate = ukDate(f.lgw.scheduledUtc);
   const dirParam = (x: FlightWithView) => (x.flight.direction === "ARRIVAL" ? "arrival" : "departure");
   // Weather: the flight's own reply first, the board's as a fallback (both are the same cache).
@@ -261,6 +268,25 @@ export default async function FlightPage({ params, searchParams }: Props) {
               </p>
             ))}
           </div>
+        )}
+
+        <TripExtras f={f} v={v} forecast={main.forecast} now={now} />
+
+        {showLeave && (
+          <LeavePlanner
+            terminal={f.lgw.terminal}
+            beThereBy={v.beThereBy!}
+            flightLabel={`${shownNumber(f)} to ${placeName(f.other)}, ${dayLabel(flightDate)} ${ukTime(v.expectedAt ?? f.lgw.scheduledUtc)}`}
+          />
+        )}
+
+        {upcomingDeparture && (
+          <ReturnPickup
+            returns={main.returns ?? []}
+            from={placeName(f.other)}
+            airline={f.airline.name}
+            minDate={flightDate}
+          />
         )}
 
         <div className="flex flex-wrap items-start gap-7">

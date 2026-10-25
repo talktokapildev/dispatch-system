@@ -49,7 +49,7 @@ export type QuoteInput = {
   sessionToken?: string;
 };
 
-type Place = { address: string; lat: number; lng: number };
+export type Place = { address: string; lat: number; lng: number };
 
 export type QuoteResult =
   | {
@@ -82,7 +82,7 @@ function londonDay(d: Date): string {
 }
 
 /** Count one call against a daily cap; false (and one log line) once it's exceeded. */
-async function withinDailyCap(
+export async function withinDailyCap(
   redis: Redis,
   name: string,
   cap: number,
@@ -113,7 +113,8 @@ export async function autocompletePlaces(
   }));
 }
 
-async function resolvePlace(
+/** A place ID → address and position (cached 24 h). Also used by the flight pages' drive time. */
+export async function resolvePlace(
   deps: QuoteDeps,
   maps: NonNullable<QuoteDeps["maps"]>,
   placeId: string,
