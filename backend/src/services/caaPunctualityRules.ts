@@ -329,33 +329,58 @@ const AIRLINE_GROUPS: Array<[RegExp, string]> = [
   [/^(BRITISH AIRWAYS|BA EUROFLYER|BA CITYFLYER)\b/, "british-airways"],
 ];
 
-// Company-form and filler words, dropped before comparing names.
+// Company-form and filler words, dropped before comparing names. "AIR" is kept: it tells
+// "Air China" from "China Eastern".
 const AIRLINE_NOISE = new Set([
   "LTD", "LIMITED", "PLC", "SA", "S", "A", "SPA", "SAU", "SL", "SRL", "GMBH", "AG", "AS", "ASA", "AB", "BV", "NV",
   "INC", "CO", "COMPANY", "CORP", "CORPORATION", "DAC", "PJSC", "JSC", "LLC", "KFT", "OY", "OYJ", "SE", "THE",
-  "AIR", "AIRLINE", "AIRLINES", "AIRWAYS", "AVIATION", "SERVICES", "GROUP", "UK", "EUROPE",
+  "AIRLINE", "AIRLINES", "AIRWAYS", "AVIATION", "SERVICES", "GROUP", "UK", "EUROPE",
 ]);
 const airlineWords = (s: string) => norm(s).split(" ").filter((w) => w && !AIRLINE_NOISE.has(w));
 
+// CAA names the matching can't work out by itself (CAA name → the name our board uses).
+// Add lines here when the log lists a CURRENT Gatwick airline as unmatched.
+export const CAA_AIRLINE_ALIASES: Record<string, string> = {
+  "AIR PORTUGAL": "TAP AIR PORTUGAL",
+};
+
 /**
- * CAA airline → our page slug, or null. Group rules first; otherwise the only known airline
- * whose name (company words and "air/airways" dropped) has the same first word and one word set
- * containing the other ("TAP PORTUGAL" ↔ "TAP Air Portugal", "VUELING AIRLINES SA" ↔ "Vueling").
+ * CAA airline → our page slug, or null. Group rules first; then the only known airline with the
+ * same words (company words dropped, spaces ignored: "WEST JET" = "WestJet"); else the known
+ * airline whose words are ALL in the CAA name, the most words winning ("THY TURKISH AIRLINES" →
+ * "Turkish Airlines", "CHINA EASTERN AIRLINES" → "China Eastern" over "China"). A CAA name
+ * shorter than ours never matches by itself ("AIR CHINA" ≠ "Air China Cargo"): use an alias.
  */
 export function matchAirline(caaAirline: string, known: KnownAirline[]): string | null {
-  const name = norm(caaAirline);
+  const raw = norm(caaAirline);
+  const name = norm(CAA_AIRLINE_ALIASES[raw] ?? raw);
   for (const [re, slug] of AIRLINE_GROUPS) if (re.test(name)) return slug;
   const mine = airlineWords(name);
   if (!mine.length) return null;
-  const hits = known.filter((k) => {
+  const mineSet = new Set(mine);
+  const squash = mine.join("");
+  const one = (list: KnownAirline[]) => {
+    const slugs = [...new Set(list.map((k) => k.slug))];
+    return slugs.length === 1 ? slugs[0] : null;
+  };
+
+  const same = known.filter((k) => {
     const theirs = airlineWords(k.name);
-    if (!theirs.length || theirs[0] !== mine[0]) return false;
-    const a = new Set(mine);
-    const b = new Set(theirs);
-    return [...a].every((w) => b.has(w)) || [...b].every((w) => a.has(w));
+    return theirs.join("") === squash || (theirs.length === mine.length && theirs.every((w) => mineSet.has(w)));
   });
-  const slugs = [...new Set(hits.map((h) => h.slug))];
-  return slugs.length === 1 ? slugs[0] : null;
+  if (same.length) return one(same);
+
+  let best = 0;
+  let hits: KnownAirline[] = [];
+  for (const k of known) {
+    const theirs = airlineWords(k.name);
+    if (!theirs.length || !theirs.every((w) => mineSet.has(w))) continue;
+    if (theirs.length > best) {
+      best = theirs.length;
+      hits = [k];
+    } else if (theirs.length === best) hits.push(k);
+  }
+  return hits.length ? one(hits) : null;
 }
 
 // ── Stats ───────────────────────────────────────────────────────────────────

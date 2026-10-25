@@ -5,6 +5,7 @@ import Board from "@/components/flight/Board";
 import { AirlineTag } from "@/components/flight/bits";
 import { breadcrumbs, JsonLd } from "@/components/flight/JsonLd";
 import { DarkBand, h2 } from "@/components/flight/ui";
+import { AirlinePunctualitySection } from "@/components/flight/Punctuality";
 import { BookBand, CHANGE_QA, MeetingPoints, QuestionList, SHUTTLE_QA, TerminalPill, TICKET_QA } from "@/components/terminals/parts";
 import {
   ago,
@@ -150,6 +151,8 @@ export default async function AirlineTerminalPage({ params, searchParams }: Prop
             </div>
           )}
         </div>
+
+        <AirlinePunctualitySection p={r.punctuality} name={a.name} />
 
         <MeetingPoints only={one ?? undefined} />
 

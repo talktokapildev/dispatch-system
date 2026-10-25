@@ -100,7 +100,36 @@ export type FlightWithView = {
   view: FlightView;
   forecast?: FlightForecast; // older backends: absent
   returns?: ReturnFlight[];
+  punctuality?: RoutePunctuality | null; // CAA figures for the route (null: none)
 };
+
+// ── CAA punctuality (UK Civil Aviation Authority monthly statistics) ─────────
+export type PunctualityStats = {
+  flights: number; // timed flights behind the figures
+  onTimePct: number; // early to 15 min late, whole %
+  avgDelayMin: number;
+  overHourPct: number; // more than 60 min late, 1 decimal
+  cancelledPct: number; // 1 decimal
+};
+export type RoutePunctuality = {
+  from: string; // "2025-09"
+  to: string; // "2026-08"
+  name: string;
+  year: PunctualityStats;
+  sameMonth: (PunctualityStats & { period: string }) | null; // that month, about a year ago
+};
+export type PunctualityRoute = { iata: string; name: string; onTimePct: number; avgDelayMin: number; flights: number };
+export type AirlinePunctuality = {
+  from: string;
+  to: string;
+  slug: string;
+  arrivals: PunctualityStats | null;
+  departures: PunctualityStats | null;
+  best: PunctualityRoute[];
+  worst: PunctualityRoute[];
+};
+export const CAA_CREDIT = "Source: UK Civil Aviation Authority punctuality statistics";
+export const CAA_HREF = "https://www.caa.co.uk/data-and-analysis/uk-aviation-market/flight-punctuality/uk-flight-punctuality-statistics/";
 
 /** What we remember about a flight seen on the board in the last 7 days (no live times). */
 export type SeenFlight = {
@@ -116,6 +145,7 @@ export type SeenFlight = {
   lastDate: string; // "2026-10-23"
   seenAt: string;
   airlineSlug?: string | null;
+  punctuality?: RoutePunctuality | null;
 };
 
 export type BoardRow = {
@@ -173,6 +203,7 @@ export type AirlineTerminalPage =
       airline: AirlineTerminal;
       board: BoardData; // only this airline's flights; empty when the board is old
       sameTerminal: { slug: string; name: string }[];
+      punctuality?: AirlinePunctuality | null; // CAA figures (older backends: absent)
     }
   | { status: "NOT_FOUND" | "ERROR" };
 

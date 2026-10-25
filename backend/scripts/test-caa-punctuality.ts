@@ -114,13 +114,22 @@ const known = [
   { slug: "united-airlines", name: "United Airlines" },
   { slug: "aurigny", name: "Aurigny" },
   { slug: "emirates", name: "Emirates" },
+  { slug: "turkish-airlines", name: "Turkish Airlines" },
+  { slug: "westjet", name: "WestJet" },
+  { slug: "air-china", name: "Air China" },
+  { slug: "china-eastern", name: "China Eastern" },
 ];
 check("airline: easyJet companies → one page", ["EASYJET UK LTD", "EASYJET EUROPE AIRLINE GMBH", "EASYJET SWITZERLAND SA"].every((n) => matchAirline(n, known) === "easyjet"));
 check("airline: Ryanair group", matchAirline("MALTA AIR", known) === "ryanair" && matchAirline("RYANAIR UK LTD", known) === "ryanair");
 check("airline: BA companies", matchAirline("BA EUROFLYER LTD", known) === "british-airways" && matchAirline("BRITISH AIRWAYS PLC", known) === "british-airways");
 check("airline: TUI", matchAirline("TUI AIRWAYS LTD", known) === "tui");
 check("airline: company words dropped", matchAirline("VUELING AIRLINES SA", known) === "vueling");
-check("airline: word sets", matchAirline("TAP PORTUGAL", known) === "tap-air-portugal");
+check("airline: alias (AIR PORTUGAL → TAP Air Portugal)", matchAirline("AIR PORTUGAL", known) === "tap-air-portugal");
+check("airline: same words with company words", matchAirline("TAP AIR PORTUGAL SA", known) === "tap-air-portugal");
+check("airline: extra word in the CAA name", matchAirline("THY TURKISH AIRLINES", known) === "turkish-airlines");
+check("airline: spaces ignored", matchAirline("WEST JET AIRLINES", known) === "westjet");
+check("airline: Air China vs China Eastern", matchAirline("AIR CHINA", known) === "air-china" && matchAirline("CHINA EASTERN AIRLINES", known) === "china-eastern");
+check("airline: most words wins only when ours is fully inside", matchAirline("CHINA SOUTHERN AIRLINES", known) === null);
 check("airline: longer CAA name", matchAirline("AURIGNY AIR SERVICES LTD", known) === "aurigny");
 check("airline: unknown → null", matchAirline("ZZZ HOLIDAYS LTD", known) === null);
 
