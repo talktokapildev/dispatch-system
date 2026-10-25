@@ -7,7 +7,9 @@
 //   node --env-file=.env -r ts-node/register scripts/test-caa-punctuality.ts
 import {
   addMonths,
+  airlineScores,
   airlineStats,
+  gatwickDelays,
   buildSummary,
   CaaRow,
   matchAirline,
@@ -65,6 +67,11 @@ check("CSV: counts all data rows", p.allRows === 5);
 const mal = p.rows.find((r) => r.airport === "MALAGA" && r.direction === "A")!;
 check("CSV: numbers parsed", mal.matched === 90 && mal.cancelled === 10 && mal.late15Pct === 20 && mal.avgDelayMin === 18);
 check("CSV: quoted field with a comma", p.rows.some((r) => r.airport === "WASHINGTON (DULLES), DC"));
+const gA = p.airports.find((t) => t.airport === "GATWICK" && t.direction === "A")!;
+check("CSV: UK airport totals for every reporting airport", p.airports.some((t) => t.airport === "ABERDEEN") && p.airports.length === 3, `${p.airports.length}`);
+// Gatwick arrivals: Malaga (90 matched, 10 cancelled, on time 60, over 1h 3) + Dulles (30 matched, on time 24); duplicate not counted.
+check("CSV: Gatwick arrival totals", gA.matched === 120 && gA.total === 130 && gA.cancelled === 10 && Math.round(gA.onTime) === 84 && Math.round(gA.overHour) === 3 && gA.delaySum === 90 * 18 + 30 * 12,
+  JSON.stringify(gA));
 check("splitCsv: escaped quotes", eq(splitCsv('a,"b ""x"" c",d'), [["a", 'b "x" c', "d"]]));
 
 let threw = "";
@@ -170,6 +177,29 @@ const ej = s.airlines["easyjet"];
 check("summary: airline totals include unmatched airports", !!ej?.departures && ej.departures.flights === 170, JSON.stringify(ej?.departures));
 check("summary: airline best routes need 60+ flights", ej.best.length === 1 && ej.best[0].iata === "AGP" && ej.worst.length === 0, JSON.stringify(ej.best));
 check("summary: empty rows", buildSummary([], seen, known, now).from === null);
+const gs = s.gatwick!;
+// Gatwick arrivals in the window: Aug 90+30 (MALAGA + DULLES), Oct 2025 40, May VLC 10, ZZZ 25 = 195 timed
+check("summary: Gatwick totals include unmatched routes and airlines", gs.arrivals?.flights === 195 && gs.departures?.flights === 170,
+  `${gs.arrivals?.flights}/${gs.departures?.flights}`);
+check("summary: Gatwick months in order", gs.months.map((m) => m.period).join() === "2025-10,2026-05,2026-08");
+const am = (airport: string, period: number, direction: "A" | "D", matched: number, onTimeShare: number, avg: number) => ({
+  period, airport, direction, total: matched, matched, cancelled: 0, onTime: matched * onTimeShare, overHour: 0, delaySum: matched * avg,
+});
+const apRows = [
+  am("HEATHROW", 202608, "A", 20000, 0.75, 14), am("GATWICK", 202608, "A", 12000, 0.7, 17), am("STANSTED", 202608, "A", 9000, 0.73, 15),
+  am("MANCHESTER", 202608, "A", 9500, 0.69, 19), am("LUTON", 202608, "A", 5000, 0.66, 21), am("EDINBURGH", 202608, "A", 6000, 0.77, 13),
+  am("BIRMINGHAM", 202608, "A", 4000, 0.7, 16), am("BRISTOL", 202608, "A", 3500, 0.74, 14), am("GLASGOW", 202608, "A", 3000, 0.76, 12),
+  am("BELFAST CITY (GEORGE BEST)", 202608, "A", 1000, 0.9, 5),
+  am("HEATHROW", 202508, "A", 99999, 0, 99), // outside the window
+];
+const s2 = buildSummary(rows, seen, known, now, apRows);
+const uk = s2.ukAirports!;
+check("summary: 8 busiest UK airports, best on time first", uk.length === 8 && uk[0].name === "Edinburgh" && uk.map((a) => a.arrivals!.onTimePct).every((v, i, a) => i === 0 || a[i - 1] >= v),
+  uk.map((a) => `${a.name} ${a.arrivals?.onTimePct}`).join(", "));
+check("summary: Gatwick flagged, outside-window month ignored", uk.some((a) => a.gatwick && a.name === "Gatwick") && uk.find((a) => a.name === "Heathrow")?.arrivals?.flights === 20000);
+const small = buildSummary(rows, seen, known, now, apRows.filter((a) => a.airport !== "GATWICK").concat([am("GATWICK", 202608, "A", 100, 0.7, 17)]));
+check("summary: Gatwick kept even when not among the busiest", small.ukAirports!.some((a) => a.gatwick) && small.ukAirports!.length === 8);
+check("summary: title-cased names", s2.ukAirports!.every((a) => !/[A-Z]{3,}/.test(a.name)));
 
 // best / worst with enough routes
 const many: CaaRow[] = ["MALAGA", "VALENCIA", "NICE (COTE D'AZUR)", "MALTA", "PARIS (CHARLES DE GAULLE)", "PARIS (ORLY)"].map((a, i) =>
@@ -190,6 +220,8 @@ check("flight page: wrong direction / airline / thin route → null",
   routeStats(s, "ARRIVAL", "VLC", "easyjet", null) === null &&
   routeStats(s, "ARRIVAL", null, "easyjet", null) === null &&
   routeStats(null, "ARRIVAL", "AGP", "easyjet", null) === null);
+check("hub: airline scores", airlineScores(s)?.airlines["easyjet"]?.departures?.flights === 170 && airlineScores(s)?.minFlights === 300 && airlineScores(null) === null);
+check("delays page: figures + airports", gatwickDelays(s2)?.airports.length === 8 && gatwickDelays(s2)?.gatwick.arrivals?.flights === 195 && gatwickDelays(buildSummary([], seen, known, now)) === null);
 check("airline page: figures", airlineStats(s, "easyjet")?.departures?.flights === 170 && airlineStats(s, "nobody") === null);
 
 // ── Service ─────────────────────────────────────────────────────────────────
@@ -225,6 +257,7 @@ const flight = (iata: string, name: string, airportName: string, municipality: s
       aggregate: async () => ({ _max: { period: 202608 } }),
       findMany: async (q: any) => store.filter((r) => r.period >= q.where.period.gte && r.period <= q.where.period.lte),
     },
+    caaAirportMonth: { findMany: async () => apRows },
   };
   const logs: string[] = [];
   const deps = { redis: redis as any, prisma: fakePrisma as any, log: { warn: (m: string) => logs.push(m) } };
@@ -232,10 +265,15 @@ const flight = (iata: string, name: string, airportName: string, municipality: s
   check("service: rebuild matches via airports seen", !!built.routes["A|AGP|easyjet"]?.year && built.routes["A|AGP|easyjet"].name === "Málaga");
   check("service: stale airport dropped", !redis.h.get("airports:seen")?.has("OLD"));
   check("service: summary stored for the pages", !!(await getCaaSummary(redis as any))?.routes["A|AGP|easyjet"]);
+  check("service: UK airports in the stored summary", built.ukAirports?.length === 8);
   check("service: logs summary + unmatched", logs.some((l) => l.startsWith("[CAA] summary")) && logs.some((l) => l.includes('airport "PARIS"')), logs.join(" / "));
   const before = logs.length;
   await rebuildCaaSummary(deps, now);
   check("service: same result → no repeat log", logs.length === before);
+  const noTable = { caaPunctuality: fakePrisma.caaPunctuality, caaAirportMonth: { findMany: () => Promise.reject(new Error("table missing")) } };
+  const before0 = logs.length;
+  const built2 = await rebuildCaaSummary({ ...deps, prisma: noTable as any }, now);
+  check("service: missing UK table → no comparison, rest still built", built2.ukAirports?.length === 0 && !!built2.routes["A|AGP|easyjet"] && logs.slice(before0).some((l) => l.includes("UK airport totals unavailable")));
 
   console.log(failures ? `\n${failures} FAILED` : "\nAll passed");
   process.exit(failures ? 1 : 0);

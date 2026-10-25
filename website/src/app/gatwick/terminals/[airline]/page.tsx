@@ -5,7 +5,7 @@ import Board from "@/components/flight/Board";
 import { AirlineTag } from "@/components/flight/bits";
 import { breadcrumbs, JsonLd } from "@/components/flight/JsonLd";
 import { DarkBand, h2 } from "@/components/flight/ui";
-import { AirlinePunctualitySection } from "@/components/flight/Punctuality";
+import { AirlinePunctualitySection, OnTimeChip, OnTimeNote } from "@/components/flight/Punctuality";
 import { BookBand, CHANGE_QA, MeetingPoints, QuestionList, SHUTTLE_QA, TerminalPill, TICKET_QA } from "@/components/terminals/parts";
 import {
   ago,
@@ -109,12 +109,14 @@ export default async function AirlineTerminalPage({ params, searchParams }: Prop
           <div className="flex flex-wrap items-center gap-3">
             <AirlineTag iata={a.codes[0] ?? null} name={a.name} size="lg" />
             <TerminalPill t={a.terminal} large />
+            <OnTimeChip p={r.punctuality} />
           </div>
           <p className="m-0 font-heading text-[clamp(24px,3vw,32px)] font-bold leading-[1.15] tracking-[-0.02em] text-white">
             {terminalAnswer(a)}
           </p>
           <p className="m-0 text-[16px] text-[#e5e7eb]">{terminalEvidence(a, now)}</p>
           {caveat && <p className="m-0 text-[15px] text-[#c4c9d1]">{caveat}</p>}
+          <OnTimeNote p={r.punctuality} name={a.name} />
         </div>
       </DarkBand>
 

@@ -7,6 +7,8 @@ import { DarkBand, h2 } from "@/components/flight/ui";
 import { BookBand, CHANGE_QA, MeetingPoints, QuestionList, SHUTTLE_QA, TerminalPill, TICKET_QA } from "@/components/terminals/parts";
 import { AirlineTerminal, ago, cleanFlightNumber, daysCovered, lastDays } from "@/lib/flightFormat";
 import { fetchTerminals } from "@/lib/flightStatus";
+import PunctualityRanking from "@/components/terminals/PunctualityRanking";
+import { hubOnTime } from "@/components/flight/Punctuality";
 import { pageMetadata } from "@/lib/seo";
 
 // Rendered on every request from the backend's cached summary (Redis only, no provider units).
@@ -36,7 +38,7 @@ function findAirline(airlines: AirlineTerminal[], q: string): AirlineTerminal | 
   return n.length >= 3 ? airlines.find((a) => norm(a.name).includes(n)) ?? null : null;
 }
 
-export default async function TerminalsPage({ searchParams }: { searchParams: { q?: string } }) {
+export default async function TerminalsPage({ searchParams }: { searchParams: { q?: string; rank?: string } }) {
   const now = new Date();
   const summary = await fetchTerminals();
   const airlines = summary?.airlines ?? [];
@@ -133,17 +135,18 @@ export default async function TerminalsPage({ searchParams }: { searchParams: { 
 
           {airlines.length ? (
             <div className="overflow-hidden rounded-[20px] border border-line bg-white">
-              <div className="hidden grid-cols-[minmax(0,1fr)_170px_150px_120px] gap-3 px-[18px] py-[13px] text-[13.5px] font-bold text-muted md:grid" aria-hidden>
+              <div className="hidden grid-cols-[minmax(0,1fr)_170px_150px_100px_100px] gap-3 px-[18px] py-[13px] text-[13.5px] font-bold text-muted md:grid" aria-hidden>
                 <span>Airline</span>
                 <span>Terminal</span>
                 <span>Flights</span>
+                <span>{summary?.punctuality ? "On time" : ""}</span>
                 <span />
               </div>
               <ul className="m-0 list-none p-0">
                 {airlines.map((a) => (
                   <li
                     key={a.slug}
-                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-[#eef0f3] px-[14px] py-3 text-[15.5px] sm:px-[18px] md:grid-cols-[minmax(0,1fr)_170px_150px_120px] ${
+                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-[#eef0f3] px-[14px] py-3 text-[15.5px] sm:px-[18px] md:grid-cols-[minmax(0,1fr)_170px_150px_100px_100px] ${
                       picked?.slug === a.slug ? "bg-[#fffaf0]" : ""
                     }`}
                   >
@@ -156,6 +159,20 @@ export default async function TerminalsPage({ searchParams }: { searchParams: { 
                     </span>
                     <span className="text-[14px] text-muted md:text-[15.5px] md:text-body">
                       {a.flights} {a.flights === 1 ? "flight" : "flights"}
+                      {hubOnTime(summary?.punctuality, a.slug) != null && (
+                        <span className="md:hidden"> · {hubOnTime(summary?.punctuality, a.slug)}% on time</span>
+                      )}
+                    </span>
+                    <span className="hidden md:block">
+                      {summary?.punctuality ? (
+                        hubOnTime(summary.punctuality, a.slug) != null ? (
+                          <strong className="text-ink">{hubOnTime(summary.punctuality, a.slug)}%</strong>
+                        ) : (
+                          <span className="text-muted" title={`Fewer than ${summary.punctuality.minFlights} flights in the CAA figures`}>
+                            –
+                          </span>
+                        )
+                      ) : null}
                     </span>
                     <span className="justify-self-end md:justify-self-start">
                       {a.hasPage ? (
@@ -177,8 +194,17 @@ export default async function TerminalsPage({ searchParams }: { searchParams: { 
           <p className="m-0 px-2 text-[13.5px] text-muted sm:px-0">
             {summary?.updatedAt ? `Updated ${ago(summary.updatedAt, now)}. ` : ""}Counted from the terminals Gatwick published for each
             flight {lastDays(days)}. Terminals can change, so always check your booking.
+            {summary?.punctuality
+              ? ` On time: arrivals in the CAA figures for the last 12 months ("–" = fewer than ${summary.punctuality.minFlights} flights).`
+              : ""}
           </p>
         </section>
+
+        <PunctualityRanking
+          scores={summary?.punctuality}
+          airlines={airlines}
+          direction={searchParams.rank === "departures" ? "DEPARTURE" : "ARRIVAL"}
+        />
 
         <section className="grid gap-4 md:grid-cols-2" aria-label="The two terminals">
           <div className="flex flex-col gap-2 rounded-[22px] border border-line bg-white p-[22px]">

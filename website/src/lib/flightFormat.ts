@@ -128,6 +128,23 @@ export type AirlinePunctuality = {
   best: PunctualityRoute[];
   worst: PunctualityRoute[];
 };
+export type AirlineScores = {
+  from: string;
+  to: string;
+  minFlights: number;
+  airlines: Record<string, { arrivals: PunctualityStats | null; departures: PunctualityStats | null }>;
+};
+export type GatwickMonth = { period: string; arrivals: PunctualityStats | null; departures: PunctualityStats | null };
+export type UkAirport = { name: string; gatwick: boolean; arrivals: PunctualityStats | null; departures: PunctualityStats | null };
+export type DelaysData =
+  | {
+      status: "FOUND";
+      from: string;
+      to: string;
+      gatwick: { arrivals: PunctualityStats | null; departures: PunctualityStats | null; months: GatwickMonth[] };
+      airports: UkAirport[];
+    }
+  | { status: "NONE" | "ERROR" };
 export const CAA_CREDIT = "Source: UK Civil Aviation Authority punctuality statistics";
 export const CAA_HREF = "https://www.caa.co.uk/data-and-analysis/uk-aviation-market/flight-punctuality/uk-flight-punctuality-statistics/";
 
@@ -194,7 +211,12 @@ export type AirlineTerminal = {
   hasPage: boolean; // enough flights for its own (indexed) page
 };
 
-export type TerminalSummary = { updatedAt: string | null; airlines: AirlineTerminal[] };
+export type TerminalSummary = {
+  updatedAt: string | null;
+  airlines: AirlineTerminal[];
+  // CAA on-time figures by airline slug; ranked from `minFlights` (older backends: absent)
+  punctuality?: AirlineScores | null;
+};
 
 export type AirlineTerminalPage =
   | {
