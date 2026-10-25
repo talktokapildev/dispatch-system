@@ -44,6 +44,8 @@ import { readWeather } from "../services/weather.service";
 import { listSeen, readSeen } from "../services/flightSeen.service";
 import { getTerminalSummary } from "../services/airlineTerminals.service";
 import { airlineSlug } from "../services/airlineTerminalRules";
+import { pickForecast, readForecasts, wantsForecast } from "../services/forecast.service";
+import { readReturns } from "../services/returnFlights.service";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -105,14 +107,42 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
 
   const withViews = async (flights: BoardFlight[], now: Date) => {
     const buffers = await boardBuffers(deps);
-    return flights.map((flight) => ({
-      flight: {
-        ...flight,
-        displayNumber: flight.displayNumber ?? displayNumberFor(flight.number, flight.airline.iata),
-        airlineSlug: airlineSlug(flight.airline), // its /gatwick/terminals/<slug> page
-      },
-      view: describe(flight, now, buffers),
-    }));
+    const forecasts = await readForecasts(fastify.redis, ["LGW", ...flights.map((f) => f.other.iata)]);
+    return Promise.all(
+      flights.map(async (flight) => {
+        const view = describe(flight, now, buffers);
+        const slug = airlineSlug(flight.airline);
+        // Forecasts for the moments that matter: at Gatwick when you need to be there (departures)
+        // or when it lands (arrivals); at the destination when a departure lands there.
+        const lgwAt = flight.direction === "DEPARTURE" ? view.beThereBy : view.expectedAt;
+        const otherAt = flight.direction === "DEPARTURE" ? flight.other.revisedUtc ?? flight.other.scheduledUtc : null;
+        const cancelled = ["CANCELLED", "MAYBE_CANCELLED", "DIVERTED"].includes(view.state);
+        const forecast = cancelled
+          ? null
+          : {
+              lgwAt,
+              lgw: wantsForecast(lgwAt, now) ? pickForecast(forecasts.LGW, lgwAt) : null,
+              otherAt,
+              other:
+                flight.other.iata && wantsForecast(otherAt, now)
+                  ? pickForecast(forecasts[flight.other.iata.toUpperCase()], otherAt)
+                  : null,
+            };
+        // Departures: flights from the destination that landed at Gatwick this week (same airline first).
+        const returns =
+          flight.direction === "DEPARTURE" && !cancelled ? await readReturns(fastify.redis, flight.other.iata, slug, now) : [];
+        return {
+          flight: {
+            ...flight,
+            displayNumber: flight.displayNumber ?? displayNumberFor(flight.number, flight.airline.iata),
+            airlineSlug: slug, // its /gatwick/terminals/<slug> page
+          },
+          view,
+          forecast,
+          returns,
+        };
+      })
+    );
   };
 
   /** FOUND reply for a flight page, with cached weather at both ends (never fetched here). */

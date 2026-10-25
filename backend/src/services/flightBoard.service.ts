@@ -24,8 +24,10 @@
 // Weather at each airport on the board (weather.service.ts, OpenWeather) is topped up on the
 // same 1-minute tick, separately from AeroDataBox units.
 //
-// Each refresh also feeds the 7-day "seen" memory (flightSeen.service.ts) and the airline
-// terminal summary (airlineTerminals.service.ts), both from the same response.
+// Each refresh also feeds the 7-day "seen" memory (flightSeen.service.ts), the airline
+// terminal summary (airlineTerminals.service.ts) and the return-flight memory
+// (returnFlights.service.ts), all from the same response. The tick also tops up weather
+// FORECASTS (forecast.service.ts) for Gatwick and destinations of flights hours away.
 import axios from "axios";
 import Redis from "ioredis";
 import { PrismaClient } from "@prisma/client";
@@ -34,6 +36,8 @@ import { getFlightBuffers, BUFFER_DEFAULTS } from "../utils/airportPickup";
 import { ensureWeather, LGW_PLACE, Place, refreshWeather } from "./weather.service";
 import { recordSeen } from "./flightSeen.service";
 import { recordAirlineTerminals } from "./airlineTerminals.service";
+import { recordReturns } from "./returnFlights.service";
+import { topUpForecasts, wantsForecast } from "./forecast.service";
 import {
   AIRPORT_IATA,
   BoardFlight,
@@ -183,6 +187,10 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
     await recordAirlineTerminals(redis, flights, now).catch((err) =>
       log.warn(`[FlightBoard] could not record airline terminals: ${(err as Error)?.message ?? err}`)
     );
+    // Arrivals by origin airport, for "Coming back through Gatwick?" on departure pages.
+    await recordReturns(redis, flights, now).catch((err) =>
+      log.warn(`[FlightBoard] could not record return flights: ${(err as Error)?.message ?? err}`)
+    );
     const arr = flights.filter((f) => f.direction === "ARRIVAL").length;
     log.warn(
       `[FlightBoard] refreshed ${w.fromLocal}..${w.toLocal}: ${arr} arrivals, ${flights.length - arr} departures; units left ${await redis.get(KEY_UNITS)}`
@@ -295,8 +303,10 @@ export async function lookupFlight(
     ? { status: "FOUND", flights: onDate, fetchedAt: now.toISOString() }
     : { status: "NOT_FOUND" };
   await redis.set(cacheKey, JSON.stringify(outcome), "EX", LOOKUP_TTL_S);
-  if (outcome.status === "FOUND")
+  if (outcome.status === "FOUND") {
     await ensureWeather(redis, log, [LGW_PLACE, ...placesOf(outcome.flights)], now).catch(() => undefined);
+    await topUpForecasts(redis, log, forecastPlacesOf(outcome.flights, now), now, 3).catch(() => undefined);
+  }
   return outcome;
 }
 
@@ -307,6 +317,19 @@ export function placesOf(flights: BoardFlight[]): Place[] {
     if (f.other.iata && f.other.lat != null && f.other.lon != null)
       out.push({ iata: f.other.iata, lat: f.other.lat, lon: f.other.lon });
   return out;
+}
+
+/**
+ * Airports worth a forecast: Gatwick, plus the destination of each departure that lands at least
+ * 2 hours from now (its arrival time). Soonest first.
+ */
+export function forecastPlacesOf(flights: BoardFlight[], now: Date): Place[] {
+  const out: Place[] = [LGW_PLACE];
+  const deps = flights
+    .filter((f) => f.direction === "DEPARTURE" && f.codeshare !== "CODESHARE")
+    .filter((f) => wantsForecast(f.other.revisedUtc ?? f.other.scheduledUtc, now))
+    .sort((a, b) => a.lgw.scheduledUtc.localeCompare(b.lgw.scheduledUtc));
+  return [...out, ...placesOf(deps)];
 }
 
 /** Starts the once-a-minute refresh check (only refreshes when due; see refreshBoardIfDue). */
@@ -329,6 +352,7 @@ export function startFlightBoardRefresh(deps: BoardDeps): void {
         (a, b) => Math.abs(Date.parse(a.lgw.scheduledUtc) - now) - Math.abs(Date.parse(b.lgw.scheduledUtc) - now)
       );
       await refreshWeather(deps.redis, deps.log, placesOf(soonest));
+      await topUpForecasts(deps.redis, deps.log, forecastPlacesOf(board?.flights ?? [], new Date()));
     } catch (err) {
       deps.log.warn(`[Weather] refresh error: ${(err as Error)?.message ?? err}`);
     }

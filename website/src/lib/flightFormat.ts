@@ -77,7 +77,30 @@ export type FlightView = {
   longHaul: boolean;
 };
 
-export type FlightWithView = { flight: BoardFlight; view: FlightView };
+/** Forecasts for the moments that matter (backend picks the nearest 3-hour slot). */
+export type FlightForecast = {
+  lgwAt: string | null; // departures: "be at the airport by"; arrivals: at the gate
+  lgw: Weather | null;
+  otherAt: string | null; // departures: when it lands at the destination
+  other: Weather | null;
+} | null;
+
+/** A flight from the destination that landed at Gatwick this week ("Coming back?"). */
+export type ReturnFlight = {
+  displayNumber: string;
+  airline: { name: string | null; iata: string | null; slug: string | null };
+  usualTimeUk: string;
+  terminal: "NORTH" | "SOUTH" | null;
+  lastDate: string;
+  seenAt: string;
+};
+
+export type FlightWithView = {
+  flight: BoardFlight;
+  view: FlightView;
+  forecast?: FlightForecast; // older backends: absent
+  returns?: ReturnFlight[];
+};
 
 /** What we remember about a flight seen on the board in the last 7 days (no live times). */
 export type SeenFlight = {
@@ -205,6 +228,62 @@ export function terminalCaveat(a: AirlineTerminal): string | null {
   const other = a.terminal === "NORTH" ? a.south : a.north;
   if (!other || a.moved) return null;
   return `A few flights use the ${a.terminal === "NORTH" ? "South" : "North"} Terminal, so check your booking before you set off.`;
+}
+
+// ── Time difference ─────────────────────────────────────────────────────────
+/** Minutes a time zone is ahead of UTC at an instant (negative = behind). */
+function zoneOffsetMin(timeZone: string, at: Date): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const p = (t: string) => Number(parts.find((x) => x.type === t)?.value ?? 0);
+    const asUtc = Date.UTC(p("year"), p("month") - 1, p("day"), p("hour"), p("minute"));
+    return Math.round((asUtc - Math.floor(at.getTime() / 60_000) * 60_000) / 60_000);
+  } catch {
+    return null;
+  }
+}
+
+/** "Pisa is 1 hour ahead" / "New York is 5 hours behind"; null when it's UK time there too. */
+export function timeDifference(place: string, timeZone: string | null | undefined, atIso: string): string | null {
+  if (!timeZone) return null;
+  const at = new Date(atIso);
+  const there = zoneOffsetMin(timeZone, at);
+  const uk = zoneOffsetMin("Europe/London", at);
+  if (there == null || uk == null) return null;
+  const diff = there - uk;
+  if (diff === 0) return null;
+  const h = Math.abs(diff) / 60;
+  const amount = Number.isInteger(h) ? `${h} ${h === 1 ? "hour" : "hours"}` : `${Math.floor(h)} h ${Math.abs(diff) % 60} min`;
+  return `${place} is ${amount} ${diff > 0 ? "ahead" : "behind"}`;
+}
+
+/** "12:30" in an airport's own clock. */
+export function localTime(timeZone: string | null | undefined, iso: string | null): string | null {
+  if (!timeZone || !iso) return null;
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(iso));
+  } catch {
+    return null;
+  }
+}
+
+// ── When to leave home ─────────────────────────────────────────────────────
+export const LEAVE_SPARE_MIN = 10;
+
+/** Leave-by instant: at the terminal by `beThereBy`, after `driveMin` and some spare time,
+ *  rounded down to 5 minutes ("06:40", not "06:44"). */
+export function leaveByIso(beThereBy: string, driveMin: number): string {
+  const t = Date.parse(beThereBy) - (driveMin + LEAVE_SPARE_MIN) * 60_000;
+  const step = 5 * 60_000;
+  return new Date(Math.floor(t / step) * step).toISOString();
 }
 
 // ── Weather (OpenWeather, cached by the backend) ───────────────────────────
