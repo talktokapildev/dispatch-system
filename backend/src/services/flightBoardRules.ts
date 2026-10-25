@@ -40,6 +40,9 @@ export type Codeshare = "OPERATOR" | "CODESHARE" | "UNKNOWN";
 export type OtherEnd = {
   iata: string | null;
   name: string | null; // city where known, e.g. "Amsterdam"
+  // Provider's own names (matching CAA punctuality names to IATA); absent on boards cached before Oct 2026.
+  airportName?: string | null; // e.g. "Paris Charles de Gaulle"
+  municipality?: string | null; // e.g. "Luqa"
   scheduledUtc: string | null;
   revisedUtc: string | null;
   runwayUtc: string | null; // actual take-off (arrivals) / touchdown (departures)
@@ -288,6 +291,8 @@ function toBoardFlight(item: Raw, direction: Direction): BoardFlight | null {
     other: {
       iata: text(o.airport?.iata),
       name: cityName(o.airport),
+      airportName: text(o.airport?.name),
+      municipality: text(o.airport?.municipalityName),
       scheduledUtc: o.scheduledUtc,
       revisedUtc: o.revisedUtc,
       runwayUtc: o.runwayUtc,

@@ -53,6 +53,7 @@ import { publicFlightStatusRoutes } from "./routes/publicFlightStatus";
 import { startFlightBoardRefresh } from "./services/flightBoard.service";
 import { publicTrainTimesRoutes } from "./routes/publicTrainTimes";
 import { startTrainBoardRefresh } from "./services/trainBoard.service";
+import { startCaaPunctuality } from "./services/caaPunctuality.service";
 import { missingStorageConfig } from "./services/fileStorage";
 import { fileTokenSecretSet } from "./services/fileLinks";
 
@@ -406,6 +407,8 @@ async function start() {
     startFlightBoardRefresh({ redis: server.redis, prisma: server.prisma, log: server.log });
     // Website train times: National Rail boards every minute (off unless RAIL_DATA_API_KEY is set)
     startTrainBoardRefresh({ redis: server.redis, log: server.log });
+    // Website flight pages: CAA punctuality summary, rebuilt hourly from the CaaPunctuality table
+    startCaaPunctuality({ redis: server.redis, prisma: server.prisma, log: server.log });
   } catch (err) {
     server.log.error(err);
     process.exit(1);

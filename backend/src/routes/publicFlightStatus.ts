@@ -17,6 +17,9 @@
 //   POST /public/flight-status/lookup { number, date }    a person pressed "Check flight":
 //                                                         board first, else ONE provider lookup
 //
+// Flight and airline replies also carry CAA punctuality figures (`punctuality`, from the
+// caa:summary Redis key; see caaPunctuality.service.ts) — null when we have none.
+//
 // None of these GETs ever calls the flight provider (see flightBoard.service.ts).
 // The website forwards the visitor's IP in x-visitor-ip (trusted only because the
 // site key is checked first) for the per-visitor lookup limit.
@@ -46,6 +49,8 @@ import { getTerminalSummary } from "../services/airlineTerminals.service";
 import { airlineSlug } from "../services/airlineTerminalRules";
 import { pickForecast, readForecasts, wantsForecast } from "../services/forecast.service";
 import { readReturns } from "../services/returnFlights.service";
+import { getCaaSummary } from "../services/caaPunctuality.service";
+import { airlineStats, routeStats } from "../services/caaPunctualityRules";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -108,6 +113,7 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
   const withViews = async (flights: BoardFlight[], now: Date) => {
     const buffers = await boardBuffers(deps);
     const forecasts = await readForecasts(fastify.redis, ["LGW", ...flights.map((f) => f.other.iata)]);
+    const caa = await getCaaSummary(fastify.redis);
     return Promise.all(
       flights.map(async (flight) => {
         const view = describe(flight, now, buffers);
@@ -140,6 +146,11 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
           view,
           forecast,
           returns,
+          // CAA route figures for the OPERATING airline (codeshares: none, the operator differs).
+          punctuality:
+            flight.codeshare === "CODESHARE"
+              ? null
+              : routeStats(caa, flight.direction, flight.other.iata, slug, flight.lgw.scheduledUtc),
         };
       })
     );
@@ -197,12 +208,21 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
     if (!inBoard.length) {
       // Not live right now: what we remember about this flight from the last 7 days, if anything.
       const seen = await readSeen(fastify.redis, number);
+      const caa = seen.length ? await getCaaSummary(fastify.redis) : null;
       if (seen.length)
         return reply.send({
           success: true,
           data: {
             status: "SEEN",
-            seen: seen.map((s) => ({ ...s, airlineSlug: airlineSlug(s.airline) })),
+            seen: seen.map((s) => {
+              const slug = airlineSlug(s.airline);
+              return {
+                ...s,
+                airlineSlug: slug,
+                // Month of the flight's next likely date isn't known: use today's.
+                punctuality: routeStats(caa, s.direction, s.other.iata, slug, now.toISOString()),
+              };
+            }),
             boardFrom: board?.fromLocal ?? null,
             boardTo: board?.toLocal ?? null,
             weather: await readWeather(fastify.redis, ["LGW", ...seen.map((s) => s.other.iata)]),
@@ -282,6 +302,8 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
             : await readWeather(fastify.redis, ["LGW"]),
         },
         sameTerminal,
+        // CAA figures for this airline at Gatwick (latest 12 months), or null.
+        punctuality: airlineStats(await getCaaSummary(fastify.redis), slug),
       },
     });
   });
