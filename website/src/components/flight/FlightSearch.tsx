@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { FormEvent, useId, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useId, useState, useTransition } from "react";
 import { cleanFlightNumber, dayLabel, ukDateOffset } from "@/lib/flightFormat";
 
 /**
@@ -27,6 +27,9 @@ export default function FlightSearch({
   defaultDate?: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [navigating, startNavigation] = useTransition();
   const id = useId();
   const today = ukDateOffset(0);
   const quick = [
@@ -45,6 +48,14 @@ export default function FlightSearch({
 
   const date = choice === "other" ? otherDate : choice;
 
+  // The new page has arrived (or the same page was refreshed): stop showing "Checking…".
+  // This form stays mounted when only the flight or date in the address changes, so its
+  // state isn't reset by the navigation itself.
+  const here = `${pathname}?${searchParams.toString()}`;
+  useEffect(() => {
+    setBusy(false);
+  }, [here]);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const n = cleanFlightNumber(number);
@@ -61,8 +72,15 @@ export default function FlightSearch({
       const json = await res.json().catch(() => null);
       const status: string = json?.status ?? "ERROR";
       if (status === "FOUND") {
-        router.push(`/flight-status/${n}?date=${date}`);
-        return; // keep the button busy while the page loads
+        const target = `/flight-status/${n}?date=${date}`;
+        // Same address as now (e.g. checking the date already shown): just reload its data.
+        // Either way the button stays busy until the transition has finished.
+        startNavigation(() => {
+          if (pathname === `/flight-status/${n}` && searchParams.get("date") === date) router.refresh();
+          else router.push(target);
+        });
+        setBusy(false);
+        return;
       }
       if (status === "NOT_FOUND") setNotFoundText(`We can't find ${n} landing at or leaving Gatwick on ${dayLabel(date)}.`);
       setOutcome((["NOT_FOUND", "INVALID", "BUSY", "LIMIT"].includes(status) ? status : "ERROR") as Outcome);
@@ -121,10 +139,10 @@ export default function FlightSearch({
         )}
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || navigating}
           className={`h-[56px] flex-[0_0_auto] rounded-[14px] bg-amber px-7 py-[14px] text-[18px] font-extrabold text-ink hover:bg-[#fbbf24] disabled:cursor-wait disabled:opacity-80 max-sm:w-full`}
         >
-          {busy ? "Checking…" : "Check flight"}
+          {busy || navigating ? "Checking…" : "Check flight"}
         </button>
       </form>
       <div aria-live="polite" className="empty:hidden">
