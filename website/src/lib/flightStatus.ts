@@ -4,7 +4,7 @@
 // Env (website service on Railway): FLIGHT_STATUS_SITE_KEY — the same value as the backend's.
 
 import { API_URL } from "./quote";
-import type { AirlineTerminalPage, BoardData, FlightWithView, SeenFlight, TerminalSummary, WeatherMap } from "./flightFormat";
+import type { AirlineTerminalPage, BoardData, DelaysData, FlightWithView, SeenFlight, TerminalSummary, WeatherMap } from "./flightFormat";
 
 export type FlightResult =
   | { status: "FOUND"; source: "BOARD" | "LOOKUP"; fetchedAt: string; flights: FlightWithView[]; weather?: WeatherMap }
@@ -63,6 +63,12 @@ export async function fetchTerminals(): Promise<TerminalSummary | null> {
 /** One airline: its terminal and its flights on the live board. */
 export async function fetchAirlineTerminal(slug: string): Promise<AirlineTerminalPage> {
   const data = await getJson(`/public/flight-status/terminals/${encodeURIComponent(slug)}`);
+  return data ?? { status: "ERROR" };
+}
+
+/** /gatwick/delays: Gatwick punctuality (CAA), month by month and against other UK airports. */
+export async function fetchDelays(): Promise<DelaysData> {
+  const data = await getJson("/public/flight-status/delays");
   return data ?? { status: "ERROR" };
 }
 

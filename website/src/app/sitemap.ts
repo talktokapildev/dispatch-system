@@ -18,6 +18,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/flight-status`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/flight-status/departures`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/gatwick/terminals`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
+    { url: `${SITE_URL}/gatwick/delays`, changeFrequency: "monthly", priority: 0.6 },
     ...airlines.map((slug) => ({
       url: `${SITE_URL}/gatwick/terminals/${encodeURIComponent(slug)}`,
       lastModified: now,

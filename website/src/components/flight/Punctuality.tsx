@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  AirlineScores,
   AirlinePunctuality,
   CAA_CREDIT,
   CAA_HREF,
@@ -165,7 +166,7 @@ export function RouteReliability({
   );
 }
 
-function DirectionCard({ title, s, onTimeWord }: { title: string; s: PunctualityStats; onTimeWord: string }) {
+export function DirectionCard({ title, s, onTimeWord }: { title: string; s: PunctualityStats; onTimeWord: string }) {
   return (
     <div className="flex flex-col gap-3 rounded-[22px] border border-line bg-white p-5 sm:p-[22px]">
       <div className="flex items-baseline justify-between gap-3">
@@ -234,6 +235,195 @@ export function AirlinePunctualitySection({ p, name }: { p: AirlinePunctuality |
         to={p.to}
         extra={`${p.best.length ? "Routes with at least 60 flights in the period, arrivals and departures together. " : ""}On time = early or up to 15 minutes late.`}
       />
+    </section>
+  );
+}
+
+// ── Airline page header chip ─────────────────────────────────────────────────
+/** "71% on time" on the airline page's dark header, jumping to the section below. Arrivals. */
+export function OnTimeChip({ p }: { p: AirlinePunctuality | null | undefined }) {
+  const s = p?.arrivals;
+  if (!s) return null;
+  return (
+    <a
+      href="#airline-punctuality"
+      className="inline-flex min-h-[36px] items-center gap-2 rounded-full border-[1.5px] border-[#6b7280] py-[5px] pl-3 pr-4 text-[16px] font-extrabold text-white no-underline hover:border-[#9ca3af] hover:text-white"
+    >
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+      {s.onTimePct}% on time
+    </a>
+  );
+}
+
+/** The small line under the header evidence saying what the chip covers. */
+export function OnTimeNote({ p, name }: { p: AirlinePunctuality | null | undefined; name: string }) {
+  if (!p?.arrivals) return null;
+  return (
+    <p className="m-0 text-[14.5px] text-[#c4c9d1]">
+      On time: {name} arrivals at Gatwick, {periodLabel(p.from, p.to)} (CAA).{" "}
+      <a href="#airline-punctuality" className="font-bold text-[#fbbf24] hover:text-[#fde68a]">
+        See routes
+      </a>
+    </p>
+  );
+}
+
+// ── Terminals hub ranking ────────────────────────────────────────────────────
+export type RankedAirline = { slug: string; name: string; iata: string | null; hasPage: boolean; s: PunctualityStats };
+
+/** Airlines with enough CAA flights in that direction, most punctual first. */
+export function rankAirlines(
+  scores: AirlineScores | null | undefined,
+  airlines: { slug: string; name: string; codes: string[]; hasPage: boolean }[],
+  direction: "ARRIVAL" | "DEPARTURE"
+): RankedAirline[] {
+  if (!scores) return [];
+  const out: RankedAirline[] = [];
+  for (const a of airlines) {
+    const sc = scores.airlines[a.slug];
+    const s = direction === "ARRIVAL" ? sc?.arrivals : sc?.departures;
+    if (s && s.flights >= scores.minFlights) out.push({ slug: a.slug, name: a.name, iata: a.codes[0] ?? null, hasPage: a.hasPage, s });
+  }
+  return out.sort((x, y) => y.s.onTimePct - x.s.onTimePct || x.s.avgDelayMin - y.s.avgDelayMin || y.s.flights - x.s.flights);
+}
+
+/** The hub list's "On time" value: arrivals, from minFlights. */
+export function hubOnTime(scores: AirlineScores | null | undefined, slug: string): number | null {
+  const s = scores?.airlines[slug]?.arrivals;
+  return s && scores && s.flights >= scores.minFlights ? s.onTimePct : null;
+}
+
+// ── /gatwick/delays ──────────────────────────────────────────────────────────
+const fullMonth = (p: string) => {
+  const [y, m] = p.split("-").map(Number);
+  return `${MONTHS[m - 1] ?? ""} ${y}`;
+};
+
+/**
+ * Month by month on-time bars (arrivals dark, departures amber; the two differ in lightness too).
+ * Figures show on hover or keyboard focus; the same figures are in a table for screen readers.
+ */
+export function MonthChart({ months }: { months: { period: string; arrivals: PunctualityStats | null; departures: PunctualityStats | null }[] }) {
+  if (months.length < 2) return null;
+  const bar = (s: PunctualityStats | null, cls: string) => (
+    <div className={`w-[42%] max-w-[22px] rounded-t-[4px] ${cls}`} style={{ height: `${s ? Math.max(1, s.onTimePct) : 0}%` }} />
+  );
+  return (
+    <section className="flex flex-col gap-4 rounded-[22px] border border-line bg-white p-5 sm:p-[26px]" aria-labelledby="trend-heading">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 id="trend-heading" className="m-0 font-heading text-[24px] font-bold tracking-[-0.02em] text-ink sm:text-[26px]">
+          Month by month
+        </h2>
+        <div className="flex gap-[18px] text-[14px] font-bold text-soft" aria-hidden>
+          <span className="inline-flex items-center gap-2">
+            <span className="h-3 w-3 rounded-[3px] bg-ink" />
+            Arrivals
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span className="h-3 w-3 rounded-[3px] bg-amber" />
+            Departures
+          </span>
+        </div>
+      </div>
+      <p className="m-0 text-[15px]">Share of flights on time each month. Hover over or tap a month for its figures.</p>
+      <div aria-hidden className="relative">
+        <div className="grid h-[220px] items-end gap-[6px] border-b border-line sm:h-[240px] sm:gap-[10px]" style={{ gridTemplateColumns: `repeat(${months.length}, minmax(0, 1fr))` }}>
+          {months.map((m, i) => (
+            <div
+              key={m.period}
+              tabIndex={0}
+              className="group relative flex h-full items-end justify-center gap-[3px] rounded-t-[6px] outline-none hover:bg-[#f8fafc] focus-visible:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-accent-dark"
+            >
+              {bar(m.arrivals, "bg-ink")}
+              {bar(m.departures, "bg-amber")}
+              <div
+                className={`pointer-events-none invisible absolute bottom-[calc(100%+6px)] z-10 w-[168px] rounded-[12px] bg-ink px-3 py-2 text-[13px] leading-[1.35] text-white shadow-lg group-hover:visible group-focus:visible ${
+                  i < 2 ? "left-0" : i > months.length - 3 ? "right-0" : "left-1/2 -translate-x-1/2"
+                }`}
+              >
+                <strong className="block">{fullMonth(m.period)}</strong>
+                Arrivals {m.arrivals ? `${m.arrivals.onTimePct}%` : "–"} · avg {m.arrivals ? `${m.arrivals.avgDelayMin} min` : "–"}
+                <br />
+                Departures {m.departures ? `${m.departures.onTimePct}%` : "–"} · avg {m.departures ? `${m.departures.avgDelayMin} min` : "–"}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 grid gap-[6px] text-center text-[12px] font-bold text-muted sm:gap-[10px] sm:text-[13px]" style={{ gridTemplateColumns: `repeat(${months.length}, minmax(0, 1fr))` }}>
+          {months.map((m) => (
+            <span key={m.period}>{SHORT[Number(m.period.split("-")[1]) - 1]}</span>
+          ))}
+        </div>
+      </div>
+      <table className="sr-only">
+        <caption>On time by month</caption>
+        <thead>
+          <tr>
+            <th scope="col">Month</th>
+            <th scope="col">Arrivals on time</th>
+            <th scope="col">Departures on time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {months.map((m) => (
+            <tr key={m.period}>
+              <th scope="row">{fullMonth(m.period)}</th>
+              <td>{m.arrivals ? `${m.arrivals.onTimePct}%` : "no figure"}</td>
+              <td>{m.departures ? `${m.departures.onTimePct}%` : "no figure"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="m-0 text-[13.5px] text-muted">Bars start at 0%.</p>
+    </section>
+  );
+}
+
+/** Gatwick vs other UK airports (arrivals), Gatwick highlighted. */
+export function UkAirports({ airports }: { airports: { name: string; gatwick: boolean; arrivals: PunctualityStats | null }[] }) {
+  const list = airports.filter((a) => a.arrivals);
+  if (list.length < 3) return null;
+  const cols = "grid-cols-[minmax(0,1fr)_56px] sm:grid-cols-[200px_minmax(0,1fr)_64px_96px_110px]";
+  return (
+    <section className="flex flex-col gap-[14px]" aria-labelledby="uk-heading">
+      <h2 id="uk-heading" className={h2}>
+        Gatwick vs other UK airports
+      </h2>
+      <p className="m-0 text-[16px]">Arrivals on time over the same 12 months, at the {list.length} busiest airports in the CAA figures.</p>
+      <div className="overflow-hidden rounded-[20px] border border-line bg-white">
+        <div className={`hidden ${cols} gap-x-[14px] px-5 py-[13px] text-[13.5px] font-bold text-muted sm:grid`} aria-hidden>
+          <span>Airport</span>
+          <span />
+          <span className="text-right">On time</span>
+          <span className="text-right">Avg delay</span>
+          <span className="text-right">Arrivals</span>
+        </div>
+        <ol className="m-0 list-none p-0">
+          {list.map((a) => (
+            <li
+              key={a.name}
+              className={`grid ${cols} items-center gap-x-3 gap-y-2 border-t border-[#eef0f3] px-[14px] py-3 text-[15.5px] sm:gap-x-[14px] sm:px-5 ${
+                a.gatwick ? "bg-[#fffaf0]" : ""
+              }`}
+            >
+              <span className={`text-ink ${a.gatwick ? "font-extrabold" : "font-bold"}`}>{a.name}</span>
+              <strong className="text-right text-ink sm:order-3">{a.arrivals!.onTimePct}%</strong>
+              <div
+                role="img"
+                aria-label={`${a.arrivals!.onTimePct} percent on time`}
+                className={`col-span-2 h-2 overflow-hidden rounded-full sm:order-2 sm:col-span-1 ${a.gatwick ? "bg-[#f8dca6]" : "bg-line"}`}
+              >
+                <div className={`h-2 rounded-full ${a.gatwick ? "bg-accent-dark" : "bg-ink"}`} style={{ width: `${a.arrivals!.onTimePct}%` }} />
+              </div>
+              <span className="hidden text-right sm:order-4 sm:block">{a.arrivals!.avgDelayMin} min</span>
+              <span className="hidden text-right text-muted sm:order-5 sm:block">{a.arrivals!.flights.toLocaleString("en-GB")}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </section>
   );
 }

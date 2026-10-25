@@ -4,6 +4,8 @@
 // airline pages. Rules live in caaPunctualityRules.ts.
 //
 //   Database  CaaPunctuality   Gatwick rows of the CAA monthly CSV, up to 24 months.
+//             CaaAirportMonth  one total per UK airport, direction and month (the /gatwick/delays
+//                              comparison), from the same files.
 //                              Written ONLY by scripts/caa-punctuality.ts (run by hand once a
 //                              month, after the CAA publishes a new month — about 2 months' lag).
 //   Redis     airports:seen    hash IATA → { city, airportName, municipality, country, seenAt },
@@ -20,6 +22,7 @@ import type { BoardFlight } from "./flightBoardRules";
 import { getTerminalSummary } from "./airlineTerminals.service";
 import {
   addMonths,
+  AirportMonth,
   buildSummary,
   CaaRow,
   CaaSummary,
@@ -93,18 +96,26 @@ export async function rebuildCaaSummary(deps: CaaDeps, now: Date = new Date()): 
   const { prisma, redis, log } = deps;
   const latest = await prisma.caaPunctuality.aggregate({ _max: { period: true } });
   const to = latest._max.period;
-  const rows: CaaRow[] = to
-    ? ((await prisma.caaPunctuality.findMany({
-        where: { period: { gte: addMonths(to, -(WINDOW_MONTHS - 1)), lte: to } },
-      })) as unknown as CaaRow[])
+  const window = to ? { period: { gte: addMonths(to, -(WINDOW_MONTHS - 1)), lte: to } } : null;
+  const rows: CaaRow[] = window
+    ? ((await prisma.caaPunctuality.findMany({ where: window })) as unknown as CaaRow[])
     : [];
-  const summary = buildSummary(rows, await readAirportsSeen(redis, now), await knownAirlines(redis), now);
+  // UK airport totals (CaaAirportMonth); empty until the months are imported with this version.
+  // A database without the table yet (deploy before migration) just has no comparison.
+  const airportMonths: AirportMonth[] = window
+    ? ((await prisma.caaAirportMonth.findMany({ where: window }).catch((err: unknown) => {
+        log.warn(`[CAA] UK airport totals unavailable: ${(err as Error)?.message?.split("\n")[0] ?? err}`);
+        return [];
+      })) as unknown as AirportMonth[])
+    : [];
+  const summary = buildSummary(rows, await readAirportsSeen(redis, now), await knownAirlines(redis), now, airportMonths);
   await redis.set(KEY_SUMMARY, JSON.stringify(summary));
   cache = { at: Date.now(), summary };
 
   const line =
     `[CAA] summary ${summary.from ?? "-"}..${summary.to ?? "-"} (${summary.months} months): ` +
-    `${Object.keys(summary.routes).length} routes, ${Object.keys(summary.airlines).length} airlines; ` +
+    `${Object.keys(summary.routes).length} routes, ${Object.keys(summary.airlines).length} airlines, ` +
+    `${summary.ukAirports?.length ?? 0} UK airports; ` +
     `unmatched airports ${summary.unmatchedAirports.length}, airlines ${summary.unmatchedAirlines.length}`;
   const detail = [
     ...summary.unmatchedAirports

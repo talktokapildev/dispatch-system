@@ -14,6 +14,7 @@
 //                                                         and airlines with their own terminal page
 //   GET  /public/flight-status/terminals                  which terminal each airline uses (last 7 days)
 //   GET  /public/flight-status/terminals/:slug            one airline: its terminal + its flights on the board
+//   GET  /public/flight-status/delays                     Gatwick punctuality (CAA): overall, by month, UK airports
 //   POST /public/flight-status/lookup { number, date }    a person pressed "Check flight":
 //                                                         board first, else ONE provider lookup
 //
@@ -50,7 +51,7 @@ import { airlineSlug } from "../services/airlineTerminalRules";
 import { pickForecast, readForecasts, wantsForecast } from "../services/forecast.service";
 import { readReturns } from "../services/returnFlights.service";
 import { getCaaSummary } from "../services/caaPunctuality.service";
-import { airlineStats, routeStats } from "../services/caaPunctualityRules";
+import { airlineScores, airlineStats, gatwickDelays, routeStats } from "../services/caaPunctualityRules";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
 const BOARD_BACK_MIN = 90; // the board shows flights from 90 min ago onwards
@@ -253,7 +254,14 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
   fastify.get("/public/flight-status/terminals", { config: { rateLimit: false } }, async (request, reply) => {
     if (refuse(request, reply)) return;
     const summary = await getTerminalSummary(fastify.redis);
-    return reply.send({ success: true, data: summary ?? { updatedAt: null, airlines: [] } });
+    return reply.send({
+      success: true,
+      data: {
+        ...(summary ?? { updatedAt: null, airlines: [] }),
+        // CAA on-time figures by airline slug (ranked on the hub from `minFlights` flights), or null.
+        punctuality: airlineScores(await getCaaSummary(fastify.redis)),
+      },
+    });
   });
 
   // One airline's page: its terminal, and its flights on the live board (arrivals and departures).
@@ -306,6 +314,13 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
         punctuality: airlineStats(await getCaaSummary(fastify.redis), slug),
       },
     });
+  });
+
+  // Gatwick punctuality page (/gatwick/delays): CAA figures only, Redis only.
+  fastify.get("/public/flight-status/delays", { config: { rateLimit: false } }, async (request, reply) => {
+    if (refuse(request, reply)) return;
+    const d = gatwickDelays(await getCaaSummary(fastify.redis));
+    return reply.send({ success: true, data: d ? { status: "FOUND", ...d } : { status: "NONE" } });
   });
 
   fastify.post("/public/flight-status/lookup", { config: { rateLimit: false } }, async (request, reply) => {

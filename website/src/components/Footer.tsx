@@ -56,6 +56,9 @@ export default function Footer() {
             <Link href="/gatwick/terminals" className={link}>
               Gatwick terminals by airline
             </Link>
+            <Link href="/gatwick/delays" className={link}>
+              Gatwick delays
+            </Link>
             <Link href="/trains/three-bridges" className={link}>
               Three Bridges train times
             </Link>

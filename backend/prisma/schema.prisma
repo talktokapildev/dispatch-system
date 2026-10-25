@@ -1406,3 +1406,23 @@ model CaaPunctuality {
   @@unique([period, direction, airport, airline, charter])
   @@index([period])
 }
+
+// One total per UK reporting airport, direction (A/D) and month, added up from every row of the
+// same CAA file (all airlines and routes). The /gatwick/delays "Gatwick vs other UK airports"
+// table. Written only by scripts/caa-punctuality.ts; kept 24 months like CaaPunctuality.
+model CaaAirportMonth {
+  id         String   @id @default(uuid())
+  period     Int // YYYYMM
+  airport    String // CAA reporting airport, e.g. "HEATHROW"
+  direction  String // A | D
+  total      Int // matched + unmatched + cancelled
+  matched    Int
+  cancelled  Int
+  onTime     Float // flights early to 15 min late (from percentages, so not whole)
+  overHour   Float // flights more than 60 min late
+  delaySum   Float // average delay x matched, summed
+  importedAt DateTime @default(now())
+
+  @@unique([period, airport, direction])
+  @@index([period])
+}

@@ -5,7 +5,9 @@
 //   https://www.caa.co.uk/data-and-analysis/uk-aviation-market/flight-punctuality/
 // Use the "Punctuality Statistics Full Analysis Arrival Departure (CSV)" file — the script
 // refuses any other layout. Re-importing a month replaces it (the CAA sometimes republishes).
-// Months older than 24 months are deleted. The website picks the change up within the hour
+// Each import also saves one total per UK airport and direction (CaaAirportMonth) for the
+// /gatwick/delays comparison. Months older than 24 months are deleted.
+// The website picks the change up within the hour
 // (backend rebuilds caa:summary hourly; unmatched names appear in Railway logs as "[CAA]").
 //
 //   node --env-file=.env -r ts-node/register scripts/caa-punctuality.ts import <url-or-file> [more...] [--dry-run]
@@ -54,11 +56,16 @@ async function importOne(src: string, dryRun: boolean): Promise<number | null> {
     return null;
   }
   if (dryRun) return period;
-  const [deleted, created] = await prisma.$transaction([
+  const [deleted, created, , airports] = await prisma.$transaction([
     prisma.caaPunctuality.deleteMany({ where: { period } }),
     prisma.caaPunctuality.createMany({ data: rows, skipDuplicates: true }),
+    prisma.caaAirportMonth.deleteMany({ where: { period } }),
+    prisma.caaAirportMonth.createMany({ data: parsed.airports, skipDuplicates: true }),
   ]);
-  console.log(`    saved ${created.count}${deleted.count ? ` (replaced ${deleted.count} from an earlier import)` : ""}`);
+  console.log(
+    `    saved ${created.count}${deleted.count ? ` (replaced ${deleted.count} from an earlier import)` : ""}; ` +
+      `UK airport totals: ${airports.count}`
+  );
   return period;
 }
 
@@ -76,6 +83,7 @@ async function main() {
       if (latest) {
         const cutoff = addMonths(latest, -(KEEP_MONTHS - 1));
         const old = await prisma.caaPunctuality.deleteMany({ where: { period: { lt: cutoff } } });
+        await prisma.caaAirportMonth.deleteMany({ where: { period: { lt: cutoff } } });
         if (old.count) console.log(`Deleted ${old.count} rows older than ${periodIso(cutoff)}.`);
       }
     }
@@ -87,6 +95,7 @@ async function main() {
     const p = Number(rest[0]);
     if (!/^20\d{2}(0[1-9]|1[0-2])$/.test(String(p))) throw new Error("Usage: delete YYYYMM");
     const r = await prisma.caaPunctuality.deleteMany({ where: { period: p } });
+    await prisma.caaAirportMonth.deleteMany({ where: { period: p } });
     console.log(`Deleted ${r.count} rows for ${periodIso(p)}.`);
     return list();
   }
@@ -101,8 +110,14 @@ async function list() {
     orderBy: { period: "asc" },
   });
   if (!groups.length) return console.log("\nNo months imported yet.");
+  const ap = await prisma.caaAirportMonth.groupBy({ by: ["period"], _count: { _all: true } });
+  const apBy = new Map(ap.map((a: { period: number; _count: { _all: number } }) => [a.period, a._count._all]));
   console.log("\nMonths held:");
-  for (const g of groups) console.log(`  ${periodIso(g.period)}  ${g._count._all} rows, ${g._sum.matched ?? 0} timed flights`);
+  for (const g of groups)
+    console.log(
+      `  ${periodIso(g.period)}  ${g._count._all} rows, ${g._sum.matched ?? 0} timed flights; ` +
+        `UK airport totals: ${apBy.get(g.period) ?? 0}`
+    );
 }
 
 main()

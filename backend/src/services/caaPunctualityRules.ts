@@ -86,9 +86,23 @@ export type CaaRow = {
   runDate: string | null;
 };
 
+/** One UK airport's month (CaaAirportMonth table): every row of that airport added up. */
+export type AirportMonth = {
+  period: number;
+  airport: string; // CAA reporting airport, e.g. "HEATHROW"
+  direction: CaaDirection;
+  total: number; // matched + unmatched + cancelled
+  matched: number;
+  cancelled: number;
+  onTime: number; // flights early to 15 min late (from the percentages, so not whole)
+  overHour: number; // flights more than 60 min late
+  delaySum: number; // average delay × matched, summed
+};
+
 export type ParsedCsv = {
   period: number; // the one month the file covers
   rows: CaaRow[]; // Gatwick only
+  airports: AirportMonth[]; // every UK reporting airport (Gatwick included)
   allRows: number; // every data row in the file (all UK airports)
   duplicates: number; // repeated keys dropped (first kept)
 };
@@ -155,10 +169,12 @@ export function parseCaaCsv(text: string): ParsedCsv {
   const periods = new Set<number>();
   const byKey = new Map<string, CaaRow>();
   let duplicates = 0;
+  const totals = new Map<string, AirportMonth>();
+  const seenKeys = new Set<string>();
   for (const r of records.slice(1)) {
     const period = num(get(r, "period"));
     if (period) periods.add(period);
-    if (clean(get(r, "reporting")).toUpperCase() !== REPORTING_AIRPORT) continue;
+    const reporting = clean(get(r, "reporting")).toUpperCase();
     const dir = clean(get(r, "direction")).toUpperCase();
     if (dir !== "A" && dir !== "D") continue;
     const row: CaaRow = {
@@ -185,16 +201,30 @@ export function parseCaaCsv(text: string): ParsedCsv {
       avgDelayMin: Math.max(0, num(get(r, "avgDelay"))),
       runDate: clean(get(r, "runDate")) || null,
     };
-    if (!row.airport || !row.airline) continue;
-    const key = rowKey(row);
-    if (byKey.has(key)) duplicates++;
-    else byKey.set(key, row);
+    if (!row.airport || !row.airline || !reporting) continue;
+    // A repeated row (same airport, route, airline, A/D, S/C) is dropped everywhere, first kept.
+    const key = `${reporting}|${rowKey(row)}`;
+    if (seenKeys.has(key)) {
+      if (reporting === REPORTING_AIRPORT) duplicates++;
+      continue;
+    }
+    seenKeys.add(key);
+    const tk = `${reporting}|${dir}`;
+    const t =
+      totals.get(tk) ??
+      totals
+        .set(tk, { period, airport: reporting, direction: dir, total: 0, matched: 0, cancelled: 0, onTime: 0, overHour: 0, delaySum: 0 })
+        .get(tk)!;
+    add(t, row);
+    if (reporting !== REPORTING_AIRPORT) continue;
+    byKey.set(key, row);
   }
   if (periods.size !== 1)
     throw new Error(periods.size ? `File covers several months (${[...periods].join(", ")})` : "No reporting_period found");
   const period = [...periods][0];
   if (!/^20\d{2}(0[1-9]|1[0-2])$/.test(String(period))) throw new Error(`Odd reporting_period ${period}`);
-  return { period, rows: [...byKey.values()], allRows: records.length - 1, duplicates };
+  const airports = [...totals.values()].map((t) => ({ ...t, period }));
+  return { period, rows: [...byKey.values()], airports, allRows: records.length - 1, duplicates };
 }
 
 export const rowKey = (r: Pick<CaaRow, "period" | "direction" | "airport" | "airline" | "charter">) =>
@@ -385,6 +415,14 @@ export function matchAirline(caaAirline: string, known: KnownAirline[]): string 
 
 // ── Stats ───────────────────────────────────────────────────────────────────
 type Acc = { total: number; matched: number; cancelled: number; onTime: number; overHour: number; delaySum: number };
+const addAcc = (a: Acc, b: Acc) => {
+  a.total += b.total;
+  a.matched += b.matched;
+  a.cancelled += b.cancelled;
+  a.onTime += b.onTime;
+  a.overHour += b.overHour;
+  a.delaySum += b.delaySum;
+};
 const emptyAcc = (): Acc => ({ total: 0, matched: 0, cancelled: 0, onTime: 0, overHour: 0, delaySum: 0 });
 
 function add(acc: Acc, r: CaaRow): void {
@@ -449,12 +487,26 @@ export type CaaSummary = {
   airlines: Record<string, AirlineEntry>;
   unmatchedAirports: Unmatched[]; // busiest first (for the log)
   unmatchedAirlines: Unmatched[];
+  gatwick?: GatwickPunctuality | null; // all Gatwick flights (summaries built before Oct 26: absent)
+  ukAirports?: UkAirport[]; // busiest UK airports, best on-time arrivals first (Gatwick always in)
 };
+
+export type GatwickMonth = { period: string; arrivals: Stats | null; departures: Stats | null };
+export type GatwickPunctuality = { arrivals: Stats | null; departures: Stats | null; months: GatwickMonth[] };
+export type UkAirport = { name: string; gatwick: boolean; arrivals: Stats | null; departures: Stats | null };
+
+export const UK_AIRPORTS_SHOWN = 8; // the busiest by arrivals (Gatwick always included)
+export const RANK_MIN_AIRLINE_FLIGHTS = 300; // an airline is ranked from this many flights in 12 months
 
 export const routeKey = (direction: CaaDirection, iata: string, slug: string) => `${direction}|${iata.toUpperCase()}|${slug}`;
 
 function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+}
+
+/** CAA reporting airport → how we write it: "BELFAST CITY (GEORGE BEST)" → "Belfast City (George Best)". */
+export function airportTitle(caa: string): string {
+  return titleCase(caa);
 }
 
 /**
@@ -466,12 +518,13 @@ export function buildSummary(
   rows: CaaRow[],
   seen: SeenAirport[],
   known: KnownAirline[],
-  now: Date
+  now: Date,
+  airportMonths: AirportMonth[] = []
 ): CaaSummary {
   const latest = rows.reduce((m, r) => Math.max(m, r.period), 0);
   const empty: CaaSummary = {
     builtAt: now.toISOString(), from: null, to: null, months: 0, routes: {}, airlines: {},
-    unmatchedAirports: [], unmatchedAirlines: [],
+    unmatchedAirports: [], unmatchedAirlines: [], gatwick: null, ukAirports: [],
   };
   if (!latest) return empty;
   const first = addMonths(latest, -(WINDOW_MONTHS - 1));
@@ -570,6 +623,46 @@ export function buildSummary(
     };
   }
 
+  // Gatwick as a whole: every row, matched to a route or not.
+  const gw = { A: emptyAcc(), D: emptyAcc() };
+  const gwMonths = new Map<number, { A: Acc; D: Acc }>();
+  for (const r of inWindow) {
+    add(gw[r.direction], r);
+    const m = gwMonths.get(r.period) ?? gwMonths.set(r.period, { A: emptyAcc(), D: emptyAcc() }).get(r.period)!;
+    add(m[r.direction], r);
+  }
+  const gatwick: GatwickPunctuality = {
+    arrivals: toStats(gw.A, MIN_FLIGHTS),
+    departures: toStats(gw.D, MIN_FLIGHTS),
+    months: [...gwMonths.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([p, m]) => ({ period: periodIso(p), arrivals: toStats(m.A, 1), departures: toStats(m.D, 1) })),
+  };
+
+  // UK airports over the same months (CaaAirportMonth). Gatwick comes from the same file, so it
+  // agrees with the figures above.
+  const ap = new Map<string, { A: Acc; D: Acc }>();
+  for (const t of airportMonths) {
+    if (t.period < first || t.period > latest || (t.direction !== "A" && t.direction !== "D")) continue;
+    const e = ap.get(t.airport) ?? ap.set(t.airport, { A: emptyAcc(), D: emptyAcc() }).get(t.airport)!;
+    addAcc(e[t.direction], t);
+  }
+  const byArrivals = [...ap.entries()].sort((a, b) => b[1].A.matched - a[1].A.matched);
+  const shown = byArrivals.slice(0, UK_AIRPORTS_SHOWN);
+  if (!shown.some(([n]) => n === REPORTING_AIRPORT)) {
+    const g = byArrivals.find(([n]) => n === REPORTING_AIRPORT);
+    if (g) shown.splice(shown.length - 1, 1, g);
+  }
+  const ukAirports: UkAirport[] = shown
+    .map(([n, e]) => ({
+      name: airportTitle(n),
+      gatwick: n === REPORTING_AIRPORT,
+      arrivals: toStats(e.A, MIN_FLIGHTS),
+      departures: toStats(e.D, MIN_FLIGHTS),
+    }))
+    .filter((a) => a.arrivals)
+    .sort((a, b) => b.arrivals!.onTimePct - a.arrivals!.onTimePct || a.arrivals!.avgDelayMin - b.arrivals!.avgDelayMin);
+
   const busiest = (m: Map<string, Unmatched>) => [...m.values()].sort((a, b) => b.flights - a.flights);
   return {
     builtAt: now.toISOString(),
@@ -580,6 +673,8 @@ export function buildSummary(
     airlines,
     unmatchedAirports: busiest(badAirports),
     unmatchedAirlines: busiest(badAirlines),
+    gatwick,
+    ukAirports,
   };
 }
 
@@ -617,4 +712,19 @@ export function airlineStats(summary: CaaSummary | null, slug: string) {
   const a = summary?.airlines[slug];
   if (!summary?.from || !summary.to || !a || (!a.arrivals && !a.departures)) return null;
   return { from: summary.from, to: summary.to, ...a };
+}
+
+/** Terminals hub: each airline's arrivals / departures figures (ranked on the website from 300 flights). */
+export function airlineScores(summary: CaaSummary | null) {
+  if (!summary?.from || !summary.to) return null;
+  const airlines: Record<string, { arrivals: Stats | null; departures: Stats | null }> = {};
+  for (const [slug, a] of Object.entries(summary.airlines)) airlines[slug] = { arrivals: a.arrivals, departures: a.departures };
+  return { from: summary.from, to: summary.to, minFlights: RANK_MIN_AIRLINE_FLIGHTS, airlines };
+}
+
+/** /gatwick/delays page: Gatwick overall, month by month, and the UK airports compared. */
+export function gatwickDelays(summary: CaaSummary | null) {
+  const g = summary?.gatwick;
+  if (!summary?.from || !summary.to || !g || (!g.arrivals && !g.departures)) return null;
+  return { from: summary.from, to: summary.to, gatwick: g, airports: summary.ukAirports ?? [] };
 }
