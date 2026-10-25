@@ -1371,3 +1371,38 @@ model WebQuote {
 
   @@index([createdAt])
 }
+
+// UK Civil Aviation Authority punctuality statistics: Gatwick rows of the monthly
+// "Full Analysis Arrival Departure" CSV (one row per other airport, operating airline,
+// A/D and S/C per month). Written only by scripts/caa-punctuality.ts; read by
+// caaPunctuality.service.ts for the website's "How reliable is this route?" figures.
+// Kept 24 months. CAA terms: never sold on; credit the CAA wherever shown.
+model CaaPunctuality {
+  id           String   @id @default(uuid())
+  period       Int // YYYYMM
+  direction    String // A | D (at Gatwick)
+  country      String // CAA country of the other airport, e.g. "SPAIN"
+  airport      String // CAA name of the other airport, e.g. "MALAGA"
+  airline      String // CAA operating airline, e.g. "EASYJET UK LTD"
+  charter      String // S | C
+  matched      Int
+  unmatched    Int
+  cancelled    Int
+  early15Pct   Float // more than 15 min early (all % are of matched + unmatched + cancelled)
+  early1Pct    Float // 15 to 1 min early
+  late15Pct    Float // 0 to 15 min late
+  late30Pct    Float // 16 to 30
+  late60Pct    Float // 31 to 60
+  late120Pct   Float // 61 to 120
+  late180Pct   Float // 121 to 180
+  late360Pct   Float // 181 to 360
+  lateMorePct  Float // more than 360
+  unmatchedPct Float
+  cancelledPct Float
+  avgDelayMin  Float // early flights count as 0
+  runDate      String? // CAA run date of the file, e.g. "14/10/2026 11:08"
+  importedAt   DateTime @default(now())
+
+  @@unique([period, direction, airport, airline, charter])
+  @@index([period])
+}

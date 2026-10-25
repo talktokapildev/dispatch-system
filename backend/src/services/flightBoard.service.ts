@@ -37,6 +37,7 @@ import { ensureWeather, LGW_PLACE, Place, refreshWeather } from "./weather.servi
 import { recordSeen } from "./flightSeen.service";
 import { recordAirlineTerminals } from "./airlineTerminals.service";
 import { recordReturns } from "./returnFlights.service";
+import { recordAirportsSeen } from "./caaPunctuality.service";
 import { topUpForecasts, wantsForecast } from "./forecast.service";
 import {
   AIRPORT_IATA,
@@ -190,6 +191,10 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
     // Arrivals by origin airport, for "Coming back through Gatwick?" on departure pages.
     await recordReturns(redis, flights, now).catch((err) =>
       log.warn(`[FlightBoard] could not record return flights: ${(err as Error)?.message ?? err}`)
+    );
+    // Airport names by IATA, for matching CAA punctuality names (caaPunctuality.service.ts).
+    await recordAirportsSeen(redis, flights, now).catch((err) =>
+      log.warn(`[FlightBoard] could not record airports: ${(err as Error)?.message ?? err}`)
     );
     const arr = flights.filter((f) => f.direction === "ARRIVAL").length;
     log.warn(
