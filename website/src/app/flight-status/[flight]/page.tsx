@@ -14,6 +14,7 @@ import TripExtras from "@/components/flight/TripExtras";
 import LeavePlanner from "@/components/flight/LeavePlanner";
 import ReturnPickup from "@/components/flight/ReturnPickup";
 import { RouteReliability } from "@/components/flight/Punctuality";
+import { RightsCard, TravelAdviceCard } from "@/components/flight/TravelRights";
 import { DarkBand, h2 } from "@/components/flight/ui";
 import {
   cleanFlightNumber,
@@ -177,6 +178,7 @@ export default async function FlightPage({ params, searchParams }: Props) {
                 <p className="m-0 text-[17px] text-soft">{seenSentence(s)}</p>
                 <AirlineTerminalLink slug={s.airlineSlug} name={s.airline.name} />
               </section>
+              {s.direction === "DEPARTURE" && <TravelAdviceCard a={s.travelAdvice} />}
               <RouteReliability
                 p={s.punctuality}
                 direction={s.direction}
@@ -279,7 +281,12 @@ export default async function FlightPage({ params, searchParams }: Props) {
           </div>
         )}
 
+        {/* Badly delayed or cancelled: what UK rules say the passenger is owed (null otherwise). */}
+        <RightsCard r={main.rights} direction={f.direction} />
+
         <TripExtras f={f} v={v} forecast={main.forecast} now={now} />
+
+        {f.direction === "DEPARTURE" && v.state !== "DEPARTED" && <TravelAdviceCard a={main.travelAdvice} />}
 
         {showLeave && (
           <LeavePlanner

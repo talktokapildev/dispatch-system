@@ -19,7 +19,9 @@
 //                                                         board first, else ONE provider lookup
 //
 // Flight and airline replies also carry CAA punctuality figures (`punctuality`, from the
-// caa:summary Redis key; see caaPunctuality.service.ts) — null when we have none.
+// caa:summary Redis key; see caaPunctuality.service.ts) — null when we have none. Flight replies
+// also carry `rights` (UK delay/cancellation rights, passengerRightsRules.ts; null when not
+// relevant) and, for departures, `travelAdvice` (FCDO, travelAdvice.service.ts; cached only).
 //
 // None of these GETs ever calls the flight provider (see flightBoard.service.ts).
 // The website forwards the visitor's IP in x-visitor-ip (trusted only because the
@@ -51,6 +53,8 @@ import { airlineSlug } from "../services/airlineTerminalRules";
 import { pickForecast, readForecasts, wantsForecast } from "../services/forecast.service";
 import { readReturns } from "../services/returnFlights.service";
 import { getCaaSummary } from "../services/caaPunctuality.service";
+import { passengerRights } from "../services/passengerRightsRules";
+import { readTravelAdvice } from "../services/travelAdvice.service";
 import { airlineScores, airlineStats, gatwickDelays, routeStats } from "../services/caaPunctualityRules";
 
 const LOOKUPS_PER_VISITOR_PER_HOUR = 10;
@@ -152,6 +156,8 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
             flight.codeshare === "CODESHARE"
               ? null
               : routeStats(caa, flight.direction, flight.other.iata, slug, flight.lgw.scheduledUtc),
+          rights: passengerRights(flight, view),
+          travelAdvice: flight.direction === "DEPARTURE" ? await readTravelAdvice(fastify.redis, flight.other.countryCode) : null,
         };
       })
     );
@@ -215,15 +221,18 @@ export async function publicFlightStatusRoutes(fastify: FastifyInstance) {
           success: true,
           data: {
             status: "SEEN",
-            seen: seen.map((s) => {
-              const slug = airlineSlug(s.airline);
-              return {
-                ...s,
-                airlineSlug: slug,
-                // Month of the flight's next likely date isn't known: use today's.
-                punctuality: routeStats(caa, s.direction, s.other.iata, slug, now.toISOString()),
-              };
-            }),
+            seen: await Promise.all(
+              seen.map(async (s) => {
+                const slug = airlineSlug(s.airline);
+                return {
+                  ...s,
+                  airlineSlug: slug,
+                  // Month of the flight's next likely date isn't known: use today's.
+                  punctuality: routeStats(caa, s.direction, s.other.iata, slug, now.toISOString()),
+                  travelAdvice: s.direction === "DEPARTURE" ? await readTravelAdvice(fastify.redis, s.other.countryCode) : null,
+                };
+              })
+            ),
             boardFrom: board?.fromLocal ?? null,
             boardTo: board?.toLocal ?? null,
             weather: await readWeather(fastify.redis, ["LGW", ...seen.map((s) => s.other.iata)]),

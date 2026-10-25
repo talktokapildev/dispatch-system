@@ -27,7 +27,8 @@
 // Each refresh also feeds the 7-day "seen" memory (flightSeen.service.ts), the airline
 // terminal summary (airlineTerminals.service.ts) and the return-flight memory
 // (returnFlights.service.ts), all from the same response. The tick also tops up weather
-// FORECASTS (forecast.service.ts) for Gatwick and destinations of flights hours away.
+// FORECASTS (forecast.service.ts) for Gatwick and destinations of flights hours away, and UK
+// travel advice (travelAdvice.service.ts, GOV.UK) for departure destinations.
 import axios from "axios";
 import Redis from "ioredis";
 import { PrismaClient } from "@prisma/client";
@@ -38,6 +39,7 @@ import { recordSeen } from "./flightSeen.service";
 import { recordAirlineTerminals } from "./airlineTerminals.service";
 import { recordReturns } from "./returnFlights.service";
 import { recordAirportsSeen } from "./caaPunctuality.service";
+import { topUpTravelAdvice } from "./travelAdvice.service";
 import { topUpForecasts, wantsForecast } from "./forecast.service";
 import {
   AIRPORT_IATA,
@@ -360,6 +362,18 @@ export function startFlightBoardRefresh(deps: BoardDeps): void {
       await topUpForecasts(deps.redis, deps.log, forecastPlacesOf(board?.flights ?? [], new Date()));
     } catch (err) {
       deps.log.warn(`[Weather] refresh error: ${(err as Error)?.message ?? err}`);
+    }
+    try {
+      // UK travel advice (FCDO) for departure destinations, soonest first (travelAdvice.service.ts).
+      const board = await getBoard(deps.redis);
+      const now = Date.now();
+      const codes = [...(board?.flights ?? [])]
+        .filter((f) => f.direction === "DEPARTURE" && Date.parse(f.lgw.scheduledUtc) > now - 3600_000)
+        .sort((a, b) => a.lgw.scheduledUtc.localeCompare(b.lgw.scheduledUtc))
+        .map((f) => f.other.countryCode);
+      await topUpTravelAdvice(deps.redis, deps.log, codes);
+    } catch (err) {
+      deps.log.warn(`[TravelAdvice] refresh error: ${(err as Error)?.message ?? err}`);
     }
   };
   setTimeout(tick, 20_000); // shortly after start-up
