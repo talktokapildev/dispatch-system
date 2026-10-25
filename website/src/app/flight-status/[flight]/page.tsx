@@ -13,6 +13,7 @@ import SeenCard, { SeenBookPanel, seenSentence } from "@/components/flight/SeenC
 import TripExtras from "@/components/flight/TripExtras";
 import LeavePlanner from "@/components/flight/LeavePlanner";
 import ReturnPickup from "@/components/flight/ReturnPickup";
+import { RouteReliability } from "@/components/flight/Punctuality";
 import { DarkBand, h2 } from "@/components/flight/ui";
 import {
   cleanFlightNumber,
@@ -176,6 +177,14 @@ export default async function FlightPage({ params, searchParams }: Props) {
                 <p className="m-0 text-[17px] text-soft">{seenSentence(s)}</p>
                 <AirlineTerminalLink slug={s.airlineSlug} name={s.airline.name} />
               </section>
+              <RouteReliability
+                p={s.punctuality}
+                direction={s.direction}
+                airline={s.airline.name}
+                place={placeName(s.other)}
+                bookAnchor="#book"
+                now={now}
+              />
               {board?.fetchedAt && !board.stale && (
                 <Board data={board} direction={s.direction} full={false} now={now} tabHref={boardHref} />
               )}
@@ -293,6 +302,14 @@ export default async function FlightPage({ params, searchParams }: Props) {
           <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-7">
             <GatwickFacts f={f} />
             <PlainEnglish f={f} v={v} now={now} />
+            <RouteReliability
+              p={f.codeshare === "CODESHARE" ? null : main.punctuality}
+              direction={f.direction}
+              airline={f.airline.name}
+              place={placeName(f.other)}
+              bookAnchor={!showLeave ? "#book" : undefined}
+              now={now}
+            />
             {board?.fetchedAt && !board.stale && (
               <Board
                 data={board}
