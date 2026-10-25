@@ -101,7 +101,40 @@ export type FlightWithView = {
   forecast?: FlightForecast; // older backends: absent
   returns?: ReturnFlight[];
   punctuality?: RoutePunctuality | null; // CAA figures for the route (null: none)
+  rights?: PassengerRights | null; // UK delay/cancellation rights (null: nothing to say)
+  travelAdvice?: TravelAdvice | null; // departures: FCDO advice for the destination (cached only)
 };
+
+// ── UK passenger rights (CAA's explanation of UK261) ─────────────────────────
+export type PassengerRights = {
+  covered: "YES" | "UK_EU_AIRLINE";
+  distanceKm: number | null;
+  band: "SHORT" | "MEDIUM" | "LONG" | null;
+  cancelled: boolean;
+  arrivalDelayMin: number | null;
+  arrivalDelayFinal: boolean;
+  compensationGbp: number | null;
+  compensationIfLateGbp: number | null;
+  careFromMin: number | null;
+  careDue: boolean;
+  refundOption: boolean;
+};
+export const CAA_DELAYS_HREF = "https://www.caa.co.uk/air-passengers/travel-problems-and-rights/flight-delays-and-cancellations/delays/";
+export const CAA_CANCELLATIONS_HREF =
+  "https://www.caa.co.uk/air-passengers/travel-problems-and-rights/flight-delays-and-cancellations/cancellations/";
+
+// ── FCDO travel advice (GOV.UK, Open Government Licence v3.0) ────────────────
+export type TravelAdvice = {
+  slug: string;
+  name: string;
+  level: "NONE" | "PARTS_ESSENTIAL" | "PARTS_ALL" | "WHOLE_ESSENTIAL" | "WHOLE_ALL";
+  updatedAt: string | null;
+  changeDescription: string | null;
+  url: string;
+  entryUrl: string | null;
+};
+export const OGL_CREDIT = "Contains public sector information licensed under the Open Government Licence v3.0.";
+export const OGL_HREF = "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/";
 
 // ── CAA punctuality (UK Civil Aviation Authority monthly statistics) ─────────
 export type PunctualityStats = {
@@ -163,6 +196,7 @@ export type SeenFlight = {
   seenAt: string;
   airlineSlug?: string | null;
   punctuality?: RoutePunctuality | null;
+  travelAdvice?: TravelAdvice | null;
 };
 
 export type BoardRow = {
