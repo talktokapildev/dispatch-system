@@ -309,7 +309,8 @@ export default async function FlightPage({ params, searchParams }: Props) {
             )}
           </div>
           <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
-            <BookPanel f={f} v={v} now={now} />
+            {/* Departures with "When to leave home" already have the booking there. */}
+            {!showLeave && <BookPanel f={f} v={v} now={now} />}
             <Tips f={f} v={v} />
           </aside>
         </div>
