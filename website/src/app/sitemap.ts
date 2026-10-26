@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { fetchSitemapLists } from "@/lib/flightStatus";
+import { AREAS, areaPath } from "@/lib/areas";
 import { SITE_URL } from "@/lib/site";
 import { boardPath, TRAIN_STATIONS } from "@/lib/trainFormat";
 
@@ -15,6 +16,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const { numbers: flights, airlines } = await fetchSitemapLists();
   return [
     { url: `${SITE_URL}/`, changeFrequency: "monthly", priority: 1 },
+    ...AREAS.map((a) => ({
+      url: `${SITE_URL}${areaPath(a.slug)}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.9,
+    })),
     { url: `${SITE_URL}/flight-status`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/flight-status/departures`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/gatwick/terminals`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
