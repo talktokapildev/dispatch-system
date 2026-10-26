@@ -33,12 +33,12 @@ export default function Hero() {
           <PhoneText
             full={
               <>
-                Fixed-fare private hire from Crawley, Horley and the Gatwick area, with London and
-                Heathrow transfers too. Book a day or more ahead. If you&apos;re flying in, add your
-                flight in the app and we&apos;ll time your pickup to your landing.
+                Fixed-fare rides between Gatwick and your door in Horsham, Mid Sussex, Crawley and
+                Horley. Book a day or more ahead. Flying home? Add your flight and we&apos;ll time
+                your pickup to your landing.
               </>
             }
-            short="Fixed-fare rides for Gatwick, London and Heathrow, with pickups timed to your landing."
+            short="Fixed-fare Gatwick rides from Horsham, Mid Sussex and Crawley, timed to your landing."
           />
         </p>
 

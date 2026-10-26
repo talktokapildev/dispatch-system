@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import CookieSettingsButton from "./CookieSettingsButton";
+import { AREAS, areaPath } from "@/lib/areas";
 import {
   DRIVER_ANDROID,
   DRIVER_IOS,
@@ -32,8 +33,8 @@ export default function Footer() {
               className="h-[40px] w-[170px] self-start"
             />
             <span className="text-[14.5px]">
-              Your private hire, sorted. Pre-booked, fixed-fare journeys for Gatwick, Crawley,
-              Horley and London.
+              Your private hire, sorted. Pre-booked, fixed-fare journeys to and from Gatwick for
+              Horsham, Mid Sussex, Crawley and Horley.
             </span>
           </div>
           <div className="flex flex-col gap-[2px]">
@@ -68,6 +69,11 @@ export default function Footer() {
             <Link href="/#gatwick" className={link}>
               Gatwick transfers
             </Link>
+            {AREAS.map((a) => (
+              <Link key={a.slug} href={areaPath(a.slug)} className={link}>
+                {a.town} to Gatwick
+              </Link>
+            ))}
             <Link href="/drivers" className={link}>
               Drive with us
             </Link>

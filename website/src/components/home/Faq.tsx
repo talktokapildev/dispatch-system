@@ -11,6 +11,10 @@ export const FAQS: Item[] = [
     open: true,
   },
   {
+    q: "Can I book by phone? I don't use apps.",
+    a: "Yes. Call or WhatsApp us and we'll book it for you. You don't need the app. If we're collecting you from a flight, we'll text you when it lands.",
+  },
+  {
     q: "How far ahead do I need to book?",
     a: "At least 24 hours. We only take pre-booked journeys at the moment, so every trip is planned properly in advance.",
   },
