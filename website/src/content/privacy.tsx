@@ -1,9 +1,10 @@
 import type { LegalSection } from "@/components/legal/LegalLayout";
-import { EMAIL, EMAIL_HREF, OPERATING_CENTRE, PHONE_DISPLAY, PHONE_HREF } from "@/lib/site";
+import { EMAIL, EMAIL_HREF, HOTELS_DOMAIN, OPERATING_CENTRE, PHONE_DISPLAY, PHONE_HREF } from "@/lib/site";
 
 // Word for word from the approved Privacy artboard (Privacy.dc.html). Do not reword.
+// "Hotel bookings" section and the Nuitée line added 27 Oct 2026 for hotels.orangeride.co.uk.
 
-export const PRIVACY_UPDATED = "23 October 2026";
+export const PRIVACY_UPDATED = "27 October 2026";
 
 export const PRIVACY_INTRO =
   "How OrangeRide collects, uses and protects your personal data when you book a ride, use our apps or drive with us.";
@@ -50,7 +51,8 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
         </p>
         <p>
           This policy covers our website, the OrangeRide passenger app, the OrangeRide Driver app,
-          and bookings made by phone, WhatsApp or email.
+          and bookings made by phone, WhatsApp or email. For hotel bookings on {HOTELS_DOMAIN}, see{" "}
+          <a href="#hotels">Hotel bookings</a>.
         </p>
       </>
     ),
@@ -201,6 +203,10 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
               <li>Google Workspace (our email, and the form drivers use to apply)</li>
               <li>Railway (hosting our servers and database)</li>
               <li>Google Ads (measuring how our adverts perform, only if you accept cookies)</li>
+              <li>
+                Nuitée and its LiteAPI service (the hotel list on our website and hotel bookings on{" "}
+                {HOTELS_DOMAIN}; see <a href="#hotels">Hotel bookings</a>)
+              </li>
             </ul>
           </li>
           <li>
@@ -216,6 +222,50 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           Some of these providers process data outside the UK, for example in the United States.
           When they do, we rely on UK adequacy regulations or approved safeguards such as the UK
           International Data Transfer Addendum.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "hotels",
+    title: "Hotel bookings",
+    body: (
+      <>
+        <p>
+          Our hotel site, <strong>{HOTELS_DOMAIN}</strong>, is run with our travel partner{" "}
+          <strong>Nuitée</strong> (LiteAPI). Nuitée takes the payment, confirms the booking with the
+          hotel, and handles changes, cancellations and support for your stay.
+        </p>
+        <ul>
+          <li>
+            <strong>What Nuitée collects:</strong> when you search, create a member account or book
+            on the hotel site, Nuitée collects the details needed for that, such as your name, email
+            address, phone number, the guests&apos; names, your dates and your payment. It uses them
+            under its own privacy policy, linked at the bottom of the hotel site, and passes the hotel
+            the guest details it needs for your stay.
+          </li>
+          <li>
+            <strong>What we can see:</strong> your booking in our partner dashboard, including the
+            guest name, contact details, hotel, dates, price and status, plus any member account
+            details Nuitée shows us. We can&apos;t see your card details. We use this to help you if you
+            contact us about a booking, to check the commission we earn, and to keep our accounts.{" "}
+            <em>Lawful basis: legitimate interests, and legal obligation for accounts.</em>
+          </li>
+          <li>
+            <strong>The hotel list on our website:</strong> our Hotels near Gatwick page loads its
+            hotel list and prices from LiteAPI. Like any website, LiteAPI receives your browser and
+            device details and the search you make there. We don&apos;t send it your name or any
+            OrangeRide booking details.
+          </li>
+          <li>
+            <strong>Kept separate:</strong> we don&apos;t share your OrangeRide ride bookings with
+            Nuitée, and a hotel booking doesn&apos;t include a transfer.
+          </li>
+        </ul>
+        <p>
+          To see, correct or delete the data in a hotel booking or member account, contact Nuitée
+          using the details in your booking confirmation, or email us and we&apos;ll pass your
+          request on. We keep our own record of hotel bookings for as long as UK tax law requires.
         </p>
       </>
     ),
