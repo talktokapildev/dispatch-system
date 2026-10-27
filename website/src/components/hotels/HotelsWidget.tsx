@@ -31,8 +31,9 @@ function ukDay(days: number): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(d);
 }
 
-/** The same Gatwick search as a plain link (fallback, and "see all"). */
-export function hotelsSearchHref(checkin = ukDay(1), checkout = ukDay(2)): string {
+/** The same Gatwick search as a plain link (fallback, and the sort/filter links).
+ *  sorting: the booking site's own sort, "2" = price, low to high (default: its top picks). */
+export function hotelsSearchHref({ checkin = ukDay(1), checkout = ukDay(2), sorting }: { checkin?: string; checkout?: string; sorting?: "2" } = {}): string {
   const occupancies = btoa(JSON.stringify([{ adults: 2, children: [] }]));
   const q = new URLSearchParams({
     placeId: GATWICK_PLACE_ID,
@@ -45,8 +46,14 @@ export function hotelsSearchHref(checkin = ukDay(1), checkout = ukDay(2)): strin
     utm_source: "orangeride",
     utm_medium: "gatwick-hotels",
   });
+  if (sorting) q.set("sorting", sorting);
   return `https://${HOTELS_DOMAIN}/hotels?${q.toString()}`;
 }
+
+// The list widget has no sort or filter options of its own, so these open the same search on the
+// booking site, which has them (price, rating, distance, free cancellation, breakfast…).
+const pill =
+  "inline-flex min-h-[44px] items-center rounded-full border-[1.5px] border-[#cbd5e1] bg-white px-4 text-[15px] font-bold text-ink no-underline hover:border-[#94a3b8] hover:text-ink";
 
 export default function HotelsWidget() {
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
@@ -86,6 +93,17 @@ export default function HotelsWidget() {
 
   return (
     <div className="flex flex-col gap-4">
+      {state !== "failed" && (
+        <div className="flex flex-wrap items-center gap-2 px-2 sm:px-0">
+          <span className="text-[15px] font-bold text-soft">Sort and filter:</span>
+          <a href={hotelsSearchHref({ sorting: "2" })} className={pill}>
+            Cheapest first
+          </a>
+          <a href={hotelsSearchHref()} className={pill}>
+            All hotels and filters
+          </a>
+        </div>
+      )}
       <Script src={SDK} strategy="afterInteractive" onLoad={create} onError={() => setState("failed")} />
       <div id={CONTAINER_ID} className={state === "failed" ? "hidden" : "min-h-[420px]"} aria-busy={state === "loading"} />
       {state === "loading" && <p className="m-0 text-center text-[15px] text-muted">Loading hotels and prices…</p>}
