@@ -246,8 +246,8 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           </li>
           <li>
             <strong>What we can see:</strong> your booking in our partner dashboard, including the
-            guest name, contact details, hotel, dates, price and status, and whether you have a
-            member account. We can&apos;t see your card details. We use this to help you if you
+            guest name, contact details, hotel, dates, price and status, plus any member account
+            details Nuitée shows us. We can&apos;t see your card details. We use this to help you if you
             contact us about a booking, to check the commission we earn, and to keep our accounts.{" "}
             <em>Lawful basis: legitimate interests, and legal obligation for accounts.</em>
           </li>
