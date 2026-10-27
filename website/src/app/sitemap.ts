@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { fetchSitemapLists } from "@/lib/flightStatus";
 import { AREAS, areaPath } from "@/lib/areas";
-import { SITE_URL } from "@/lib/site";
+import { HOTELS_LIVE, SITE_URL } from "@/lib/site";
 import { boardPath, TRAIN_STATIONS } from "@/lib/trainFormat";
 
 // Built on each request (Google fetches it now and then): the flight list changes through the day.
@@ -25,6 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/flight-status/departures`, lastModified: now, changeFrequency: "always", priority: 0.8 },
     { url: `${SITE_URL}/gatwick/terminals`, lastModified: now, changeFrequency: "daily", priority: 0.7 },
     { url: `${SITE_URL}/gatwick/delays`, changeFrequency: "monthly", priority: 0.6 },
+    ...(HOTELS_LIVE ? [{ url: `${SITE_URL}/gatwick/hotels`, changeFrequency: "weekly" as const, priority: 0.6 }] : []),
     ...airlines.map((slug) => ({
       url: `${SITE_URL}/gatwick/terminals/${encodeURIComponent(slug)}`,
       lastModified: now,

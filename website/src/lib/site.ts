@@ -22,3 +22,11 @@ export const TFL_LICENCE = "11786";
 
 // The only address published on the site: the TfL operating centre.
 export const OPERATING_CENTRE = "Unit 2, 12 Deer Park Road, South Wimbledon, London SW19 3TL";
+
+// Hotel booking site (white label run by Nuitée / LiteAPI, merchant of record). Override with
+// NEXT_PUBLIC_HOTELS_DOMAIN (e.g. the *.nuitee.link address while the custom domain is set up).
+export const HOTELS_DOMAIN = process.env.NEXT_PUBLIC_HOTELS_DOMAIN || "hotels.orangeride.co.uk";
+/** Google place ID of London Gatwick Airport (LGW), as the hotel site uses it. */
+export const GATWICK_PLACE_ID = "ChIJGzkffd7vdUgR_3OJAb-k3Vk";
+/** /gatwick/hotels stays out of Google, the sitemap and the menus until hotel bookings go live. */
+export const HOTELS_LIVE = process.env.NEXT_PUBLIC_HOTELS_LIVE === "true";
