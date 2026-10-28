@@ -261,6 +261,9 @@ model Passenger {
   savedAddresses     Json     @default("[]")
   corporateAccountId String?
   totalRides         Int      @default(0)
+  // Staff / demo accounts: their bookings are hidden from the admin Bookings list,
+  // Dashboard and Reports by default (records are kept and shown on request).
+  isTestAccount      Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

@@ -21,7 +21,10 @@ export default function CustomersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["passengers", page, search],
     queryFn: () =>
-      api.get("/admin/bookings", { params: { page, limit: 30 } }).then((r) => {
+      // includeTest: test accounts must still be listed here so they can be un-marked
+      api
+        .get("/admin/bookings", { params: { page, limit: 30, includeTest: "true" } })
+        .then((r) => {
         const seen = new Set<string>();
         const passengers: any[] = [];
         for (const b of r.data.data.items ?? []) {
@@ -46,6 +49,23 @@ export default function CustomersPage() {
       toast.error(err.response?.data?.error ?? "Failed to delete customer");
       setConfirmDelete(false);
     },
+  });
+
+  const setTestAccount = useMutation({
+    mutationFn: ({ id, on }: { id: string; on: boolean }) =>
+      api.patch(`/admin/passengers/${id}/test-account`, { isTestAccount: on }),
+    onSuccess: (_r, { on }) => {
+      toast.success(
+        on
+          ? "Marked as test account - bookings hidden by default"
+          : "Test account removed - bookings shown again"
+      );
+      setSelected((cur: any) => (cur ? { ...cur, isTestAccount: on } : cur));
+      queryClient.invalidateQueries({ queryKey: ["passengers"] });
+      queryClient.invalidateQueries({ queryKey: ["bookings"] });
+    },
+    onError: (err: any) =>
+      toast.error(err.response?.data?.error ?? "Failed to update account"),
   });
 
   const { data: walletData, isLoading: walletLoading } = useQuery({
@@ -145,6 +165,11 @@ export default function CustomersPage() {
                     >
                       {p.user?.firstName || "Unknown"} {p.user?.lastName}
                     </p>
+                    {p.isTestAccount && (
+                      <span className="badge bg-slate-500/15 text-slate-400">
+                        Test
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td
@@ -261,6 +286,28 @@ export default function CustomersPage() {
                 </div>
               ))}
             </div>
+
+            {/* ── Test account ── */}
+            <label className="flex items-start gap-2.5 p-3 rounded-lg bg-[var(--card-hover)] border border-[var(--border)] cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 accent-orange-500"
+                checked={!!selected.isTestAccount}
+                disabled={setTestAccount.isPending}
+                onChange={(e) =>
+                  setTestAccount.mutate({ id: selected.id, on: e.target.checked })
+                }
+              />
+              <span>
+                <span className="block text-xs font-medium" style={{ color: "var(--text)" }}>
+                  Test account
+                </span>
+                <span className="block text-[10px] text-slate-500">
+                  Bookings hidden from Bookings, Dashboard and Reports by default.
+                  Nothing is deleted.
+                </span>
+              </span>
+            </label>
 
             {selected.savedAddresses?.length > 0 && (
               <div>

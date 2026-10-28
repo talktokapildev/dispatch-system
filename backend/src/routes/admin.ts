@@ -7,6 +7,7 @@ import { MapsService } from "../services/maps.service";
 import bcrypt from "bcryptjs";
 import { earliestPickupAt } from "../services/flightUpdate.service";
 import { withTripVehicle } from "../utils/bookingRecord";
+import { NOT_TEST_BOOKING, NOT_TEST_BOOKING_SQL } from "../utils/testBookings";
 
 const corporateSchema = z.object({
   name: z.string().min(2),
@@ -57,18 +58,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
         expiringDocuments,
       ] = await Promise.all([
         fastify.prisma.booking.count({
-          where: { createdAt: { gte: todayStart, lte: todayEnd } },
+          where: { createdAt: { gte: todayStart, lte: todayEnd }, ...NOT_TEST_BOOKING },
         }),
         fastify.prisma.booking.count({
           where: {
             status: BookingStatus.COMPLETED,
             completedAt: { gte: todayStart, lte: todayEnd },
+            ...NOT_TEST_BOOKING,
           },
         }),
         fastify.prisma.booking.count({
           where: {
             status: BookingStatus.CANCELLED,
             updatedAt: { gte: todayStart, lte: todayEnd },
+            ...NOT_TEST_BOOKING,
           },
         }),
         fastify.prisma.booking.count({
@@ -81,6 +84,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
                 BookingStatus.IN_PROGRESS,
               ],
             },
+            ...NOT_TEST_BOOKING,
           },
         }),
         fastify.prisma.driver.count({
@@ -92,6 +96,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
           where: {
             status: BookingStatus.COMPLETED,
             completedAt: { gte: todayStart, lte: todayEnd },
+            ...NOT_TEST_BOOKING,
           },
           _sum: { actualFare: true },
         }),
@@ -104,7 +109,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
             (COUNT(*) FILTER (WHERE status = 'COMPLETED'))::int as completed,
             (SUM(COALESCE("actualFare", "estimatedFare")) FILTER (WHERE status = 'COMPLETED'))::float8 as revenue
           FROM "Booking"
-          WHERE "createdAt" >= ${weekAgo}
+          WHERE "createdAt" >= ${weekAgo} AND ${NOT_TEST_BOOKING_SQL}
           GROUP BY 1
           ORDER BY 1 ASC
         `,
@@ -155,6 +160,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         where: {
           status: BookingStatus.COMPLETED,
           completedAt: { gte: fromDate, lte: toDate },
+          ...NOT_TEST_BOOKING,
         },
         select: {
           completedAt: true,
@@ -1084,6 +1090,43 @@ export async function adminRoutes(fastify: FastifyInstance) {
           .status(500)
           .send({ success: false, error: "Failed to fetch wallet" });
       }
+    }
+  );
+
+  // ─── PATCH /admin/passengers/:id/test-account — mark / unmark a test account ─
+  // Bookings by test accounts are hidden from Bookings, Dashboard and Reports
+  // by default (utils/testBookings). Nothing is deleted.
+  fastify.patch(
+    "/admin/passengers/:id/test-account",
+    { preHandler: [fastify.authenticateAdmin] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = z
+        .object({ isTestAccount: z.boolean() })
+        .safeParse(request.body);
+      if (!body.success)
+        return reply
+          .status(400)
+          .send({ success: false, error: "isTestAccount (true/false) is required" });
+
+      const exists = await fastify.prisma.passenger.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!exists)
+        return reply
+          .status(404)
+          .send({ success: false, error: "Passenger not found" });
+
+      const passenger = await fastify.prisma.passenger.update({
+        where: { id },
+        data: { isTestAccount: body.data.isTestAccount },
+        select: { id: true, isTestAccount: true },
+      });
+      fastify.log.warn(
+        `[Admin] passenger ${id} test account ${passenger.isTestAccount ? "ON" : "OFF"} by ${request.user.userId}`
+      );
+      return reply.send({ success: true, data: passenger });
     }
   );
 
