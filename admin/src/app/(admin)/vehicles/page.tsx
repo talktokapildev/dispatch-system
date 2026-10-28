@@ -504,7 +504,12 @@ export default function VehiclesPage() {
 
             {/* Documents */}
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Documents</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] uppercase tracking-widest text-slate-500">Documents</p>
+                <a href={`/documents?vehicle=${selected.id}&tab=all`} className="text-[11px] text-brand-400 hover:underline">
+                  View in Documents →
+                </a>
+              </div>
               <DocumentsPanel vehicleId={selected.id} ownerLabel={selected.licensePlate} />
             </div>
 
