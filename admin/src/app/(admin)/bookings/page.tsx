@@ -60,24 +60,69 @@ function getDispatcherName(booking: any): string {
   return u.phone ?? "—";
 }
 
+// Grey tag on bookings made by a test passenger account
+function TestTag() {
+  return (
+    <span
+      className="ml-2 inline-block rounded px-1.5 py-0.5 text-[9px] font-sans font-semibold tracking-wide align-middle bg-slate-500/15 text-slate-400 border border-slate-500/30"
+      title="Test account booking - hidden by default"
+    >
+      TEST
+    </span>
+  );
+}
+
 export default function BookingsPage() {
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [q, setQ] = useState(""); // debounced search, sent to the server
+  // Test bookings (test passenger accounts) are hidden unless ?test=1
+  const [showTest, setShowTest] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
 
+  // Read ?test=1 once on load
+  useEffect(() => {
+    setShowTest(new URLSearchParams(window.location.search).get("test") === "1");
+  }, []);
+
+  // Search runs on the server (all pages, not just the one on screen)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(search.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const toggleShowTest = (on: boolean) => {
+    setShowTest(on);
+    setPage(1);
+    const url = new URL(window.location.href);
+    if (on) url.searchParams.set("test", "1");
+    else url.searchParams.delete("test");
+    window.history.replaceState(null, "", url.toString());
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ["bookings", page, status],
+    queryKey: ["bookings", page, status, q, showTest],
     queryFn: () =>
       api
         .get("/admin/bookings", {
-          params: { page, limit: 25, ...(status && { status }) },
+          params: {
+            page,
+            limit: 25,
+            ...(status && { status }),
+            ...(q && { q }),
+            ...(showTest && { includeTest: "true" }),
+          },
         })
         .then((r) => r.data.data),
+    placeholderData: (prev: any) => prev,
   });
 
   const cancelMutation = useMutation({
@@ -195,15 +240,8 @@ export default function BookingsPage() {
     ) =>
       setEditForm((f: any) => ({ ...f, [key]: e.target.value }));
 
-  const items = data?.items ?? [];
-  const filtered = search
-    ? items.filter(
-        (b: any) =>
-          b.reference.toLowerCase().includes(search.toLowerCase()) ||
-          b.pickupAddress.toLowerCase().includes(search.toLowerCase()) ||
-          b.passenger?.user?.phone?.includes(search)
-      )
-    : items;
+  const filtered = data?.items ?? [];
+  const hiddenTest: number = data?.hiddenTest ?? 0;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -237,7 +275,10 @@ export default function BookingsPage() {
         </div>
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
           className="input w-auto"
         >
           {STATUSES.map((s) => (
@@ -246,10 +287,33 @@ export default function BookingsPage() {
             </option>
           ))}
         </select>
+        <label
+          className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none px-1"
+          title="Bookings by test accounts (your own numbers, demo passenger)"
+        >
+          <input
+            type="checkbox"
+            checked={showTest}
+            onChange={(e) => toggleShowTest(e.target.checked)}
+            className="accent-orange-500"
+          />
+          Show test bookings
+        </label>
         <button className="btn-ghost flex items-center gap-2">
           <Download size={14} /> Export
         </button>
       </div>
+      {!showTest && !q && hiddenTest > 0 && (
+        <p className="text-xs text-slate-500 -mt-2">
+          {hiddenTest} test booking{hiddenTest === 1 ? "" : "s"} hidden ·{" "}
+          <button
+            className="text-brand-400 hover:underline"
+            onClick={() => toggleShowTest(true)}
+          >
+            Show
+          </button>
+        </p>
+      )}
 
       {/* Table */}
       <div className="card overflow-hidden">
@@ -281,8 +345,9 @@ export default function BookingsPage() {
                   className="table-row cursor-pointer"
                   onClick={() => openBooking(b)}
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-brand-400">
+                  <td className="px-4 py-3 font-mono text-xs text-brand-400 whitespace-nowrap">
                     {b.reference}
+                    {b.passenger?.isTestAccount && <TestTag />}
                   </td>
                   <td className="px-4 py-3">
                     <div>
@@ -376,6 +441,7 @@ export default function BookingsPage() {
           <div className="flex items-center justify-between w-full pr-6">
             <span className="font-mono text-brand-400 text-sm">
               {selected?.reference}
+              {selected?.passenger?.isTestAccount && <TestTag />}
             </span>
             {selected && !editing && (
               <button

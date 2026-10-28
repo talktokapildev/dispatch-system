@@ -14,6 +14,12 @@ import { ScheduledBookingService } from "../services/scheduledBooking.service";
 import { SocketEvent } from "../types";
 import { normalizePhone } from "../lib/phone";
 import { withTripVehicle } from "../utils/bookingRecord";
+import {
+  NOT_TEST_BOOKING,
+  TEST_BOOKING,
+  bookingSearchWhere,
+  queryFlag,
+} from "../utils/testBookings";
 
 const createBookingSchema = z.object({
   type: z.nativeEnum(BookingType),
@@ -468,6 +474,8 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         driverId,
         from,
         to,
+        q,
+        includeTest,
       } = request.query as Record<string, string>;
 
       const where: any = {};
@@ -481,10 +489,19 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         if (from) where.createdAt.gte = new Date(from);
         if (to) where.createdAt.lte = new Date(to);
       }
+      const search = q ? bookingSearchWhere(q) : null;
+      if (search) where.AND = [search];
 
-      const [items, total] = await Promise.all([
+      // Test bookings (test passenger accounts) are hidden unless asked for,
+      // or unless the admin is searching (an exact search should find them).
+      const showTest = queryFlag(includeTest) || !!search;
+      const listWhere = showTest
+        ? where
+        : { ...where, AND: [...(where.AND ?? []), NOT_TEST_BOOKING] };
+
+      const [items, total, hiddenTest] = await Promise.all([
         fastify.prisma.booking.findMany({
-          where,
+          where: listWhere,
           include: {
             passenger: { include: { user: true } },
             driver: { include: { user: true, vehicle: true } },
@@ -506,7 +523,12 @@ export async function bookingRoutes(fastify: FastifyInstance) {
           skip: (parseInt(page) - 1) * parseInt(limit),
           take: parseInt(limit),
         }),
-        fastify.prisma.booking.count({ where }),
+        fastify.prisma.booking.count({ where: listWhere }),
+        showTest
+          ? Promise.resolve(0)
+          : fastify.prisma.booking.count({
+              where: { ...where, AND: [...(where.AND ?? []), TEST_BOOKING] },
+            }),
       ]);
 
       return reply.send({
@@ -514,6 +536,7 @@ export async function bookingRoutes(fastify: FastifyInstance) {
         data: {
           items: items.map(withTripVehicle),
           total,
+          hiddenTest,
           page: parseInt(page),
           limit: parseInt(limit),
           totalPages: Math.ceil(total / parseInt(limit)),
