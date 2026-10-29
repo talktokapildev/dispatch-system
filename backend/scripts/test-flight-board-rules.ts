@@ -208,6 +208,15 @@ check("no departure details: overdue after landing time", describe(noOrigin, new
 check("with departure details: departureUnknown false", !vAir.departureUnknown && !stuck.departureUnknown);
 check("stuck: no progress bar", stuck.progress === null);
 
+// EZY832 (Belfast, 29 Oct): arrival moved +2h48 but the departure time never updated. The arrival
+// implies leaving ~2h48 late → still on the ground, NOT "probably in the air".
+const lateArrivalOnly = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T22:58:00.000Z" }), NOW, B);
+check("late arrival implies late departure → not in the air", lateArrivalOnly.state === "DELAYED" && lateArrivalOnly.inAir === null, `${lateArrivalOnly.state} ${lateArrivalOnly.inAir}`);
+check("late arrival: airline time kept", lateArrivalOnly.gateAt === "2026-10-23T22:58:00.000Z" && lateArrivalOnly.delayMin === 168, `${lateArrivalOnly.gateAt} ${lateArrivalOnly.delayMin}`);
+const lateButFlying = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T22:58:00.000Z" }), new Date("2026-10-23T21:40:00Z"), B);
+check("…and once that implied departure has passed: probably in the air", lateButFlying.state === "EN_ROUTE" && lateButFlying.inAir === "TRACKED", `${lateButFlying.state} ${lateButFlying.inAir}`);
+check("…progress starts from the implied departure", lateButFlying.progress != null && lateButFlying.progress < 0.3, String(lateButFlying.progress));
+
 // Not due to have left yet (departure 18:25Z + 15 min grace): no guessing either way.
 const early_ = describe(noTakeOff("Expected", { live: true }), new Date("2026-10-23T18:35:00Z"), B);
 check("before departure + grace → not in the air", early_.state === "SCHEDULED" && early_.inAir === null, `${early_.state} ${early_.inAir}`);

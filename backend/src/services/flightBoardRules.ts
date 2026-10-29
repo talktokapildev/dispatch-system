@@ -617,7 +617,17 @@ function describeArrival(
   // time" estimate (latest of revised / predicted / scheduled) instead of the on-the-ground
   // time floor, which would push the landing later every minute. interpretFlight itself is
   // unchanged (booking tracking uses it), we only ask it with an in-flight status.
-  const depExpected = at(f.other.revisedUtc) ?? at(f.other.scheduledUtc);
+  // Expected departure: the origin's revised / scheduled time, or LATER when the airline's own
+  // arrival estimate implies it (seen: EZY832 from Belfast, arrival moved 21:30 → 00:18 while
+  // the departure still said 20:05 — it was on the ground, not "probably in the air").
+  const depTimetable = at(f.other.revisedUtc) ?? at(f.other.scheduledUtc);
+  const otherSched = at(f.other.scheduledUtc);
+  const flightMs = otherSched ? scheduled.getTime() - otherSched.getTime() : null;
+  const arrivalEstimate = at(f.lgw.revisedUtc) ?? at(f.lgw.predictedUtc);
+  const impliedDep =
+    flightMs && flightMs > 0 && arrivalEstimate ? new Date(arrivalEstimate.getTime() - flightMs) : null;
+  const depExpected =
+    depTimetable && impliedDep && impliedDep > depTimetable ? impliedDep : depTimetable;
   const dueToHaveLeft = !!depExpected && now >= addMin(depExpected, TAKE_OFF_GRACE_MIN);
   const tracked = f.lgw.live || !!f.lgw.predictedUtc;
   let inAir: InAir = null;
