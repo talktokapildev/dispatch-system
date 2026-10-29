@@ -139,6 +139,10 @@ export type FlightView = {
   minutesToGo: number | null; // until landing
   inAir: InAir;
   departureUnknown: boolean; // arrivals: no departure time from the origin at all
+  // Arrivals, no take-off reported: when it should leave the origin. `departureEstimated` = worked
+  // out from the airline's later arrival time (the origin's own time never moved).
+  departureExpectedAt: string | null;
+  departureEstimated: boolean;
   overdueMin: number | null; // minutes past the expected touchdown while not yet landed
   // Departures
   departedAt: string | null;
@@ -573,6 +577,8 @@ const EMPTY = {
   minutesToGo: null,
   inAir: null as InAir,
   departureUnknown: false,
+  departureExpectedAt: null,
+  departureEstimated: false,
   overdueMin: null,
   departedAt: null,
   beThereBy: null,
@@ -626,8 +632,9 @@ function describeArrival(
   const arrivalEstimate = at(f.lgw.revisedUtc) ?? at(f.lgw.predictedUtc);
   const impliedDep =
     flightMs && flightMs > 0 && arrivalEstimate ? new Date(arrivalEstimate.getTime() - flightMs) : null;
-  const depExpected =
-    depTimetable && impliedDep && impliedDep > depTimetable ? impliedDep : depTimetable;
+  // Only a meaningful move counts (small arrival changes are winds / taxiing, not a late departure).
+  const departureEstimated = !!depTimetable && !!impliedDep && impliedDep.getTime() - depTimetable.getTime() >= 10 * MIN;
+  const depExpected = departureEstimated ? impliedDep : depTimetable;
   const dueToHaveLeft = !!depExpected && now >= addMin(depExpected, TAKE_OFF_GRACE_MIN);
   const tracked = f.lgw.live || !!f.lgw.predictedUtc;
   let inAir: InAir = null;
@@ -701,6 +708,8 @@ function describeArrival(
     minutesToGo,
     inAir,
     departureUnknown,
+    departureExpectedAt: takeOff ? null : iso(depExpected),
+    departureEstimated: !takeOff && departureEstimated,
     overdueMin,
   };
 }

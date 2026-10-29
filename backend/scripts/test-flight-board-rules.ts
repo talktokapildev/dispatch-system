@@ -212,6 +212,9 @@ check("stuck: no progress bar", stuck.progress === null);
 // implies leaving ~2h48 late → still on the ground, NOT "probably in the air".
 const lateArrivalOnly = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T22:58:00.000Z" }), NOW, B);
 check("late arrival implies late departure → not in the air", lateArrivalOnly.state === "DELAYED" && lateArrivalOnly.inAir === null, `${lateArrivalOnly.state} ${lateArrivalOnly.inAir}`);
+check("late arrival: departure worked out 21:13Z, marked estimated", lateArrivalOnly.departureExpectedAt === "2026-10-23T21:13:00.000Z" && lateArrivalOnly.departureEstimated, `${lateArrivalOnly.departureExpectedAt} ${lateArrivalOnly.departureEstimated}`);
+check("airline departure time: not estimated", stuck.departureExpectedAt === "2026-10-23T18:25:00.000Z" && !stuck.departureEstimated, `${stuck.departureExpectedAt}`);
+check("take-off reported: no expected departure", vAir.departureExpectedAt === null && !vAir.departureEstimated);
 check("late arrival: airline time kept", lateArrivalOnly.gateAt === "2026-10-23T22:58:00.000Z" && lateArrivalOnly.delayMin === 168, `${lateArrivalOnly.gateAt} ${lateArrivalOnly.delayMin}`);
 const lateButFlying = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T22:58:00.000Z" }), new Date("2026-10-23T21:40:00Z"), B);
 check("…and once that implied departure has passed: probably in the air", lateButFlying.state === "EN_ROUTE" && lateButFlying.inAir === "TRACKED", `${lateButFlying.state} ${lateButFlying.inAir}`);
