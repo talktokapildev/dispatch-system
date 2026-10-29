@@ -152,6 +152,13 @@ check("touchdown known", vLanded.arrivedTimeIsGate === false);
 
 const arrivedNoRunway = with_(arr, "Arrived", { runwayUtc: null, revisedUtc: "2026-10-23T20:16:00.000Z" });
 const vNoRw = describe(arrivedNoRunway, new Date("2026-10-23T20:30:00Z"), B);
+// EZY8212 (Corfu, 29 Oct): "Arrived", no touchdown, revised 22:55, due 23:10, page at 23:01 said "Arrived 23:10".
+const arrivedEarly = describe(with_(arr, "Arrived", { runwayUtc: null, revisedUtc: "2026-10-23T19:55:00.000Z" }), new Date("2026-10-23T20:01:00Z"), B);
+check("arrived early, no touchdown: airline's past time, not the timetable", arrivedEarly.gateAt === "2026-10-23T19:55:00.000Z" && arrivedEarly.landsAt === "2026-10-23T19:55:00.000Z" && arrivedEarly.delayMin === -15, `${arrivedEarly.gateAt} ${arrivedEarly.delayMin}`);
+const arrivedNoTimes = describe(with_(arr, "Arrived", { runwayUtc: null, revisedUtc: null, predictedUtc: null }), new Date("2026-10-23T20:01:00Z"), B);
+check("arrived, no times, before timetable time: never in the future", arrivedNoTimes.gateAt === "2026-10-23T20:01:00.000Z", arrivedNoTimes.gateAt ?? "");
+const arrivedFutureRevised = describe(with_(arr, "Arrived", { runwayUtc: null, revisedUtc: "2026-10-23T20:40:00.000Z" }), new Date("2026-10-23T20:30:00Z"), B);
+check("arrived with a stale future revised time: timetable time (past) used", arrivedFutureRevised.gateAt === "2026-10-23T20:10:00.000Z", arrivedFutureRevised.gateAt ?? "");
 check("arrived without touchdown: time is the gate", vNoRw.state === "LANDED" && vNoRw.arrivedTimeIsGate);
 
 const notYet = with_(arr, "Expected", { revisedUtc: null }, { runwayUtc: null, revisedUtc: null });
