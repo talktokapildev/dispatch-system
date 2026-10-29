@@ -78,6 +78,8 @@ export type FlightView = {
   minutesToGo: number | null;
   inAir?: InAir; // older backends: absent
   departureUnknown?: boolean; // arrivals: the provider sent no departure details at all
+  departureExpectedAt?: string | null; // arrivals, no take-off reported: when it should leave
+  departureEstimated?: boolean; // …worked out from the airline's later arrival time
   overdueMin?: number | null; // minutes past the expected touchdown, not yet landed
   departedAt: string | null;
   beThereBy: string | null;
@@ -435,6 +437,21 @@ function ukParts(d: Date) {
 /** "21:19" (UK) or "--:--". */
 export function ukTime(iso: string | null | undefined): string {
   return iso ? ukParts(new Date(iso)).hm : "--:--";
+}
+
+/**
+ * "Fri" when `iso` falls on a different UK day from `ref` (e.g. a 21:30 flight now landing
+ * 00:11), else "". Shown next to times so a move past midnight isn't missed.
+ */
+export function dayTag(iso: string | null | undefined, ref: string | null | undefined): string {
+  if (!iso || !ref || ukParts(new Date(iso)).date === ukParts(new Date(ref)).date) return "";
+  return new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "Europe/London" }).format(new Date(iso));
+}
+
+/** "00:11 Fri" (day only when it differs from `ref`'s UK day), or "21:30". */
+export function ukTimeDay(iso: string | null | undefined, ref: string | null | undefined): string {
+  const d = dayTag(iso, ref);
+  return d ? `${ukTime(iso)} ${d}` : ukTime(iso);
 }
 
 /** UK calendar date "YYYY-MM-DD". */

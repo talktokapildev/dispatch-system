@@ -13,6 +13,8 @@ import {
   TONE,
   ukDate,
   ukTime,
+  ukTimeDay,
+  dayTag,
   LANDING_NOW_MIN,
   Weather,
   WeatherMap,
@@ -140,10 +142,26 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
 
   // Take-off in UK time (like the rest of the page), with the local clock there in brackets.
   const otherUtc = f.other.runwayUtc ?? f.other.revisedUtc ?? f.other.scheduledUtc;
+  // Arrivals: when it leaves the origin — the take-off if reported, else the expected departure
+  // (worked out from the airline's later arrival when the origin's time never moved: "~").
+  const depShown = f.other.runwayUtc ?? v.takeOffAt ?? v.departureExpectedAt ?? otherUtc;
+  const depGuess = !f.other.runwayUtc && !v.takeOffAt && !!v.departureEstimated;
+  const depLocal = depGuess ? null : otherLocal;
   const takeOffText =
-    otherUtc && otherLocal
-      ? `${f.other.runwayUtc ? "Took off" : "Leaves"} ${ukTime(otherUtc)}${otherLocal !== ukTime(otherUtc) ? ` (${otherLocal} local)` : ""}`
+    depShown && (depLocal || depGuess)
+      ? `${f.other.runwayUtc || v.takeOffAt ? "Took off" : v.state === "EN_ROUTE" || v.landed ? "Left" : "Leaves"} ${depGuess ? "~" : ""}${ukTimeDay(depShown, f.other.scheduledUtc)}${
+          depLocal && depLocal !== ukTime(depShown) ? ` (${depLocal} local)` : ""
+        }`
       : null;
+  const moved = (a: string | null | undefined, b: string | null | undefined) =>
+    !!a && !!b && Math.abs(Date.parse(a) - Date.parse(b)) >= 5 * 60_000;
+  // Crossed-out timetable time only for departure times (take-off is always ~10-15 min after
+  // leaving the gate, so "Took off 15:52 · was 15:40" would wrongly look late).
+  const depWas =
+    depShown && !f.other.runwayUtc && !v.takeOffAt && moved(depShown, f.other.scheduledUtc) ? ukTime(f.other.scheduledUtc) : null;
+  // Arrivals: the Gatwick gate time on the "To" side, with the timetable time crossed out when it moved.
+  const gateText = v.gateAt ? `${v.landed ? "At the gate" : "Gate"} ${v.landed && !v.arrivedTimeIsGate ? "" : "~"}${ukTimeDay(v.gateAt, v.scheduledAt)}` : null;
+  const gateWas = moved(v.gateAt, v.scheduledAt) ? ukTime(v.scheduledAt) : null;
   const otherWx = f.other.iata ? weather[f.other.iata] : undefined;
   const lgwWx = weather.LGW;
   const there = localNow(f.other.timeZone, now);
@@ -156,10 +174,10 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
   };
   const lgwEnd = { code: "LGW", name: "London Gatwick", country: "GB", wx: lgwWx, wxNote: lgwWx ? `At Gatwick now · wind ${lgwWx.windMph} mph` : "" };
   const leftEnd = arrival
-    ? { label: "FROM", ...otherEnd, sub: takeOffText }
+    ? { label: "FROM", ...otherEnd, sub: null, time: takeOffText, was: depWas }
     : { label: "FROM", ...lgwEnd, sub: lgwSub };
   const rightEnd = arrival
-    ? { label: "TO", ...lgwEnd, sub: lgwSub }
+    ? { label: "TO", ...lgwEnd, sub: lgwSub, time: ended ? null : gateText, was: ended ? null : gateWas }
     : { label: "TO", ...otherEnd, sub: otherLocal ? `${f.other.runwayLocal ? "Landed" : "Lands"} ${otherLocal} local` : null };
 
   const pct = `${Math.round(progress * 100)}%`;
@@ -196,6 +214,8 @@ export function End({
   code,
   name,
   sub,
+  time,
+  was,
   align,
   country,
   wx,
@@ -205,6 +225,8 @@ export function End({
   code: string;
   name: string;
   sub: string | null;
+  time?: string | null; // e.g. "Leaves ~22:53" (the new time, like Google's flight card)
+  was?: string | null; // the timetable time it replaced, shown crossed out
   align: "left" | "right";
   country: string | null;
   wx?: Weather;
@@ -219,6 +241,13 @@ export function End({
         <Flag code={country} size="lg" />
       </span>
       <span className="font-semibold text-soft">{name}</span>
+      {time && <span className="text-[14.5px] font-semibold text-ink sm:text-[15px]">{time}</span>}
+      {was && (
+        <span className="text-[13px] text-soft">
+          <span className="sr-only">was </span>
+          <s>{was}</s>
+        </span>
+      )}
       {sub && <span className="text-[14px] text-muted sm:text-[14.5px]">{sub}</span>}
       {wx && (
         <span
@@ -240,7 +269,7 @@ export function End({
 }
 
 // ── The three answers ───────────────────────────────────────────────────────
-type Tile = { label: string; value: string; note: string; style: string; valueClass?: string; labelClass?: string };
+type Tile = { label: string; value: string; day?: string; note: string; style: string; valueClass?: string; labelClass?: string };
 
 function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolean }) {
   const arrival = f.direction === "ARRIVAL";
@@ -281,6 +310,7 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
     tiles.push({
       label: v.landed ? (v.arrivedTimeIsGate ? "Arrived" : "Landed") : "Lands",
       value: ukTime(v.landsAt),
+      day: dayTag(v.landsAt, v.scheduledAt),
       note: v.landed ? (v.arrivedTimeIsGate ? "Time at the gate" : vsSchedule(ukTime(v.scheduledAt))) : vsSchedule(ukTime(v.scheduledAt)),
       style: main.soft,
       labelClass: main.text,
@@ -288,6 +318,7 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
     tiles.push({
       label: "At the gate",
       value: `${v.landed && !v.arrivedTimeIsGate ? "" : "~"}${ukTime(v.gateAt)}`,
+      day: dayTag(v.gateAt, v.scheduledAt),
       note: v.arrivedTimeIsGate ? "Doors open soon after" : "About 7 min after landing",
       style: "bg-[#f8fafc] border-line",
       labelClass: "text-soft",
@@ -295,6 +326,7 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
     tiles.push({
       label: "Out of arrivals",
       value: `~${ukTime(v.outBagsAt)}`,
+      day: dayTag(v.outBagsAt, v.scheduledAt),
       note: `With a suitcase · ~${ukTime(v.outHandAt)} hand luggage only`,
       style: TONE.early.soft,
       labelClass: TONE.early.text,
@@ -304,6 +336,7 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
     tiles.push({
       label: v.state === "DEPARTED" ? "Took off" : "Departs",
       value: ukTime(v.state === "DEPARTED" ? v.departedAt : v.expectedAt),
+      day: dayTag(v.state === "DEPARTED" ? v.departedAt : v.expectedAt, v.scheduledAt),
       note: v.state === "DEPARTED" ? `Scheduled to leave the gate ${ukTime(v.scheduledAt)}` : vsSchedule(ukTime(v.scheduledAt)),
       style: main.soft,
       labelClass: main.text,
@@ -357,6 +390,7 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
             }`}
           >
             {t.value}
+            {t.day && <span className="ml-2 text-[16px] font-semibold tracking-normal text-muted sm:text-[20px]">{t.day}</span>}
           </strong>
           <span className="text-[13.5px] text-muted sm:text-[14.5px]">{t.note}</span>
         </div>
@@ -388,7 +422,9 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
     if (v.takeOffAt) takeOffText = ukTime(v.takeOffAt);
     else if (unreported) takeOffText = "Not reported";
     else if (inAir || landed) takeOffText = "Time not reported";
-    else if (depDue) takeOffText = `Due ${ukTime(depDue)}${depWas}${v.inAir === "UNCONFIRMED" ? " · not confirmed" : ""}`;
+    else if (v.departureEstimated && v.departureExpectedAt)
+      takeOffText = `~${ukTimeDay(v.departureExpectedAt, f.other.scheduledUtc)} (was ${ukTime(f.other.scheduledUtc)})`;
+    else if (depDue) takeOffText = `Due ${ukTimeDay(depDue, f.other.scheduledUtc)}${depWas}${v.inAir === "UNCONFIRMED" ? " · not confirmed" : ""}`;
     else if (v.departureUnknown) takeOffText = "Not available";
     steps.push({
       title: unreported ? "Take-off" : v.takeOffAt || inAir || landed ? "Took off" : "Takes off",
@@ -402,11 +438,11 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
     });
     steps.push({
       title: landed ? "Landed" : "Lands",
-      text: landing && (v.overdueMin ?? 0) >= LANDING_NOW_MIN ? "Not confirmed" : `${landed ? "" : "~"}${ukTime(v.landsAt)}`,
+      text: landing && (v.overdueMin ?? 0) >= LANDING_NOW_MIN ? "Not confirmed" : `${landed ? "" : "~"}${ukTimeDay(v.landsAt, v.scheduledAt)}`,
       status: landed ? (atGate ? "done" : "now") : landing ? "now" : "next",
     });
-    steps.push({ title: "At the gate", text: `~${ukTime(v.gateAt)}`, status: atGate ? (out ? "done" : "now") : "next" });
-    steps.push({ title: "Arrivals hall", text: `~${ukTime(v.outHandAt)} – ${ukTime(v.outBagsAt)}`, status: out ? "now" : "next" });
+    steps.push({ title: "At the gate", text: `~${ukTimeDay(v.gateAt, v.scheduledAt)}`, status: atGate ? (out ? "done" : "now") : "next" });
+    steps.push({ title: "Arrivals hall", text: `~${ukTime(v.outHandAt)} – ${ukTimeDay(v.outBagsAt, v.scheduledAt)}`, status: out ? "now" : "next" });
   } else {
     const s = v.state;
     const departed = s === "DEPARTED";
@@ -430,7 +466,7 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
     steps.push({ title: "Gate closes", text: s === "GATE_CLOSED" ? "Closed" : "", status: s === "GATE_CLOSED" ? "now" : departed ? "done" : "next" });
     steps.push({
       title: departed ? "Took off" : "Takes off",
-      text: ukTime(departed ? v.departedAt : v.expectedAt),
+      text: ukTimeDay(departed ? v.departedAt : v.expectedAt, v.scheduledAt),
       status: departed ? "done" : "next",
     });
   }
