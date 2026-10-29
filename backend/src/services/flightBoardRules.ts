@@ -56,6 +56,9 @@ export type OtherEnd = {
   lat: number | null; // airport position (weather)
   lon: number | null;
   timeZone: string | null; // IANA, e.g. "Europe/Zurich" (local time there)
+  // True when the board sent no airport/times and we filled them from a flight lookup
+  // (fillOrigin). Only fixed facts are filled, never live times.
+  filled?: boolean;
 };
 
 /** The Gatwick side of the trip. */
@@ -430,6 +433,72 @@ export function parseLookupLegs(body: unknown): BoardFlight[] {
     }
   }
   return out.sort((a, b) => a.lgw.scheduledUtc.localeCompare(b.lgw.scheduledUtc));
+}
+
+// ── Filling a missing other end ──────────────────────────────────────────
+// The board sometimes sends a flight with no airport code and no times at the other end, only a
+// name (seen: XQ3690 "Mugla" — really Dalaman; Muğla province also has Bodrum, so the name can't
+// be mapped). One /flights/number lookup usually has the full airport. We copy only FIXED facts
+// (airport, timetable time); live times (revised, take-off) keep coming from the board.
+
+/** Fixed facts about the other end, from a lookup leg. */
+export type OriginFill = Pick<
+  OtherEnd,
+  "iata" | "name" | "airportName" | "municipality" | "countryCode" | "lat" | "lon" | "timeZone" | "scheduledUtc" | "scheduledLocal"
+>;
+
+/** Board flights worth one lookup: listed (not codeshares), a real flight number, no airport code. */
+export function needsOriginFill(f: BoardFlight): boolean {
+  return f.codeshare !== "CODESHARE" && !f.other.iata && isFlightNumber(f.number);
+}
+
+/** The leg matching this board flight (same direction, Gatwick time within 3 h) with a known airport. */
+export function originFillFrom(legs: BoardFlight[], f: BoardFlight): OriginFill | null {
+  const t = Date.parse(f.lgw.scheduledUtc);
+  const leg = legs
+    .filter((l) => l.direction === f.direction && !!l.other.iata)
+    .map((l) => ({ l, gap: Math.abs(Date.parse(l.lgw.scheduledUtc) - t) }))
+    .filter((x) => x.gap <= 3 * 60 * MIN)
+    .sort((a, b) => a.gap - b.gap)[0]?.l;
+  if (!leg) return null;
+  const o = leg.other;
+  return {
+    iata: o.iata,
+    name: o.name,
+    airportName: o.airportName ?? null,
+    municipality: o.municipality ?? null,
+    countryCode: o.countryCode,
+    lat: o.lat,
+    lon: o.lon,
+    timeZone: o.timeZone,
+    scheduledUtc: o.scheduledUtc,
+    scheduledLocal: o.scheduledLocal,
+  };
+}
+
+/**
+ * The board flight with the fill applied. The airport (code, name, country, position, time zone)
+ * comes wholly from the lookup — the board only had a vague name. Timetable times only where the
+ * board had none; live times always stay the board's.
+ */
+export function applyOriginFill(f: BoardFlight, fill: OriginFill): BoardFlight {
+  return {
+    ...f,
+    other: {
+      ...f.other,
+      iata: fill.iata,
+      name: fill.name ?? f.other.name,
+      airportName: fill.airportName ?? f.other.airportName ?? null,
+      municipality: fill.municipality ?? f.other.municipality ?? null,
+      countryCode: fill.countryCode,
+      lat: fill.lat,
+      lon: fill.lon,
+      timeZone: fill.timeZone,
+      scheduledUtc: f.other.scheduledUtc ?? fill.scheduledUtc,
+      scheduledLocal: f.other.scheduledLocal ?? fill.scheduledLocal,
+      filled: true,
+    },
+  };
 }
 
 // ── Finding a flight ──────────────────────────────────────────────────────

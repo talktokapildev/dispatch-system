@@ -20,6 +20,12 @@
 //   FLIGHT_BOARD_REFRESH_MIN=30        30 on the Pro plan, 10 on Ultra (min 5)
 //   FLIGHT_BOARD_UNITS_FLOOR=1500
 //   FLIGHT_STATUS_LOOKUPS_PER_DAY=100
+//   FLIGHT_BOARD_ORIGIN_LOOKUPS_PER_DAY=30   missing airports filled per UK day (2 units each)
+//
+// 3. fillMissingOrigins() — during a refresh, a board flight that came with NO airport at the
+//    other end (only a name, e.g. XQ3690 "Mugla") gets one /flights/number lookup (2 units) to
+//    fill its airport and timetable time; the answer (or "nothing better") is kept for the UK
+//    day, so each such flight costs at most one lookup a day. Max 4 per refresh.
 //
 // Weather at each airport on the board (weather.service.ts, OpenWeather) is topped up on the
 // same 1-minute tick, separately from AeroDataBox units.
@@ -49,6 +55,10 @@ import {
   matchKey,
   parseBoard,
   parseLookupLegs,
+  needsOriginFill,
+  originFillFrom,
+  applyOriginFill,
+  OriginFill,
 } from "./flightBoardRules";
 
 const RAPIDAPI_HOST = "aerodatabox.p.rapidapi.com";
@@ -82,6 +92,9 @@ const enabled = () => process.env.FLIGHT_BOARD_ENABLED === "true";
 const refreshMin = () => Math.max(5, num(process.env.FLIGHT_BOARD_REFRESH_MIN, 30));
 const unitsFloor = () => num(process.env.FLIGHT_BOARD_UNITS_FLOOR, 1500);
 const lookupsPerDay = () => num(process.env.FLIGHT_STATUS_LOOKUPS_PER_DAY, 100);
+const originLookupsPerDay = () => num(process.env.FLIGHT_BOARD_ORIGIN_LOOKUPS_PER_DAY, 30);
+const ORIGIN_LOOKUPS_PER_REFRESH = 4;
+const ORIGIN_TTL_S = 26 * 3600; // a UK day plus slack
 
 // ── Provider call ─────────────────────────────────────────────────────────
 type AdbResult = { status: number; body: unknown } | null;
@@ -179,7 +192,12 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
       await redis.set(KEY_BACKOFF, "1", "EX", 5 * 60);
       return "provider_error";
     }
-    const flights = r.status === 204 ? [] : parseBoard(r.body);
+    const parsed = r.status === 204 ? [] : parseBoard(r.body);
+    // Flights that came with no airport at the other end: fill from a lookup (cached a day).
+    const flights = await fillMissingOrigins(deps, parsed, now).catch((err) => {
+      log.warn(`[FlightBoard] origin fill failed: ${(err as Error)?.message ?? err}`);
+      return parsed;
+    });
     const stored: StoredBoard = { fetchedAt: now.toISOString(), fromLocal: w.fromLocal, toLocal: w.toLocal, flights };
     await redis.set(KEY_DATA, JSON.stringify(stored), "EX", DATA_TTL_S);
     // Remember these flights for 7 days, so their pages stay useful between live windows.
@@ -206,6 +224,76 @@ export async function refreshBoardIfDue(deps: BoardDeps, now: Date = new Date())
   } finally {
     await redis.del(KEY_LOCK).catch(() => undefined);
   }
+}
+
+// ── 3. Filling a missing airport (board flights with only a name) ──────────
+type OriginCache = { fill: OriginFill | null };
+
+/**
+ * Board flights with no airport code at the other end get their airport and timetable time from
+ * one /flights/number lookup. The result — including "the lookup had nothing better" — is cached
+ * for the UK day, so each flight costs at most one lookup (2 units) a day. Max
+ * ORIGIN_LOOKUPS_PER_REFRESH per refresh, FLIGHT_BOARD_ORIGIN_LOOKUPS_PER_DAY per UK day, and
+ * nothing below the units floor. Never throws for one flight; the board is stored either way.
+ */
+export async function fillMissingOrigins(deps: BoardDeps, flights: BoardFlight[], now: Date): Promise<BoardFlight[]> {
+  const { redis, log } = deps;
+  let lookups = 0;
+  const out: BoardFlight[] = [];
+  for (const f of flights) {
+    if (!needsOriginFill(f)) {
+      out.push(f);
+      continue;
+    }
+    const key = matchKey(f.number);
+    const date = londonDate(new Date(f.lgw.scheduledUtc));
+    const cacheKey = `flightboard:origin:${f.direction}:${key}:${date}`;
+    const raw = await redis.get(cacheKey);
+    if (raw) {
+      try {
+        const c = JSON.parse(raw) as OriginCache;
+        out.push(c.fill ? applyOriginFill(f, c.fill) : f);
+        continue;
+      } catch {
+        /* look up again */
+      }
+    }
+    if (!key || lookups >= ORIGIN_LOOKUPS_PER_REFRESH || (await redis.get("flightboard:origin:backoff"))) {
+      out.push(f);
+      continue;
+    }
+    if (!(await unitsOk(deps, "origin fill"))) {
+      out.push(f);
+      continue;
+    }
+    const dayKey = `flightboard:origin:lookups:${londonDate(now)}`;
+    const count = await redis.incr(dayKey);
+    if (count === 1) await redis.expire(dayKey, 2 * 86_400);
+    if (count > originLookupsPerDay()) {
+      if (count === originLookupsPerDay() + 1) log.warn(`[FlightBoard] daily origin-fill cap (${originLookupsPerDay()}) reached`);
+      out.push(f);
+      continue;
+    }
+    lookups++;
+    const r = await adbGet(redis, `/flights/number/${encodeURIComponent(key)}/${date}`, {
+      dateLocalRole: "Both",
+      withAircraftImage: false,
+      withLocation: false,
+    });
+    if (!r || ![200, 204, 404].includes(r.status)) {
+      log.warn(`[FlightBoard] origin fill ${key} ${date} failed (${r ? `HTTP ${r.status}` : "no response"}); pausing 30 min`);
+      await redis.set("flightboard:origin:backoff", "1", "EX", 30 * 60);
+      out.push(f);
+      continue;
+    }
+    const fill = r.status === 200 ? originFillFrom(parseLookupLegs(r.body), f) : null;
+    await redis.set(cacheKey, JSON.stringify({ fill } satisfies OriginCache), "EX", ORIGIN_TTL_S);
+    log.warn(
+      `[FlightBoard] origin fill ${key} ${date} (${f.other.name ?? "?"}): ${fill ? `${fill.iata} ${fill.name ?? ""}` : "nothing better"}`
+    );
+    out.push(fill ? applyOriginFill(f, fill) : f);
+  }
+  return out;
 }
 
 /** Pickup buffers (Admin settings), cached 10 min — the board is read far more often than they change. */

@@ -279,6 +279,92 @@ async function main() {
   (global as any).Date = RealDate;
   Date.now = realNow;
   await app.close();
+  // ── Missing airport at the other end (XQ3690 "Mugla") filled from one lookup ──
+  {
+    const r2 = new FakeRedis();
+    const d2 = { redis: r2 as any, prisma: deps.prisma, log };
+    const rules = await import("../src/services/flightBoardRules");
+    const mugla = rules.parseBoard({
+      arrivals: [
+        {
+          number: "XQ 3690",
+          status: "Expected",
+          codeshareStatus: "IsOperator",
+          isCargo: false,
+          airline: { name: "Sun Express", iata: "XQ", icao: "SXS" },
+          movement: { airport: { name: "Mugla" }, scheduledTime: tm("2026-10-29T18:40"), revisedTime: tm("2026-10-29T18:24"), terminal: "S", quality: ["Live"] },
+        },
+      ],
+      departures: [],
+    });
+    check("board flight with no airport parsed", mugla.length === 1 && mugla[0].other.iata === null, JSON.stringify(mugla[0]?.other));
+    const dalaman = [
+      {
+        number: "XQ 3690",
+        status: "Expected",
+        codeshareStatus: "IsOperator",
+        isCargo: false,
+        airline: { name: "Sun Express", iata: "XQ", icao: "SXS" },
+        departure: {
+          airport: { iata: "DLM", name: "Dalaman", municipalityName: "Dalaman", countryCode: "TR", location: { lat: 36.71, lon: 28.79 }, timeZone: "Europe/Istanbul" },
+          scheduledTime: { utc: "2026-10-29 14:25Z", local: "2026-10-29 17:25+03:00" },
+          revisedTime: { utc: "2026-10-29 14:15Z", local: "2026-10-29 17:15+03:00" },
+        },
+        arrival: { airport: { iata: "LGW" }, scheduledTime: tm("2026-10-29T18:40"), terminal: "S" },
+      },
+    ];
+    const before = calls.length;
+    (axios as any).get = async (url: string, opts: any) => {
+      calls.push({ url, params: opts?.params });
+      return { status: 200, data: dalaman, headers: { "x-ratelimit-api-units-remaining": "4000" } };
+    };
+    const at = new Date("2026-10-29T17:30:00Z");
+    const filled = await svc.fillMissingOrigins(d2, mugla, at);
+    const o = filled[0].other;
+    check("one lookup for the missing airport", calls.length === before + 1 && calls[calls.length - 1].url.endsWith("/flights/number/XQ3690/2026-10-29"), calls[calls.length - 1]?.url);
+    check("airport filled: DLM Dalaman TR", o.iata === "DLM" && o.name === "Dalaman" && o.countryCode === "TR" && o.filled === true, JSON.stringify(o));
+    check("timetable departure filled", o.scheduledUtc === "2026-10-29T14:25:00.000Z", o.scheduledUtc ?? "");
+    check("live times NOT copied from the lookup", o.revisedUtc === null && o.runwayUtc === null);
+    const again = await svc.fillMissingOrigins(d2, mugla, new Date("2026-10-29T17:40:00Z"));
+    check("cached for the day: no second lookup", calls.length === before + 1 && again[0].other.iata === "DLM");
+    const v = rules.describe(filled[0], at, { hand: 30, checked: 45 });
+    check("with the fill, the in-air rules work", v.inAir === "TRACKED" && v.state === "EN_ROUTE" && !v.departureUnknown, `${v.state} ${v.inAir}`);
+
+    // Lookup with nothing better: remembered, no repeat.
+    const r3 = new FakeRedis();
+    (axios as any).get = async (url: string, opts: any) => {
+      calls.push({ url, params: opts?.params });
+      return { status: 200, data: [{ ...dalaman[0], departure: { airport: { name: "Mugla" } } }], headers: {} };
+    };
+    const n0 = calls.length;
+    const none = await svc.fillMissingOrigins({ ...d2, redis: r3 as any }, mugla, at);
+    await svc.fillMissingOrigins({ ...d2, redis: r3 as any }, mugla, at);
+    check("nothing better: unchanged, looked up once", none[0].other.iata === null && calls.length === n0 + 1);
+
+    // Units floor and daily cap.
+    const r4 = new FakeRedis();
+    await r4.set("adb:units:remaining", "1200");
+    const n1 = calls.length;
+    await svc.fillMissingOrigins({ ...d2, redis: r4 as any }, mugla, at);
+    check("below the units floor: no lookup", calls.length === n1);
+    const r5 = new FakeRedis();
+    await r5.set("flightboard:origin:lookups:2026-10-29", "30");
+    await svc.fillMissingOrigins({ ...d2, redis: r5 as any }, mugla, at);
+    check("daily cap reached: no lookup", calls.length === n1);
+
+    // Provider trouble: board unchanged, paused 30 min.
+    const r6 = new FakeRedis();
+    (axios as any).get = async () => ({ status: 500, data: null, headers: {} });
+    const err = await svc.fillMissingOrigins({ ...d2, redis: r6 as any }, mugla, at);
+    check("provider error: unchanged, backoff set", err[0].other.iata === null && (await r6.get("flightboard:origin:backoff")) === "1");
+
+    // Flights with an airport never trigger a lookup.
+    const n2 = calls.length;
+    const normal = rules.parseBoard(boardBody);
+    const same = await svc.fillMissingOrigins({ ...d2, redis: new FakeRedis() as any }, normal, at);
+    check("normal flights: no lookup, untouched", calls.length === n2 && same[0].other.iata === "AMS" && !same[0].other.filled);
+  }
+
   console.log(failures ? `\n${failures} FAILED` : "\nAll passed");
   process.exit(failures ? 1 : 0);
 }
