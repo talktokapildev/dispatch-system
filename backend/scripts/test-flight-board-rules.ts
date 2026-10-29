@@ -16,6 +16,9 @@ import {
   parseBoard,
   parseLookupLegs,
   BoardFlight,
+  needsOriginFill,
+  originFillFrom,
+  applyOriginFill,
 } from "../src/services/flightBoardRules";
 
 let failures = 0;
@@ -311,6 +314,24 @@ check("parseBoard fills terminals", board2.find((f) => f.number === "U2 8002")?.
 const w = boardWindow(new Date("2026-10-23T12:00:00Z")); // 13:00 UK (BST)
 check("window from 2h back (UK clock)", w.fromLocal === "2026-10-23T11:00", w.fromLocal);
 check("window to +11:59 local", w.toLocal === "2026-10-23T22:59", w.toLocal);
+// ── Missing airport at the other end ───────────────────────────────────────
+const bare = with_(arr, "Expected", {}, { iata: null, name: "Mugla", scheduledUtc: null, scheduledLocal: null, revisedUtc: null, runwayUtc: null, countryCode: null });
+check("no airport code → needs a fill", needsOriginFill(bare));
+check("normal flight → no fill", !needsOriginFill(arr));
+check("codeshare → no fill", !needsOriginFill({ ...bare, codeshare: "CODESHARE" }));
+check("call sign → no fill", !needsOriginFill({ ...bare, number: "A0 42YR" }));
+const legFrom = (iata: string | null, lgwUtc: string, dir: BoardFlight["direction"] = "ARRIVAL") =>
+  ({ ...arr, direction: dir, lgw: { ...arr.lgw, scheduledUtc: lgwUtc }, other: { ...arr.other, iata, name: iata === "DLM" ? "Dalaman" : null, countryCode: "TR" } }) as BoardFlight;
+const fill = originFillFrom([legFrom("DLM", "2026-10-23T20:10:00.000Z")], bare);
+check("fill from matching leg", fill?.iata === "DLM" && fill?.name === "Dalaman", JSON.stringify(fill));
+check("leg 4 h away → no fill", originFillFrom([legFrom("DLM", "2026-10-24T00:30:00.000Z")], bare) === null);
+check("other direction → no fill", originFillFrom([legFrom("DLM", "2026-10-23T20:10:00.000Z", "DEPARTURE")], bare) === null);
+check("leg without airport → no fill", originFillFrom([legFrom(null, "2026-10-23T20:10:00.000Z")], bare) === null);
+const applied = applyOriginFill({ ...bare, other: { ...bare.other, revisedUtc: "2026-10-23T18:40:00.000Z" } }, fill!);
+check("airport replaced, marked filled", applied.other.iata === "DLM" && applied.other.name === "Dalaman" && applied.other.filled === true);
+check("timetable time filled", applied.other.scheduledUtc === arr.other.scheduledUtc);
+check("board's live time kept", applied.other.revisedUtc === "2026-10-23T18:40:00.000Z");
+
 const autumn = boardWindow(new Date("2026-10-25T00:30:00Z")); // clocks go back at 01:00 UTC
 check("clock-change night", autumn.fromLocal === "2026-10-24T23:30" && autumn.toLocal === "2026-10-25T11:29", `${autumn.fromLocal}..${autumn.toLocal}`);
 const spring = boardWindow(new Date("2027-03-28T02:30:00Z")); // clocks went forward at 01:00 UTC

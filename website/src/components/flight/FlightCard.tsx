@@ -250,6 +250,8 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
   // and airport screens, so say so rather than set it next to a landing time.
   const vsSchedule = (sched: string) => {
     const due = arrival ? `due at the gate ${sched}` : `scheduled ${sched}`;
+    // Not seen leaving / no departure details: don't call it "on time" or "early".
+    if (arrival && !v.landed && !late && (v.inAir === "UNCONFIRMED" || v.departureUnknown)) return `Due at the gate ${sched}`;
     return late
       ? `${duration(v.delayMin!)} late · ${due}`
       : early
