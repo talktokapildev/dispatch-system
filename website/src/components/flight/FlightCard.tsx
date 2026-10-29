@@ -115,8 +115,11 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
       left = flown != null ? `${duration(flown)} flown` : v.inAir === "TRACKED" ? "Probably in the air" : "In the air";
       right = v.minutesToGo != null ? `about ${duration(v.minutesToGo)} to go` : "";
     } else if (v.inAir === "UNCONFIRMED" && !ended) {
-      left = "Take-off not confirmed yet";
+      left = v.overdueMin != null ? "Take-off and landing not reported" : "Take-off not confirmed yet";
       right = flightMin && flightMin > 0 ? `Flight time ${duration(flightMin)}` : "";
+    } else if (v.departureUnknown && !ended) {
+      left = "Departure details not available";
+      right = "";
     } else {
       left = ended ? "" : "Not in the air yet";
       right = flightMin && flightMin > 0 ? `Flight time ${duration(flightMin)}` : "";
@@ -384,6 +387,7 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
     else if (unreported) takeOffText = "Not reported";
     else if (inAir || landed) takeOffText = "Time not reported";
     else if (depDue) takeOffText = `Due ${ukTime(depDue)}${depWas}${v.inAir === "UNCONFIRMED" ? " · not confirmed" : ""}`;
+    else if (v.departureUnknown) takeOffText = "Not available";
     steps.push({
       title: unreported ? "Take-off" : v.takeOffAt || inAir || landed ? "Took off" : "Takes off",
       text: takeOffText,

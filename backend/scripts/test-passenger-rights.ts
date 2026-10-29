@@ -61,6 +61,9 @@ check("arrival 3h20 late from Malaga → £350, UK/EU airline wording, no care",
   !!a1 && a1.compensationGbp === 350 && a1.covered === "UK_EU_AIRLINE" && a1.careFromMin === null && !a1.careDue && !a1.arrivalDelayFinal,
   JSON.stringify(a1));
 check("arrival landed 3h late → final", passengerRights(flight({}), view({ delayMin: 185, landed: true, state: "LANDED" }))?.arrivalDelayFinal === true);
+check("arrival not seen leaving (unconfirmed) → nothing", passengerRights(flight({}), view({ delayMin: 200, inAir: "UNCONFIRMED" })) === null);
+check("arrival with no departure details → nothing", passengerRights(flight({}), view({ delayMin: 200, departureUnknown: true })) === null);
+check("tracked arrival 3h late → still shown", passengerRights(flight({}), view({ delayMin: 200, inAir: "TRACKED", state: "EN_ROUTE" })) !== null);
 check("arrival 1h30 late → nothing to show", passengerRights(flight({}), view({ delayMin: 90 })) === null);
 const a2 = passengerRights(flight({}), view({ delayMin: 150 }));
 check("arrival 2h30 late → box shows, no compensation yet, £350 if 3h+", !!a2 && a2.compensationGbp === null && a2.arrivalDelayMin === 150 && a2.compensationIfLateGbp === 350);
