@@ -13,6 +13,7 @@ import {
   TONE,
   ukDate,
   ukTime,
+  LANDING_NOW_MIN,
   Weather,
   WeatherMap,
 } from "@/lib/flightFormat";
@@ -104,11 +105,18 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
       progress = 1;
       left = v.takeOffAt ? `Took off ${ukTime(v.takeOffAt)}` : "";
       right = `${v.arrivedTimeIsGate ? "At the gate" : "Landed"} ${ukTime(v.landsAt)}`;
+    } else if (v.state === "EN_ROUTE" && v.overdueMin != null) {
+      progress = 0.97;
+      left = v.overdueMin >= LANDING_NOW_MIN ? "Probably landed · not confirmed yet" : "Landing now";
+      right = `Expected ${ukTime(v.landsAt)}`;
     } else if (v.state === "EN_ROUTE") {
       progress = v.progress ?? 0.5;
       const flown = v.takeOffAt ? Math.max(0, Math.round((now.getTime() - Date.parse(v.takeOffAt)) / 60_000)) : null;
       left = flown != null ? `${duration(flown)} flown` : "In the air";
       right = v.minutesToGo != null ? `about ${duration(v.minutesToGo)} to go` : "";
+    } else if (v.inAir === "UNCONFIRMED" && !ended) {
+      left = "Take-off not confirmed yet";
+      right = flightMin && flightMin > 0 ? `Flight time ${duration(flightMin)}` : "";
     } else {
       left = ended ? "" : "Not in the air yet";
       right = flightMin && flightMin > 0 ? `Flight time ${duration(flightMin)}` : "";
@@ -360,16 +368,35 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
   const t = now.getTime();
   if (f.direction === "ARRIVAL") {
     const inAir = v.state === "EN_ROUTE";
+    const landing = inAir && v.overdueMin != null; // past the expected touchdown, not confirmed
     const landed = v.landed;
     const atGate = landed && !!v.gateAt && Date.parse(v.gateAt) <= t;
     const out = landed && !!v.outHandAt && Date.parse(v.outHandAt) <= t;
+    // Departure time: the airline's latest, with the timetable time if it moved.
+    const depDue = f.other.revisedUtc ?? f.other.scheduledUtc;
+    const depWas =
+      f.other.revisedUtc && f.other.scheduledUtc && ukTime(f.other.revisedUtc) !== ukTime(f.other.scheduledUtc)
+        ? ` (was ${ukTime(f.other.scheduledUtc)})`
+        : "";
+    let takeOffText = "";
+    if (v.takeOffAt) takeOffText = ukTime(v.takeOffAt);
+    else if (inAir || landed) takeOffText = "Time not reported";
+    else if (depDue) takeOffText = `Due ${ukTime(depDue)}${depWas}${v.inAir === "UNCONFIRMED" ? " · not confirmed" : ""}`;
     steps.push({
-      title: v.takeOffAt ? "Took off" : "Takes off",
-      text: v.takeOffAt ? ukTime(v.takeOffAt) : f.other.scheduledUtc ? `Due ${ukTime(f.other.scheduledUtc)}` : "",
+      title: v.takeOffAt || inAir || landed ? "Took off" : "Takes off",
+      text: takeOffText,
       status: v.takeOffAt || inAir || landed ? "done" : "next",
     });
-    steps.push({ title: "In the air", text: inAir ? "Now" : landed ? "Done" : "", status: inAir ? "now" : landed ? "done" : "next" });
-    steps.push({ title: landed ? "Landed" : "Lands", text: `${landed ? "" : "~"}${ukTime(v.landsAt)}`, status: landed ? (atGate ? "done" : "now") : "next" });
+    steps.push({
+      title: "In the air",
+      text: landing ? "Done" : inAir ? "Now" : landed ? "Done" : "",
+      status: landing ? "done" : inAir ? "now" : landed ? "done" : "next",
+    });
+    steps.push({
+      title: landed ? "Landed" : "Lands",
+      text: landing && (v.overdueMin ?? 0) >= LANDING_NOW_MIN ? "Not confirmed" : `${landed ? "" : "~"}${ukTime(v.landsAt)}`,
+      status: landed ? (atGate ? "done" : "now") : landing ? "now" : "next",
+    });
     steps.push({ title: "At the gate", text: `~${ukTime(v.gateAt)}`, status: atGate ? (out ? "done" : "now") : "next" });
     steps.push({ title: "Arrivals hall", text: `~${ukTime(v.outHandAt)} – ${ukTime(v.outBagsAt)}`, status: out ? "now" : "next" });
   } else {

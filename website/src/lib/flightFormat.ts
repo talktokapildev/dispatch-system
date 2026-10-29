@@ -16,6 +16,12 @@ export type FlightState =
   | "MAYBE_CANCELLED"
   | "DIVERTED";
 export type Tone = "info" | "late" | "early" | "good" | "bad";
+/**
+ * Arrivals: how sure we are the plane is flying (backend flightBoardRules.ts).
+ * REPORTED = take-off reported; TRACKED = no take-off reported but tracked (shown in the air);
+ * UNCONFIRMED = should have left, no take-off and no tracking (maybe still on the ground).
+ */
+export type InAir = "REPORTED" | "TRACKED" | "UNCONFIRMED" | null;
 
 export type BoardFlight = {
   id: string;
@@ -70,6 +76,8 @@ export type FlightView = {
   outBagsAt: string | null;
   progress: number | null;
   minutesToGo: number | null;
+  inAir?: InAir; // older backends: absent
+  overdueMin?: number | null; // minutes past the expected touchdown, not yet landed
   departedAt: string | null;
   beThereBy: string | null;
   gateShownAt: string | null;
@@ -212,7 +220,7 @@ export type BoardRow = {
   baggageBelt: string | null;
   view: Pick<
     FlightView,
-    "state" | "tone" | "scheduledAt" | "expectedAt" | "delayMin" | "landsAt" | "landed" | "departedAt"
+    "state" | "tone" | "scheduledAt" | "expectedAt" | "delayMin" | "landsAt" | "landed" | "departedAt" | "inAir"
   >;
 };
 
@@ -487,6 +495,10 @@ function lateEarly(delay: number | null): string | null {
   return "on time";
 }
 
+// Past the expected touchdown with no landing reported: "landing now" for this long, then
+// "probably landed, not confirmed".
+export const LANDING_NOW_MIN = 20;
+
 /** Short status for pills and board chips, e.g. "In the air · 9 min late". */
 export function statusLabel(dir: Direction, v: FlightView | BoardRow["view"], short = false, now?: Date): string {
   // Days ahead there's only a timetable: "On time" would claim more than we know.
@@ -504,8 +516,13 @@ export function statusLabel(dir: Direction, v: FlightView | BoardRow["view"], sh
     case "DEPARTED":
       return short ? `Departed ${ukTime(v.departedAt)}` : "Departed";
     // Board chips sit next to the (gate) time column, so they say what's happening, not another time.
-    case "EN_ROUTE":
-      return short ? "In the air" : `In the air${le ? ` · ${le}` : ""}`;
+    case "EN_ROUTE": {
+      // Take-off never reported: on the board a late one still says "Delayed" (as agreed).
+      if (short) return v.inAir === "TRACKED" && v.tone === "late" ? "Delayed" : "In the air";
+      const overdue = "overdueMin" in v ? v.overdueMin : null;
+      if (overdue != null) return overdue >= LANDING_NOW_MIN ? "Landing not confirmed" : "Landing now";
+      return `In the air${le ? ` · ${le}` : ""}`;
+    }
     case "DELAYED":
       return short ? "Delayed" : `Delayed${v.delayMin && v.delayMin > 0 ? ` ${duration(v.delayMin)}` : ""}`;
     case "BOARDING":
@@ -547,11 +564,21 @@ export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date
         return `${num} has been diverted to another airport. Wait to hear from the traveller before you set off.`;
       case "LANDED":
         return `${num} landed at Gatwick${at} at ${ukTime(v.landsAt)}${v.arrivedTimeIsGate ? " (time at the gate)" : ""}. Travellers with hand luggage are usually out by about ${ukTime(v.outHandAt)}, and with a suitcase by about ${ukTime(v.outBagsAt)}.`;
-      case "EN_ROUTE":
-        return `${num} is in the air from ${place} and should land at Gatwick${at} at about ${ukTime(v.landsAt)}. With a suitcase, travellers are usually out around ${ukTime(v.outBagsAt)}, so aim to be there by about ${ukTime(v.outHandAt)}.`;
+      case "EN_ROUTE": {
+        const out = `With a suitcase, travellers are usually out around ${ukTime(v.outBagsAt)}, so aim to be there by about ${ukTime(v.outHandAt)}.`;
+        const overdue = v.overdueMin ?? null;
+        if (overdue != null && overdue >= LANDING_NOW_MIN)
+          return `${num} from ${place} was expected to land at Gatwick${at} at about ${ukTime(v.landsAt)}. The landing hasn't been confirmed yet, but it has most likely landed. ${out}`;
+        if (overdue != null)
+          return `${num} from ${place} should be landing at Gatwick${at} about now (expected ${ukTime(v.landsAt)}). ${out}`;
+        const note = v.inAir === "TRACKED" ? " Its take-off time wasn't reported, but the flight is being tracked." : "";
+        return `${num} is in the air from ${place} and should land at Gatwick${at} at about ${ukTime(v.landsAt)}.${note} ${out}`;
+      }
       case "DELAYED":
+        if (v.inAir === "UNCONFIRMED") return unconfirmed(num, place, f, v);
         return `${num} hasn't left ${place} yet and is running about ${duration(v.delayMin ?? 0)} late. It's now expected to land at about ${ukTime(v.landsAt)}. This can still change until it takes off.`;
       default:
+        if (v.inAir === "UNCONFIRMED") return unconfirmed(num, place, f, v);
         return `${num} from ${place} is due to land at Gatwick${at} ${when} at ${ukTime(v.landsAt)}. It hasn't taken off yet, so check again nearer the time: delays often show up only around take-off.`;
     }
   }
@@ -573,4 +600,10 @@ export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date
     default:
       return `${num} to ${place} is due to leave Gatwick${at} ${when} at ${ukTime(v.expectedAt)}. Aim to arrive by about ${ukTime(v.beThereBy)}, and check your airline's bag drop closing time if you have a suitcase. The gate usually shows on the screens about 40 minutes before departure.`;
   }
+}
+
+/** Due to have left, but no take-off reported and no tracking: flying, or still on the ground. */
+function unconfirmed(num: string, place: string, f: BoardFlight, v: FlightView): string {
+  const dep = f.other.revisedUtc ?? f.other.scheduledUtc;
+  return `${num} was due to leave ${place}${dep ? ` at ${ukTime(dep)}` : ""}, but its take-off hasn't been reported and we can't see it being tracked. It may be in the air or still on the ground, so the landing time (about ${ukTime(v.landsAt)} for now) could change. Check again shortly, or ask the traveller.`;
 }
