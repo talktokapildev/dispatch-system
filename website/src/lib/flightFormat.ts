@@ -521,7 +521,8 @@ export function statusLabel(dir: Direction, v: FlightView | BoardRow["view"], sh
       if (short) return v.inAir === "TRACKED" && v.tone === "late" ? "Delayed" : "In the air";
       const overdue = "overdueMin" in v ? v.overdueMin : null;
       if (overdue != null) return overdue >= LANDING_NOW_MIN ? "Landing not confirmed" : "Landing now";
-      return `In the air${le ? ` · ${le}` : ""}`;
+      // No take-off reported: an inference from tracking, so not stated as fact.
+      return `${v.inAir === "TRACKED" ? "Probably in the air" : "In the air"}${le ? ` · ${le}` : ""}`;
     }
     case "DELAYED":
       return short ? "Delayed" : `Delayed${v.delayMin && v.delayMin > 0 ? ` ${duration(v.delayMin)}` : ""}`;
@@ -571,8 +572,9 @@ export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date
           return `${num} from ${place} was expected to land at Gatwick${at} at about ${ukTime(v.landsAt)}. The landing hasn't been confirmed yet, but it has most likely landed. ${out}`;
         if (overdue != null)
           return `${num} from ${place} should be landing at Gatwick${at} about now (expected ${ukTime(v.landsAt)}). ${out}`;
-        const note = v.inAir === "TRACKED" ? " Its take-off time wasn't reported, but the flight is being tracked." : "";
-        return `${num} is in the air from ${place} and should land at Gatwick${at} at about ${ukTime(v.landsAt)}.${note} ${out}`;
+        if (v.inAir === "TRACKED")
+          return `${num} from ${place} should be in the air by now, but the airline hasn't reported its take-off, so this isn't confirmed. It's expected to land at Gatwick${at} at about ${ukTime(v.landsAt)}. ${out}`;
+        return `${num} is in the air from ${place} and should land at Gatwick${at} at about ${ukTime(v.landsAt)}. ${out}`;
       }
       case "DELAYED":
         if (v.inAir === "UNCONFIRMED") return unconfirmed(num, place, f, v);

@@ -112,7 +112,7 @@ function Route({ f, v, now, ended, weather }: { f: BoardFlight; v: FlightView; n
     } else if (v.state === "EN_ROUTE") {
       progress = v.progress ?? 0.5;
       const flown = v.takeOffAt ? Math.max(0, Math.round((now.getTime() - Date.parse(v.takeOffAt)) / 60_000)) : null;
-      left = flown != null ? `${duration(flown)} flown` : "In the air";
+      left = flown != null ? `${duration(flown)} flown` : v.inAir === "TRACKED" ? "Probably in the air" : "In the air";
       right = v.minutesToGo != null ? `about ${duration(v.minutesToGo)} to go` : "";
     } else if (v.inAir === "UNCONFIRMED" && !ended) {
       left = "Take-off not confirmed yet";
@@ -378,18 +378,20 @@ function Timeline({ f, v, now }: { f: BoardFlight; v: FlightView; now: Date }) {
       f.other.revisedUtc && f.other.scheduledUtc && ukTime(f.other.revisedUtc) !== ukTime(f.other.scheduledUtc)
         ? ` (was ${ukTime(f.other.scheduledUtc)})`
         : "";
+    const unreported = !v.takeOffAt && v.inAir === "TRACKED"; // flying per tracking, take-off never reported
     let takeOffText = "";
     if (v.takeOffAt) takeOffText = ukTime(v.takeOffAt);
+    else if (unreported) takeOffText = "Not reported";
     else if (inAir || landed) takeOffText = "Time not reported";
     else if (depDue) takeOffText = `Due ${ukTime(depDue)}${depWas}${v.inAir === "UNCONFIRMED" ? " · not confirmed" : ""}`;
     steps.push({
-      title: v.takeOffAt || inAir || landed ? "Took off" : "Takes off",
+      title: unreported ? "Take-off" : v.takeOffAt || inAir || landed ? "Took off" : "Takes off",
       text: takeOffText,
       status: v.takeOffAt || inAir || landed ? "done" : "next",
     });
     steps.push({
       title: "In the air",
-      text: landing ? "Done" : inAir ? "Now" : landed ? "Done" : "",
+      text: landing ? "Done" : inAir ? (unreported ? "Probably now" : "Now") : landed ? "Done" : "",
       status: landing ? "done" : inAir ? "now" : landed ? "done" : "next",
     });
     steps.push({
