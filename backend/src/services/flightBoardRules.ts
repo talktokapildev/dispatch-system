@@ -673,9 +673,21 @@ function describeArrival(
     const floor = new Date(depExpected.getTime() + flightMs - 15 * MIN);
     if (floor > gate) gate = floor;
   }
+  // "Arrived" with no touchdown time: the shared rule takes the LATEST of revised / predicted /
+  // scheduled (cautious for pickups). On the public page an arrival can't be in the future (seen:
+  // EZY8212 Corfu at 23:01 showed "Arrived 23:10"; it was at the gate 22:55, revised time 22:55).
+  // Use the airline's revised (else predicted) time if it's already past; else the timetable time,
+  // capped at now.
+  let landedAt = landed ? it.landedAt : null;
+  if (landed && !f.lgw.runwayUtc) {
+    const past = [at(f.lgw.revisedUtc), at(f.lgw.predictedUtc)].find((d): d is Date => !!d && d <= now);
+    const arrived = past ?? (scheduled <= now ? scheduled : now);
+    gate = arrived;
+    landedAt = arrived;
+  }
   const delay = minutesBetween(scheduled, gate);
   const arrivedTimeIsGate = landed && !f.lgw.runwayUtc;
-  const lands = landed ? it.landedAt ?? gate : addMin(gate, -TAXI_MIN);
+  const lands = landed ? landedAt ?? gate : addMin(gate, -TAXI_MIN);
   // Shown as "Took off": a reported take-off only. TRACKED flights use the expected departure
   // just for the progress bar.
   const takeOff = at(f.other.runwayUtc) ?? (inAir === "REPORTED" ? at(f.other.revisedUtc) : null);
