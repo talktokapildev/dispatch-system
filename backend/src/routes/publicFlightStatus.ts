@@ -92,6 +92,7 @@ function boardRow(f: BoardFlight, now: Date, buffers: { hand: number; checked: n
       landsAt: v.landsAt,
       landed: v.landed,
       departedAt: v.departedAt,
+      inAir: v.inAir,
     },
   };
 }

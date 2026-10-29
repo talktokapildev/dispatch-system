@@ -155,7 +155,8 @@ const notYet = with_(arr, "Expected", { revisedUtc: null }, { runwayUtc: null, r
 const vNotYet = describe(notYet, new Date("2026-10-23T16:00:00Z"), B);
 check("before take-off, on time", vNotYet.state === "SCHEDULED" && vNotYet.delayMin === 0, vNotYet.state);
 
-const delayed = with_(arr, "Expected", { revisedUtc: "2026-10-23T21:01:00.000Z" }, { runwayUtc: null });
+// No live tracking yet (as on the ground): stays "delayed", never "in the air".
+const delayed = with_(arr, "Expected", { revisedUtc: "2026-10-23T21:01:00.000Z", live: false }, { runwayUtc: null });
 const vDelayed = describe(delayed, new Date("2026-10-23T19:30:00Z"), B);
 check("airline delay before take-off", vDelayed.state === "DELAYED" && vDelayed.tone === "late", `${vDelayed.state} ${vDelayed.delayMin}`);
 
@@ -165,6 +166,46 @@ check("early in the air", vEarly.tone === "early" && vEarly.delayMin === -12, `$
 // An impossible estimate (before take-off + 70% of flight time) is ignored, as for bookings.
 const impossible = describe(with_(arr, "EnRoute", { revisedUtc: "2026-10-23T19:40:00.000Z" }), NOW, B);
 check("impossible early estimate ignored", impossible.delayMin === 1, String(impossible.delayMin));
+
+// ── No take-off reported (Gran Canaria, Split…): in the air only with tracking evidence ──
+// arr: leaves AMS 18:25Z, due at the gate 20:10Z. NOW = 19:41Z.
+const noTakeOff = (status: string, lgw: Partial<BoardFlight["lgw"]>) =>
+  with_(arr, status, { runwayUtc: null, ...lgw }, { runwayUtc: null, revisedUtc: null });
+
+const tracked = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T20:26:00.000Z" }), NOW, B);
+check("tracked, no take-off → in the air", tracked.state === "EN_ROUTE" && tracked.inAir === "TRACKED", `${tracked.state} ${tracked.inAir}`);
+check("tracked: no take-off time claimed", tracked.takeOffAt === null);
+check("tracked: gate = airline estimate 20:26Z", tracked.gateAt === "2026-10-23T20:26:00.000Z", tracked.gateAt ?? "");
+check("tracked: progress from expected departure", tracked.progress != null && tracked.progress > 0.3 && tracked.progress < 0.97, String(tracked.progress));
+check("tracked: not overdue", tracked.overdueMin === null);
+
+const predictedOnly = describe(
+  noTakeOff("Delayed", { live: false, revisedUtc: "2026-10-23T20:26:00.000Z", predictedUtc: "2026-10-23T20:24:00.000Z" }),
+  NOW,
+  B
+);
+check("predicted landing counts as tracking", predictedOnly.state === "EN_ROUTE" && predictedOnly.inAir === "TRACKED", `${predictedOnly.state} ${predictedOnly.inAir}`);
+check("tracked: latest of revised / predicted", predictedOnly.gateAt === "2026-10-23T20:26:00.000Z", predictedOnly.gateAt ?? "");
+
+// Stuck on the ground with a stale schedule: no take-off, no tracking → never "in the air".
+const stuck = describe(noTakeOff("Expected", { live: false, predictedUtc: null, revisedUtc: null }), NOW, B);
+check("stuck, no tracking → not in the air", stuck.state !== "EN_ROUTE" && stuck.inAir === "UNCONFIRMED", `${stuck.state} ${stuck.inAir}`);
+check("stuck: landing can't be before now + flight time", Date.parse(stuck.gateAt!) >= Date.parse("2026-10-23T21:26:00.000Z"), stuck.gateAt ?? "");
+check("stuck: no progress bar", stuck.progress === null);
+
+// Not due to have left yet (departure 18:25Z + 15 min grace): no guessing either way.
+const early_ = describe(noTakeOff("Expected", { live: true }), new Date("2026-10-23T18:35:00Z"), B);
+check("before departure + grace → not in the air", early_.state === "SCHEDULED" && early_.inAir === null, `${early_.state} ${early_.inAir}`);
+
+check("reported take-off → REPORTED", vAir.inAir === "REPORTED" && vAir.overdueMin === null, String(vAir.inAir));
+
+const late_ = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T20:19:00.000Z" }), new Date("2026-10-23T20:20:00Z"), B);
+check("past expected touchdown, not landed → overdue 8 min", late_.state === "EN_ROUTE" && late_.overdueMin === 8, `${late_.state} ${late_.overdueMin}`);
+const lateReported = describe(arr, new Date("2026-10-23T20:40:00Z"), B);
+check("reported flight overdue too", lateReported.state === "EN_ROUTE" && lateReported.overdueMin === 28, String(lateReported.overdueMin));
+
+check("landed: no in-air flag", vLanded.inAir === null && vLanded.overdueMin === null);
+check("cancelled with tracking: not in the air", describe(with_(arr, "Canceled", { live: true }, { runwayUtc: null }), NOW, B).inAir === null);
 
 check("cancelled", describe(with_(arr, "Canceled", {}), NOW, B).state === "CANCELLED");
 check("maybe cancelled", describe(with_(arr, "CanceledUncertain", {}), NOW, B).state === "MAYBE_CANCELLED");
@@ -178,6 +219,7 @@ check("gate shown ~40 min before", vDep.gateShownAt === "2026-10-23T20:55:00.000
 check("boarding ~30 min before", vDep.boardingAt === "2026-10-23T21:05:00.000Z");
 check("short-haul", vDep.longHaul === false);
 
+check("departures: no in-air flag", vDep.inAir === null && vDep.overdueMin === null);
 check("check-in open", describe(with_(dep, "CheckIn", {}), NOW, B).state === "CHECK_IN");
 check("boarding", describe(with_(dep, "Boarding", { gate: "52" }), NOW, B).state === "BOARDING");
 check("gate known → no gate estimate", describe(with_(dep, "Boarding", { gate: "52" }), NOW, B).gateShownAt === null);

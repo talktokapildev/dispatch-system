@@ -27,6 +27,9 @@ const LONG_HAUL_MIN = 270; // scheduled flight time ≥ 4h30 → long-haul advic
 // Gatwick usually shows the gate ~40 min and starts boarding ~30 min before departure.
 export const GATE_SHOWN_BEFORE_MIN = 40;
 export const BOARDING_BEFORE_MIN = 30;
+// Arrivals with no take-off reported: how long after the expected departure before we say it
+// should be flying (taxi out + some slack).
+export const TAKE_OFF_GRACE_MIN = 15;
 // "Running late / early" thresholds, same as booking messages.
 export const LATE_MIN = 15;
 export const EARLY_MIN = 10;
@@ -99,6 +102,17 @@ export type FlightState =
   | "MAYBE_CANCELLED"
   | "DIVERTED";
 export type Tone = "info" | "late" | "early" | "good" | "bad";
+/**
+ * Arrivals: how sure we are that the plane is flying (no take-off is ever reported from some
+ * origins — Split, Hurghada, Athens, Gran Canaria…).
+ *  REPORTED     take-off time or an in-flight status from the provider
+ *  TRACKED      no take-off reported, but the provider has live tracking / a predicted landing,
+ *               and the departure time is 15+ min ago → shown as in the air
+ *  UNCONFIRMED  departure time 15+ min ago, no take-off and no tracking: it may be flying or
+ *               stuck on the ground → never shown as in the air ("not confirmed")
+ *  null         not due to have left yet, landed, cancelled, diverted, or a departure
+ */
+export type InAir = "REPORTED" | "TRACKED" | "UNCONFIRMED" | null;
 
 export type FlightView = {
   state: FlightState;
@@ -116,6 +130,8 @@ export type FlightView = {
   outBagsAt: string | null; // out of arrivals, with checked bags
   progress: number | null; // 0–1 while in the air
   minutesToGo: number | null; // until landing
+  inAir: InAir;
+  overdueMin: number | null; // minutes past the expected touchdown while not yet landed
   // Departures
   departedAt: string | null;
   beThereBy: string | null;
@@ -481,6 +497,8 @@ const EMPTY = {
   outBagsAt: null,
   progress: null,
   minutesToGo: null,
+  inAir: null as InAir,
+  overdueMin: null,
   departedAt: null,
   beThereBy: null,
   gateShownAt: null,
@@ -506,19 +524,35 @@ function describeArrival(
   if (status === "canceleduncertain")
     return { ...EMPTY, state: "MAYBE_CANCELLED", tone: "bad", scheduledAt: f.lgw.scheduledUtc, expectedAt: null, delayMin: null };
 
-  const it = interpretFlight(
-    {
-      status: f.status,
-      scheduledArrivalUtc: f.lgw.scheduledUtc,
-      revisedArrivalUtc: f.lgw.revisedUtc,
-      predictedArrivalUtc: f.lgw.predictedUtc,
-      runwayArrivalUtc: f.lgw.runwayUtc,
-      departureScheduledUtc: f.other.scheduledUtc,
-      departureRevisedUtc: f.other.revisedUtc,
-      departureRunwayUtc: f.other.runwayUtc,
-    },
-    now
-  );
+  const facts = (status: string | null) => ({
+    status,
+    scheduledArrivalUtc: f.lgw.scheduledUtc,
+    revisedArrivalUtc: f.lgw.revisedUtc,
+    predictedArrivalUtc: f.lgw.predictedUtc,
+    runwayArrivalUtc: f.lgw.runwayUtc,
+    departureScheduledUtc: f.other.scheduledUtc,
+    departureRevisedUtc: f.other.revisedUtc,
+    departureRunwayUtc: f.other.runwayUtc,
+  });
+  let it = interpretFlight(facts(f.status), now);
+
+  // No take-off reported. Past the expected departure (+ grace) it's either flying unseen or
+  // stuck on the ground. Only call it "in the air" with evidence the provider is tracking it
+  // (live quality or a predicted landing); then use the shared rule's "in flight, no take-off
+  // time" estimate (latest of revised / predicted / scheduled) instead of the on-the-ground
+  // time floor, which would push the landing later every minute. interpretFlight itself is
+  // unchanged (booking tracking uses it), we only ask it with an in-flight status.
+  const depExpected = at(f.other.revisedUtc) ?? at(f.other.scheduledUtc);
+  const dueToHaveLeft = !!depExpected && now >= addMin(depExpected, TAKE_OFF_GRACE_MIN);
+  const tracked = f.lgw.live || !!f.lgw.predictedUtc;
+  let inAir: InAir = null;
+  if (it.phase === "SCHEDULED") {
+    if (it.departed) inAir = "REPORTED";
+    else if (dueToHaveLeft && tracked) {
+      it = interpretFlight(facts("EnRoute"), now);
+      inAir = "TRACKED";
+    } else if (dueToHaveLeft) inAir = "UNCONFIRMED";
+  }
 
   if (it.phase === "CANCELLED" || it.phase === "DIVERTED")
     return {
@@ -536,11 +570,14 @@ function describeArrival(
   const landed = it.phase === "ARRIVED";
   const arrivedTimeIsGate = landed && !f.lgw.runwayUtc;
   const lands = landed ? it.landedAt ?? gate : addMin(gate, -TAXI_MIN);
-  const takeOff = at(f.other.runwayUtc) ?? (it.departed ? at(f.other.revisedUtc) : null);
+  // Shown as "Took off": a reported take-off only. TRACKED flights use the expected departure
+  // just for the progress bar.
+  const takeOff = at(f.other.runwayUtc) ?? (inAir === "REPORTED" ? at(f.other.revisedUtc) : null);
+  const barFrom = takeOff ?? (inAir === "TRACKED" ? depExpected : null);
 
   let state: FlightState;
   if (landed) state = "LANDED";
-  else if (it.departed) state = "EN_ROUTE";
+  else if (inAir === "REPORTED" || inAir === "TRACKED") state = "EN_ROUTE";
   else if (delay >= LATE_MIN || status === "delayed") state = "DELAYED";
   else state = "SCHEDULED";
 
@@ -548,9 +585,10 @@ function describeArrival(
   let minutesToGo: number | null = null;
   if (state === "EN_ROUTE") {
     minutesToGo = Math.max(0, minutesBetween(now, lands));
-    if (takeOff && lands > takeOff)
-      progress = Math.min(0.97, Math.max(0.03, (now.getTime() - takeOff.getTime()) / (lands.getTime() - takeOff.getTime())));
+    if (barFrom && lands > barFrom)
+      progress = Math.min(0.97, Math.max(0.03, (now.getTime() - barFrom.getTime()) / (lands.getTime() - barFrom.getTime())));
   }
+  const overdueMin = !landed && inAir && now > lands ? minutesBetween(lands, now) : null;
 
   return {
     ...EMPTY,
@@ -568,6 +606,8 @@ function describeArrival(
     outBagsAt: iso(addMin(gate, buffers.checked)),
     progress,
     minutesToGo,
+    inAir,
+    overdueMin,
   };
 }
 

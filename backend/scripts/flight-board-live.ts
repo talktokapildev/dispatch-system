@@ -6,6 +6,7 @@
 //   node --env-file=.env -r ts-node/register scripts/flight-board-live.ts board            # refresh now (2 units) + summary
 //   node --env-file=.env -r ts-node/register scripts/flight-board-live.ts show EZY8687     # one flight, from the stored board (free)
 //   node --env-file=.env -r ts-node/register scripts/flight-board-live.ts lookup BA2541 2026-10-24   # outside the board (2 units, cached 30 min)
+//   node --env-file=.env -r ts-node/register scripts/flight-board-live.ts evidence         # "in the air" evidence check on the stored board (free)
 import Redis from "ioredis";
 import { getBoard, lookupFlight, refreshBoardIfDue } from "../src/services/flightBoard.service";
 import { boardList, describe, findInBoard, BoardFlight } from "../src/services/flightBoardRules";
@@ -22,7 +23,7 @@ function line(f: BoardFlight) {
     f.direction === "ARRIVAL"
       ? `lands ${uk(v.landsAt)} gate ${uk(v.gateAt)} out ${uk(v.outHandAt)}/${uk(v.outBagsAt)}${f.lgw.baggageBelt ? ` belt ${f.lgw.baggageBelt}` : ""}`
       : `departs ${uk(v.expectedAt)}${f.lgw.gate ? ` gate ${f.lgw.gate}` : ""}${f.lgw.checkInDesk ? ` desks ${f.lgw.checkInDesk}` : ""}`;
-  return `${uk(f.lgw.scheduledUtc)}  ${f.number.padEnd(8)} ${where.padEnd(22)} ${(f.lgw.terminal ?? "?").padEnd(5)} ${v.state.padEnd(15)} ${String(v.delayMin ?? "").padStart(4)}m  ${extra}  [${f.status}]`;
+  return `${uk(f.lgw.scheduledUtc)}  ${f.number.padEnd(8)} ${where.padEnd(22)} ${(f.lgw.terminal ?? "?").padEnd(5)} ${(v.state + (v.inAir ? `/${v.inAir}` : "")).padEnd(27)} ${String(v.delayMin ?? "").padStart(4)}m  ${extra}  [${f.status}]`;
 }
 
 function detail(f: BoardFlight) {
@@ -64,8 +65,28 @@ async function main() {
       if (r.status !== "FOUND") return console.log(r.status);
       r.flights.forEach(detail);
       console.log(`units left: ${await redis.get("adb:units:remaining")}`);
+    } else if (cmd === "evidence") {
+      // Is "live tracking / predicted landing" a safe sign that a plane is flying? Count it on
+      // arrivals that have NOT taken off yet (departure time still ahead): if many of those
+      // already carry it, it isn't, and TRACKED would claim "in the air" too easily.
+      const board = await getBoard(redis);
+      if (!board) return console.log("No board stored - run 'board' first.");
+      const now = Date.now();
+      const rows = boardList(board.flights, "ARRIVAL").filter((f) => !f.other.runwayUtc && !f.lgw.runwayUtc);
+      const tally = (fs: BoardFlight[]) => ({
+        flights: fs.length,
+        live: fs.filter((f) => f.lgw.live).length,
+        predicted: fs.filter((f) => !!f.lgw.predictedUtc).length,
+        status: fs.reduce<Record<string, number>>((m, f) => ((m[f.status ?? "-"] = (m[f.status ?? "-"] ?? 0) + 1), m), {}),
+      });
+      const depAt = (f: BoardFlight) => Date.parse(f.other.revisedUtc ?? f.other.scheduledUtc ?? "");
+      const notYet = rows.filter((f) => depAt(f) > now + 30 * 60_000);
+      const shouldHaveLeft = rows.filter((f) => depAt(f) <= now - 15 * 60_000);
+      console.log("No take-off reported, departure 30+ min AHEAD (must NOT look tracked):", tally(notYet));
+      console.log("No take-off reported, departure 15+ min AGO:", tally(shouldHaveLeft));
+      shouldHaveLeft.forEach((f) => console.log(line(f)));
     } else {
-      console.log("Usage: board | show <number> [YYYY-MM-DD] | lookup <number> <YYYY-MM-DD>");
+      console.log("Usage: board | show <number> [YYYY-MM-DD] | lookup <number> <YYYY-MM-DD> | evidence");
     }
   } finally {
     redis.disconnect();
