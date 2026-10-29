@@ -77,6 +77,9 @@ const mins = (a: string | null | undefined, b: string | null | undefined): numbe
  */
 export function passengerRights(f: BoardFlight, v: FlightView): PassengerRights | null {
   if (f.codeshare === "CODESHARE") return null; // the operating flight's page has it
+  // Arrival not seen leaving (no take-off, no tracking) or no departure details: any delay is a
+  // guess, so no rights box (it would promise compensation on an unconfirmed delay).
+  if (f.direction === "ARRIVAL" && !v.landed && (v.inAir === "UNCONFIRMED" || v.departureUnknown)) return null;
   const departure = f.direction === "DEPARTURE";
   const cancelled = v.state === "CANCELLED";
   const km =

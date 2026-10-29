@@ -190,7 +190,19 @@ check("tracked: latest of revised / predicted", predictedOnly.gateAt === "2026-1
 // Stuck on the ground with a stale schedule: no take-off, no tracking → never "in the air".
 const stuck = describe(noTakeOff("Expected", { live: false, predictedUtc: null, revisedUtc: null }), NOW, B);
 check("stuck, no tracking → not in the air", stuck.state !== "EN_ROUTE" && stuck.inAir === "UNCONFIRMED", `${stuck.state} ${stuck.inAir}`);
-check("stuck: landing can't be before now + flight time", Date.parse(stuck.gateAt!) >= Date.parse("2026-10-23T21:26:00.000Z"), stuck.gateAt ?? "");
+check("stuck: airline time kept, no invented delay", stuck.gateAt === "2026-10-23T20:10:00.000Z" && stuck.delayMin === 0, `${stuck.gateAt} ${stuck.delayMin}`);
+check("stuck: not shown as in the air", stuck.state === "SCHEDULED", stuck.state);
+const stuckLate = describe(noTakeOff("Expected", { live: false, revisedUtc: "2026-10-23T21:10:00.000Z" }), NOW, B);
+check("stuck: airline's own delay still shown", stuckLate.state === "DELAYED" && stuckLate.delayMin === 60, `${stuckLate.state} ${stuckLate.delayMin}`);
+const stuckOver = describe(noTakeOff("Expected", { live: false, revisedUtc: null }), new Date("2026-10-23T20:30:00Z"), B);
+check("stuck past landing time: overdue, still not in the air", stuckOver.state === "SCHEDULED" && stuckOver.overdueMin === 27, `${stuckOver.state} ${stuckOver.overdueMin}`);
+
+// No origin details at all (XQ3690 "Mugla": no airport code, no times).
+const noOrigin = with_(arr, "Expected", { runwayUtc: null, live: true, revisedUtc: "2026-10-23T19:54:00.000Z" }, { iata: null, scheduledUtc: null, revisedUtc: null, runwayUtc: null });
+const vNoOrigin = describe(noOrigin, NOW, B);
+check("no departure details → departureUnknown, not in the air", vNoOrigin.departureUnknown && vNoOrigin.inAir === null && vNoOrigin.state === "SCHEDULED", `${vNoOrigin.departureUnknown} ${vNoOrigin.inAir} ${vNoOrigin.state}`);
+check("no departure details: overdue after landing time", describe(noOrigin, new Date("2026-10-23T20:20:00Z"), B).overdueMin === 17);
+check("with departure details: departureUnknown false", !vAir.departureUnknown && !stuck.departureUnknown);
 check("stuck: no progress bar", stuck.progress === null);
 
 // Not due to have left yet (departure 18:25Z + 15 min grace): no guessing either way.

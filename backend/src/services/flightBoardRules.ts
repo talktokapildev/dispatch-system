@@ -109,7 +109,11 @@ export type Tone = "info" | "late" | "early" | "good" | "bad";
  *  TRACKED      no take-off reported, but the provider has live tracking / a predicted landing,
  *               and the departure time is 15+ min ago → shown as in the air
  *  UNCONFIRMED  departure time 15+ min ago, no take-off and no tracking: it may be flying or
- *               stuck on the ground → never shown as in the air ("not confirmed")
+ *               stuck on the ground → never shown as in the air ("not confirmed"). Its time is
+ *               the airline's latest, not the booking rule's "can't leave before now" floor (that
+ *               invented hours of delay on long flights, e.g. Sharm +115 min).
+ *  The provider sometimes sends no origin details at all (seen: XQ3690 "Mugla", no airport code,
+ *  no times) → `departureUnknown`; then we can't tell either way.
  *  null         not due to have left yet, landed, cancelled, diverted, or a departure
  */
 export type InAir = "REPORTED" | "TRACKED" | "UNCONFIRMED" | null;
@@ -131,6 +135,7 @@ export type FlightView = {
   progress: number | null; // 0–1 while in the air
   minutesToGo: number | null; // until landing
   inAir: InAir;
+  departureUnknown: boolean; // arrivals: no departure time from the origin at all
   overdueMin: number | null; // minutes past the expected touchdown while not yet landed
   // Departures
   departedAt: string | null;
@@ -498,6 +503,7 @@ const EMPTY = {
   progress: null,
   minutesToGo: null,
   inAir: null as InAir,
+  departureUnknown: false,
   overdueMin: null,
   departedAt: null,
   beThereBy: null,
@@ -551,8 +557,15 @@ function describeArrival(
     else if (dueToHaveLeft && tracked) {
       it = interpretFlight(facts("EnRoute"), now);
       inAir = "TRACKED";
-    } else if (dueToHaveLeft) inAir = "UNCONFIRMED";
+    } else if (dueToHaveLeft) {
+      // Airline's latest time; never the on-the-ground floor (no fake delays on the public page).
+      it = interpretFlight(facts("EnRoute"), now);
+      inAir = "UNCONFIRMED";
+    }
   }
+  // Only near the time (as the page's "Scheduled" label): days ahead, a missing departure means nothing yet.
+  const departureUnknown =
+    !depExpected && !f.other.runwayUtc && inAir === null && scheduled.getTime() - now.getTime() <= 6 * 60 * MIN;
 
   if (it.phase === "CANCELLED" || it.phase === "DIVERTED")
     return {
@@ -588,7 +601,8 @@ function describeArrival(
     if (barFrom && lands > barFrom)
       progress = Math.min(0.97, Math.max(0.03, (now.getTime() - barFrom.getTime()) / (lands.getTime() - barFrom.getTime())));
   }
-  const overdueMin = !landed && inAir && now > lands ? minutesBetween(lands, now) : null;
+  const overdueMin =
+    !landed && (inAir || departureUnknown) && now > lands ? minutesBetween(lands, now) : null;
 
   return {
     ...EMPTY,
@@ -607,6 +621,7 @@ function describeArrival(
     progress,
     minutesToGo,
     inAir,
+    departureUnknown,
     overdueMin,
   };
 }

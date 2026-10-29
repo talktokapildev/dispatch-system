@@ -77,6 +77,7 @@ export type FlightView = {
   progress: number | null;
   minutesToGo: number | null;
   inAir?: InAir; // older backends: absent
+  departureUnknown?: boolean; // arrivals: the provider sent no departure details at all
   overdueMin?: number | null; // minutes past the expected touchdown, not yet landed
   departedAt: string | null;
   beThereBy: string | null;
@@ -220,7 +221,7 @@ export type BoardRow = {
   baggageBelt: string | null;
   view: Pick<
     FlightView,
-    "state" | "tone" | "scheduledAt" | "expectedAt" | "delayMin" | "landsAt" | "landed" | "departedAt" | "inAir"
+    "state" | "tone" | "scheduledAt" | "expectedAt" | "delayMin" | "landsAt" | "landed" | "departedAt" | "inAir" | "departureUnknown"
   >;
 };
 
@@ -504,6 +505,16 @@ export function statusLabel(dir: Direction, v: FlightView | BoardRow["view"], sh
   // Days ahead there's only a timetable: "On time" would claim more than we know.
   if (v.state === "SCHEDULED" && now && Date.parse(v.scheduledAt) - now.getTime() > 6 * 3_600_000) return "Scheduled";
   const le = lateEarly(v.delayMin);
+  // Not seen leaving (no take-off, no tracking): we can't say "on time". The airline's own delay still shows.
+  if (dir === "ARRIVAL" && v.inAir === "UNCONFIRMED" && (v.state === "SCHEDULED" || v.state === "DELAYED")) {
+    if (short) return v.tone === "late" ? "Delayed" : "Not confirmed";
+    return `Take-off not confirmed${le ? ` · ${le}` : ""}`;
+  }
+  // No departure details from the provider at all: neutral, until it lands.
+  if (dir === "ARRIVAL" && v.departureUnknown && (v.state === "SCHEDULED" || v.state === "DELAYED")) {
+    if (short) return v.tone === "late" ? "Delayed" : "Expected";
+    return `Expected${le && le !== "on time" ? ` · ${le}` : ""}`;
+  }
   switch (v.state) {
     case "CANCELLED":
       return "Cancelled";
@@ -578,9 +589,11 @@ export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date
       }
       case "DELAYED":
         if (v.inAir === "UNCONFIRMED") return unconfirmed(num, place, f, v);
+        if (v.departureUnknown) return noDeparture(num, place, at, v);
         return `${num} hasn't left ${place} yet and is running about ${duration(v.delayMin ?? 0)} late. It's now expected to land at about ${ukTime(v.landsAt)}. This can still change until it takes off.`;
       default:
         if (v.inAir === "UNCONFIRMED") return unconfirmed(num, place, f, v);
+        if (v.departureUnknown) return noDeparture(num, place, at, v);
         return `${num} from ${place} is due to land at Gatwick${at} ${when} at ${ukTime(v.landsAt)}. It hasn't taken off yet, so check again nearer the time: delays often show up only around take-off.`;
     }
   }
@@ -607,5 +620,16 @@ export function plainEnglish(f: BoardFlight, v: FlightView, now: Date = new Date
 /** Due to have left, but no take-off reported and no tracking: flying, or still on the ground. */
 function unconfirmed(num: string, place: string, f: BoardFlight, v: FlightView): string {
   const dep = f.other.revisedUtc ?? f.other.scheduledUtc;
-  return `${num} was due to leave ${place}${dep ? ` at ${ukTime(dep)}` : ""}, but its take-off hasn't been reported and we can't see it being tracked. It may be in the air or still on the ground, so the landing time (about ${ukTime(v.landsAt)} for now) could change. Check again shortly, or ask the traveller.`;
+  const start = `${num} was due to leave ${place}${dep ? ` at ${ukTime(dep)}` : ""}, but its take-off hasn't been reported and we can't see it being tracked.`;
+  if (v.overdueMin != null)
+    return `${start} It was due to land at about ${ukTime(v.landsAt)}, and its landing hasn't been reported either. Check with the traveller or the airline.`;
+  return `${start} It may be in the air or still on the ground, so the landing time (about ${ukTime(v.landsAt)} for now) could change. Check again shortly, or ask the traveller.`;
+}
+
+/** The provider sent no departure details (seen: XQ3690 "Mugla"), so we can't tell if it has left. */
+function noDeparture(num: string, place: string, at: string, v: FlightView): string {
+  const start = `We don't have ${num}'s departure details from ${place}, so we can't tell whether it has taken off.`;
+  if (v.overdueMin != null)
+    return `${start} It was due to land at Gatwick${at} at about ${ukTime(v.landsAt)}; its landing hasn't been reported yet. Check with the traveller or the airline.`;
+  return `${start} It's due to land at Gatwick${at} at about ${ukTime(v.landsAt)}, at the gate about ${ukTime(v.gateAt)}. Check again shortly, or ask the traveller.`;
 }
