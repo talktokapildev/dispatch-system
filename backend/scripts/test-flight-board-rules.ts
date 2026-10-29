@@ -217,6 +217,16 @@ check("airline departure time: not estimated", stuck.departureExpectedAt === "20
 check("take-off reported: no expected departure", vAir.departureExpectedAt === null && !vAir.departureEstimated);
 check("late arrival: airline time kept", lateArrivalOnly.gateAt === "2026-10-23T22:58:00.000Z" && lateArrivalOnly.delayMin === 168, `${lateArrivalOnly.gateAt} ${lateArrivalOnly.delayMin}`);
 const lateButFlying = describe(noTakeOff("Expected", { live: true, revisedUtc: "2026-10-23T22:58:00.000Z" }), new Date("2026-10-23T21:40:00Z"), B);
+// FR142 (Dublin, 29 Oct): left 21:45 on a 1h25 flight but the arrival still said gate 22:40.
+// Here: departure moved 18:25 → 19:30, arrival estimate stale at 20:15 (1h45 flight).
+const fr142 = describe(
+  with_(arr, "Expected", { runwayUtc: null, live: true, revisedUtc: "2026-10-23T20:15:00.000Z" }, { runwayUtc: null, revisedUtc: "2026-10-23T19:30:00.000Z" }),
+  new Date("2026-10-23T20:00:00Z"),
+  B
+);
+check("stale arrival estimate: gate no earlier than departure + flight time - 15", fr142.gateAt === "2026-10-23T21:00:00.000Z" && fr142.inAir === "TRACKED", `${fr142.gateAt} ${fr142.inAir}`);
+check("…delay follows", fr142.delayMin === 50, String(fr142.delayMin));
+check("reported take-off: floor not applied (booking rule decides)", vAir.gateAt === "2026-10-23T20:19:00.000Z");
 check("…and once that implied departure has passed: probably in the air", lateButFlying.state === "EN_ROUTE" && lateButFlying.inAir === "TRACKED", `${lateButFlying.state} ${lateButFlying.inAir}`);
 check("…progress starts from the implied departure", lateButFlying.progress != null && lateButFlying.progress < 0.3, String(lateButFlying.progress));
 

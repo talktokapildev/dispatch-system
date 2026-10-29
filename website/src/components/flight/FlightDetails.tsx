@@ -37,7 +37,8 @@ export function GatwickFacts({ f }: { f: BoardFlight }) {
     arrival && f.lgw.baggageBelt ? { label: "Baggage belt", value: f.lgw.baggageBelt } : null,
     !arrival && f.lgw.checkInDesk ? { label: "Check-in desks", value: f.lgw.checkInDesk } : null,
     f.lgw.gate ? { label: arrival ? "Arrival gate" : "Gate", value: f.lgw.gate } : null,
-    flightMin && flightMin > 0 && flightMin < 24 * 60 ? { label: "Flight time", value: duration(flightMin).replace(" min", "m").replace(" h ", "h ") } : null,
+    // Arrivals show the flight time in the main card (before landing), so only departures here.
+    !arrival && flightMin && flightMin > 0 && flightMin < 24 * 60 ? { label: "Flight time", value: duration(flightMin).replace(" min", "m").replace(" h ", "h ") } : null,
     f.aircraft ? { label: "Aircraft", value: f.aircraft.replace(/^(Airbus|Boeing|Embraer|ATR|De Havilland Canada)\s+/i, ""), note: f.aircraft.split(" ")[0] } : null,
   ].filter((x): x is { label: string; value: string; note?: string } => !!x);
 
