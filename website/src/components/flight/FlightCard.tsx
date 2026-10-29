@@ -269,7 +269,16 @@ export function End({
 }
 
 // ── The three answers ───────────────────────────────────────────────────────
-type Tile = { label: string; value: string; day?: string; note: string; style: string; valueClass?: string; labelClass?: string };
+type Tile = {
+  label: string;
+  value: string;
+  day?: string;
+  note: string;
+  style: string;
+  valueClass?: string;
+  labelClass?: string;
+  wide?: boolean; // full width on phones (the box that matters most right now)
+};
 
 function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolean }) {
   const arrival = f.direction === "ARRIVAL";
@@ -306,32 +315,91 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
 
   const tiles: Tile[] = [];
   const main = TONE[v.tone === "good" ? "early" : v.tone];
+  // Arrivals: what matters changes with the stage. Before landing: when it leaves, how long the
+  // flight is / how long is left, and when it lands. Once landed: gate and arrivals hall.
+  let after: string | null = null; // gate + arrivals hall, in one line, before landing
   if (arrival) {
-    tiles.push({
+    const landsTile: Tile = {
       label: v.landed ? (v.arrivedTimeIsGate ? "Arrived" : "Landed") : "Lands",
       value: ukTime(v.landsAt),
       day: dayTag(v.landsAt, v.scheduledAt),
       note: v.landed ? (v.arrivedTimeIsGate ? "Time at the gate" : vsSchedule(ukTime(v.scheduledAt))) : vsSchedule(ukTime(v.scheduledAt)),
       style: main.soft,
       labelClass: main.text,
-    });
-    tiles.push({
-      label: "At the gate",
-      value: `${v.landed && !v.arrivedTimeIsGate ? "" : "~"}${ukTime(v.gateAt)}`,
-      day: dayTag(v.gateAt, v.scheduledAt),
-      note: v.arrivedTimeIsGate ? "Doors open soon after" : "About 7 min after landing",
-      style: "bg-[#f8fafc] border-line",
-      labelClass: "text-soft",
-    });
-    tiles.push({
-      label: "Out of arrivals",
-      value: `~${ukTime(v.outBagsAt)}`,
-      day: dayTag(v.outBagsAt, v.scheduledAt),
-      note: `With a suitcase · ~${ukTime(v.outHandAt)} hand luggage only`,
-      style: TONE.early.soft,
-      labelClass: TONE.early.text,
-      valueClass: "text-[#2f7d32]",
-    });
+    };
+    const flightMin = minutesBetween(f.other.scheduledUtc, f.lgw.scheduledUtc);
+    const flightKnown = flightMin != null && flightMin > 0 && flightMin < 24 * 60;
+    const neutral = { style: "bg-[#f8fafc] border-line", labelClass: "text-soft" };
+
+    if (v.landed) {
+      tiles.push({ ...landsTile, wide: true });
+      tiles.push({
+        label: "At the gate",
+        value: `${!v.arrivedTimeIsGate ? "" : "~"}${ukTime(v.gateAt)}`,
+        day: dayTag(v.gateAt, v.scheduledAt),
+        note: v.arrivedTimeIsGate ? "Doors open soon after" : "About 7 min after landing",
+        ...neutral,
+      });
+      tiles.push({
+        label: "Out of arrivals",
+        value: `~${ukTime(v.outBagsAt)}`,
+        day: dayTag(v.outBagsAt, v.scheduledAt),
+        note: `With a suitcase · ~${ukTime(v.outHandAt)} hand luggage only`,
+        style: TONE.early.soft,
+        labelClass: TONE.early.text,
+        valueClass: "text-[#2f7d32]",
+      });
+    } else {
+      // When it leaves (or left) the origin.
+      const sched = f.other.scheduledUtc;
+      const reported = f.other.runwayUtc ?? v.takeOffAt;
+      const dep = reported ?? v.departureExpectedAt ?? f.other.revisedUtc ?? sched;
+      const guess = !reported && !!v.departureEstimated;
+      const inAir = v.state === "EN_ROUTE";
+      const depMoved = !reported && dep && sched && Math.abs(Date.parse(dep) - Date.parse(sched)) >= 5 * 60_000;
+      const local = !reported && !guess ? f.other.revisedLocal ?? f.other.scheduledLocal : f.other.runwayLocal;
+      const localNote = local && dep && local !== ukTime(dep) ? `${local} local` : null;
+      if (v.departureUnknown || !dep) {
+        tiles.push({ label: "Leaves", value: "Not available", note: "No departure details from the airline yet", ...neutral, valueClass: "text-muted" });
+      } else {
+        tiles.push({
+          label: reported ? "Took off" : inAir ? "Left" : "Leaves",
+          value: `${guess ? "~" : ""}${ukTime(dep)}`,
+          day: dayTag(dep, sched),
+          note: [
+            depMoved && sched ? `Was ${ukTime(sched)}` : null,
+            guess ? "From the airline's new arrival time" : null,
+            !reported && inAir ? "Take-off not reported" : null,
+            v.inAir === "UNCONFIRMED" ? "Take-off not confirmed" : null,
+            localNote,
+          ]
+            .filter(Boolean)
+            .join(" · ") || (reported ? "Wheels up" : "On schedule"),
+          ...neutral,
+        });
+      }
+      // How long the flight is, or how long is left.
+      if (inAir && v.overdueMin != null) {
+        tiles.push({
+          label: "Time left",
+          value: v.overdueMin >= LANDING_NOW_MIN ? "Not confirmed" : "Landing now",
+          note: `Expected to land ${ukTime(v.landsAt)}`,
+          ...neutral,
+          valueClass: v.overdueMin >= LANDING_NOW_MIN ? "text-muted" : undefined,
+        });
+      } else if (inAir && v.minutesToGo != null) {
+        tiles.push({
+          label: "Time left",
+          value: duration(v.minutesToGo),
+          note: flightKnown ? `Of a ${duration(flightMin!)} flight` : "Until landing",
+          ...neutral,
+        });
+      } else if (flightKnown) {
+        tiles.push({ label: "Flight time", value: duration(flightMin!), note: "Scheduled, gate to gate", ...neutral });
+      }
+      tiles.push({ ...landsTile, wide: true });
+      after = `At the gate ~${ukTimeDay(v.gateAt, v.scheduledAt)} · Out of arrivals ~${ukTime(v.outHandAt)}–${ukTimeDay(v.outBagsAt, v.scheduledAt)} (hand luggage – suitcase)`;
+    }
   } else {
     tiles.push({
       label: v.state === "DEPARTED" ? "Took off" : "Departs",
@@ -374,18 +442,21 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
     }
   }
 
+  // Departures (and older data): the first box is the main one.
+  if (!tiles.some((t) => t.wide) && tiles[0]) tiles[0] = { ...tiles[0], wide: true };
   return (
-    <div className="grid grid-cols-2 gap-2 px-3 pb-6 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-[14px] sm:px-8 sm:pb-8">
-      {tiles.map((t, i) => (
+    <div className="px-3 pb-6 sm:px-8 sm:pb-8">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-[14px]">
+      {tiles.map((t) => (
         <div
           key={t.label}
           className={`flex flex-col gap-1 rounded-[18px] border-[1.5px] px-4 py-[14px] sm:rounded-[20px] sm:px-[22px] sm:py-5 ${t.style} ${
-            i === 0 ? "col-span-2 sm:col-span-1" : ""
+            t.wide ? "col-span-2 sm:col-span-1" : ""
           }`}
         >
           <span className={`text-[14px] font-bold ${t.labelClass ?? ""}`}>{t.label}</span>
           <strong
-            className={`font-heading leading-none tracking-[-0.03em] ${i === 0 ? "text-[42px] sm:text-[48px]" : "text-[28px] sm:text-[48px]"} ${
+            className={`font-heading leading-none tracking-[-0.03em] ${t.wide ? "text-[42px] sm:text-[48px]" : "text-[28px] sm:text-[48px]"} ${
               t.valueClass ?? "text-ink"
             }`}
           >
@@ -395,6 +466,8 @@ function Answers({ f, v, ended }: { f: BoardFlight; v: FlightView; ended: boolea
           <span className="text-[13.5px] text-muted sm:text-[14.5px]">{t.note}</span>
         </div>
       ))}
+    </div>
+    {after && <p className="m-0 mt-3 px-1 text-[14px] text-muted sm:text-[15px]">{after}</p>}
     </div>
   );
 }

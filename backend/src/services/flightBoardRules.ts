@@ -664,9 +664,16 @@ function describeArrival(
       takeOffAt: f.other.runwayUtc,
     };
 
-  const gate = it.gateArrival;
-  const delay = minutesBetween(scheduled, gate);
   const landed = it.phase === "ARRIVED";
+  // No take-off time: an airline arrival estimate can be stale and impossible (seen: FR142 left
+  // Dublin 21:45 on a 1h25 flight, arrival still said gate 22:40). It can't reach the gate before
+  // the expected departure + scheduled flight time − 15 min (same slack as booking tracking).
+  let gate = it.gateArrival;
+  if (!landed && !f.other.runwayUtc && depExpected && flightMs && flightMs > 0) {
+    const floor = new Date(depExpected.getTime() + flightMs - 15 * MIN);
+    if (floor > gate) gate = floor;
+  }
+  const delay = minutesBetween(scheduled, gate);
   const arrivedTimeIsGate = landed && !f.lgw.runwayUtc;
   const lands = landed ? it.landedAt ?? gate : addMin(gate, -TAXI_MIN);
   // Shown as "Took off": a reported take-off only. TRACKED flights use the expected departure
