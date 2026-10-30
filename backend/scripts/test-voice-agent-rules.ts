@@ -78,6 +78,9 @@ check("closed script: no bookings", closed.includes("Don't take bookings") && !c
 const names = (o: boolean) => toolsFor(o).map((t) => t.name).join(",");
 check("open tools", names(true) === "find_place,gatwick_terminal,get_quote,create_booking,take_message,end_call", names(true));
 check("closed tools: message + end only", names(false) === "take_message,end_call");
+const cb: any = toolsFor(true).find((t) => t.name === "create_booking");
+check("create_booking requires cash or card", cb.parameters.required.includes("payment") && cb.parameters.properties.payment.enum.join() === "CASH,CARD");
+check("script: asks cash or card, never card details", /cash or card on the day/.test(script) && /never ask for them/.test(script));
 
 // Speech time
 check("speech time grows with text, capped", speechMs("Bye!") < speechMs("Thank you so much, Kapil. We'll text you shortly to confirm. Have a lovely day, goodbye!") && speechMs("x".repeat(5000)) === 15000);
