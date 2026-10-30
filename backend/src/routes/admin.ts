@@ -675,6 +675,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
             },
           },
           flightEvents: { orderBy: { createdAt: "asc" } },
+          // Booked by phone with Araa (AI receptionist): the call and its transcript
+          voiceCall: {
+            select: { id: true, outcome: true, startedAt: true, durationSeconds: true, fromNumber: true, transcript: true },
+          },
         },
       });
       if (!booking)
