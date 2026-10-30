@@ -60,6 +60,104 @@ function getDispatcherName(booking: any): string {
   return u.phone ?? "—";
 }
 
+// Booked by phone with Araa (AI receptionist): approve / decline, and the call transcript.
+function PhoneRequestPanel({ booking, onDone }: { booking: any; onDone: () => void }) {
+  const [showCall, setShowCall] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState("");
+  const call = booking.voiceCall;
+  const waiting = booking.isOnHold && booking.status === "CONFIRMED";
+  const act = useMutation({
+    mutationFn: (kind: "approve" | "decline") =>
+      api.post(
+        `/admin/bookings/${booking.id}/${kind}-request`,
+        kind === "decline" ? { reason: reason.trim() || undefined } : {}
+      ),
+    onSuccess: (r, kind) => {
+      const texted = r.data?.data?.texted;
+      toast.success(
+        `${kind === "approve" ? "Approved" : "Declined"}${texted ? " - passenger texted" : ""}`
+      );
+      setDeclining(false);
+      onDone();
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error ?? "Failed"),
+  });
+  const lines: any[] = Array.isArray(call.transcript) ? call.transcript : [];
+  return (
+    <div className={`p-3 rounded-lg border ${waiting ? "border-amber-500/40 bg-amber-500/10" : "border-[var(--border)] bg-[var(--card-hover)]"}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className={`text-xs font-semibold ${waiting ? "text-amber-400" : "text-slate-300"}`}>
+            {waiting ? "Booked by phone with Araa - waiting for your approval" : "Booked by phone with Araa"}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
+            Call {format(new Date(call.startedAt), "dd MMM HH:mm")}
+            {call.durationSeconds ? ` · ${Math.max(1, Math.round(call.durationSeconds / 60))} min` : ""}
+            {call.fromNumber ? ` · ${call.fromNumber}` : ""}
+          </p>
+        </div>
+        {waiting && !declining && (
+          <div className="flex gap-2">
+            <button
+              disabled={act.isPending}
+              onClick={() => act.mutate("approve")}
+              className="btn-primary text-xs px-3 py-1.5"
+            >
+              Approve
+            </button>
+            <button
+              disabled={act.isPending}
+              onClick={() => setDeclining(true)}
+              className="btn-ghost text-xs px-3 py-1.5"
+            >
+              Decline
+            </button>
+          </div>
+        )}
+      </div>
+      {declining && (
+        <div className="mt-3 flex gap-2 flex-wrap">
+          <input
+            className="input text-xs flex-1 min-w-[200px]"
+            placeholder="Reason for the passenger (optional), e.g. we're fully booked then"
+            value={reason}
+            maxLength={300}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <button disabled={act.isPending} onClick={() => act.mutate("decline")} className="btn-primary text-xs px-3 py-1.5">
+            Decline and text
+          </button>
+          <button onClick={() => setDeclining(false)} className="btn-ghost text-xs px-3 py-1.5">
+            Back
+          </button>
+        </div>
+      )}
+      {waiting && (
+        <p className="text-[10px] text-slate-500 mt-2">
+          Approve puts it on the job board (or keeps it to dispatch if under 2 hours away) and texts the passenger. Check the payment method first.
+        </p>
+      )}
+      {lines.length > 0 && (
+        <button onClick={() => setShowCall((v) => !v)} className="mt-2 text-[11px] text-brand-400 hover:underline">
+          {showCall ? "Hide call" : "Show call transcript"}
+        </button>
+      )}
+      {showCall && (
+        <div className="mt-2 max-h-64 overflow-y-auto space-y-1.5 text-[11px]">
+          {lines
+            .filter((l) => l.who !== "tool")
+            .map((l, i) => (
+              <p key={i} className={l.who === "araa" ? "text-slate-400" : "text-[var(--text)]"}>
+                <span className="font-semibold">{l.who === "araa" ? "Araa" : "Caller"}:</span> {l.text}
+              </p>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Grey tag on bookings made by a test passenger account
 function TestTag() {
   return (
@@ -378,6 +476,14 @@ export default function BookingsPage() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <Badge status={b.status} />
+                    {b.isOnHold && b.voiceCall && (
+                      <span
+                        className="ml-1.5 inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-wide align-middle bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                        title="Booked by phone with Araa - waiting for your approval"
+                      >
+                        NEEDS APPROVAL
+                      </span>
+                    )}
                     {b.flightWatch?.unverified &&
                       !["COMPLETED", "CANCELLED", "NO_SHOW"].includes(
                         b.status
@@ -456,6 +562,9 @@ export default function BookingsPage() {
       >
         {selected && !editing && (
           <div className="space-y-4">
+            {selected.voiceCall && (
+              <PhoneRequestPanel booking={selected} onDone={refreshSelected} />
+            )}
             <div className="grid grid-cols-2 gap-3">
               {[
                 { label: "Status", value: <Badge status={selected.status} /> },

@@ -41,6 +41,8 @@ import { adminVehicleRoutes } from "./routes/admin/vehicles";
 import { adminDocumentRoutes } from "./routes/admin/documents";
 import { runDocumentCycle } from "./services/documentWatch.service";
 import { twilioWebhookRoutes } from "./routes/twilioWebhooks";
+import { openaiWebhookRoutes } from "./routes/openaiWebhooks";
+import { adminVoiceBookingRoutes } from "./routes/admin/voiceBookings";
 import { driverFlightRoutes } from "./routes/driverFlight";
 import { enableSmsTracking } from "./services/sms.service";
 import { fileRoutes } from "./routes/files";
@@ -165,6 +167,7 @@ async function buildServer() {
   fastify.register(adminVehicleRecordRoutes, { prefix });
   fastify.register(adminLostPropertyRoutes, { prefix });
   fastify.register(adminComplaintRoutes, { prefix });
+  fastify.register(adminVoiceBookingRoutes, { prefix });
   // Website quote calculator (public; only orangeride.co.uk may call it in production)
   fastify.register(publicQuoteRoutes, { prefix });
   // Website flight status page (website server only: x-site-key header)
@@ -175,6 +178,8 @@ async function buildServer() {
   fastify.register(flightWebhookRoutes);
   // Provider callback — no /api/v1 prefix (Twilio-signed)
   fastify.register(twilioWebhookRoutes);
+  // Provider callback — no /api/v1 prefix (OpenAI-signed): calls for Araa, the AI receptionist
+  fastify.register(openaiWebhookRoutes);
 
   // ─── Health check ───
   fastify.get("/health", async () => ({
@@ -251,6 +256,14 @@ async function startStaleBiookingCleanup(
       });
     } catch (err) {
       fastify.log.error({ err }, "[Cleanup] SMS log retention error");
+    }
+    // ── Araa call records retention (12 months, like booking records) ──
+    try {
+      await fastify.prisma.voiceCall.deleteMany({
+        where: { startedAt: { lt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } },
+      });
+    } catch (err) {
+      fastify.log.error({ err }, "[Cleanup] Voice call retention error");
     }
     // ── Website quotes retention (30 days; Google allows caching coordinates up to 30 days) ──
     try {

@@ -269,6 +269,7 @@ model Passenger {
 
   lostProperties LostProperty[]
   complaints     Complaint[]
+  voiceCalls     VoiceCall[]
 
   user             User                 @relation(fields: [userId], references: [id])
   corporateAccount CorporateAccount?    @relation(fields: [corporateAccountId], references: [id])
@@ -643,6 +644,7 @@ model Booking {
   // Airport pickups (flight capture)
   meetingPointId          String?
   meetingPoint            AirportMeetingPoint? @relation(fields: [meetingPointId], references: [id])
+  voiceCall               VoiceCall?
   luggageType             String? // "HAND" | "CHECKED"
   flightSnapshot          Json? // AeroDataBox data: refreshed/cleared by daily job (6-day max age)
   flightSnapshotFetchedAt DateTime?
@@ -1428,4 +1430,32 @@ model CaaAirportMonth {
 
   @@unique([period, airport, direction])
   @@index([period])
+}
+
+// Phone calls answered by Araa, the AI receptionist (OpenAI Realtime over SIP).
+// One row per call: who rang, what happened, the quote and the transcript.
+// Kept 12 months (cleanup in server.ts), like other booking records.
+model VoiceCall {
+  id              String     @id @default(uuid())
+  callId          String     @unique // OpenAI rtc_… id
+  fromNumber      String? // E.164 when the network passes it
+  passengerId     String?
+  passenger       Passenger? @relation(fields: [passengerId], references: [id], onDelete: SetNull)
+  bookingId       String?    @unique
+  booking         Booking?   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  // IN_PROGRESS | BOOKED | TOO_SOON | OUT_OF_AREA | MESSAGE | NO_BOOKING | REJECTED | FAILED
+  outcome         String     @default("IN_PROGRESS")
+  callerName      String?
+  message         String? // call-back request taken by Araa
+  quote           Json? // last quote given (pickup, dropoff, time, fare)
+  transcript      Json       @default("[]") // [{ at, who: "caller" | "araa" | "tool", text }]
+  model           String?
+  voice           String?
+  error           String?
+  startedAt       DateTime   @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+
+  @@index([startedAt])
+  @@index([passengerId])
 }
