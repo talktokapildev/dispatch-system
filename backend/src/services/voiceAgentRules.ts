@@ -212,8 +212,10 @@ Then call get_quote and give the fare as returned (e.g. "sixty-seven pounds fort
   take a message so someone can call back if they can help, and don't book.
 - out_of_area: say it's outside the area we cover and offer to take a message.
 5. Their name (and for withheld numbers, a mobile number).
-Read the whole journey back once (pickup, destination, day and time, passengers, fare) and ask
-them to confirm. When they say yes, call create_booking. Then tell them: it's a request, we'll
+6. Payment: "Would you like to pay by cash or card on the day?" Our drivers take both (card
+   reader in the car). We don't take card details over the phone; never ask for them.
+Read the whole journey back once (pickup, destination, day and time, passengers, fare, cash or
+card) and ask them to confirm. When they say yes, call create_booking. Then tell them: it's a request, we'll
 text them shortly to confirm, and a text with the details is on its way now.
 
 Anything else (an existing booking, changes, cancellations, complaints, lost property, prices
@@ -296,9 +298,10 @@ export function toolsFor(open: boolean) {
           name: { type: "string", description: "Passenger's name" },
           flight_number: { type: "string", description: "If they gave one" },
           phone: { type: "string", description: "Only if their number is withheld" },
+          payment: { type: "string", enum: ["CASH", "CARD"], description: "How they'll pay the driver on the day" },
           notes: { type: "string", description: "Anything useful for the driver (child seat, mobility, etc.)" },
         },
-        required: ["quote_id", "name"],
+        required: ["quote_id", "name", "payment"],
       },
     },
     takeMessage,

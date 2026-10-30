@@ -518,8 +518,10 @@ class CallSession {
     const dropoffTerminal = quote.dropoff.place.kind === "terminal" ? quote.dropoff.place : null;
     const flight = args.flight_number ? normaliseFlightNumber(String(args.flight_number)) ?? String(args.flight_number).slice(0, 12) : null;
     const bookingFor = name && this.c.caller?.context.firstName && !name.toLowerCase().startsWith(this.c.caller.context.firstName.toLowerCase()) ? ` Passenger: ${name}.` : "";
+    const payment = String(args.payment ?? "").toUpperCase() === "CARD" ? "CARD" : String(args.payment ?? "").toUpperCase() === "CASH" ? "CASH" : null;
     const notes = [
       `${quote.suitcases} suitcase${quote.suitcases === 1 ? "" : "s"}.`,
+      payment === "CARD" ? "Pays by card in the car (card reader)." : payment === "CASH" ? "Pays cash." : "",
       args.notes ? String(args.notes).slice(0, 300) : "",
       bookingFor.trim(),
     ]
@@ -547,10 +549,14 @@ class CallSession {
         flightNumber: flight,
         terminal: pickupTerminal?.terminal ?? dropoffTerminal?.terminal ?? null,
         meetingPointId: pickupTerminal?.meetingPointId ?? null,
+        // Used to work out the earliest pickup when the flight is checked on approval.
+        luggageType: pickupTerminal ? (quote.suitcases > 0 ? "CHECKED" : "HAND") : null,
         notes,
+        // Paid to the driver on the day either way (cash, or card on the in-car reader).
         operatorNotes:
-          "Booked by phone with Araa (AI assistant). Waiting for your approval. Payment method not discussed: check with the passenger." +
-          (flight ? " Flight not verified." : ""),
+          "Booked by phone with Araa (AI assistant). Waiting for your approval." +
+          (payment ? ` Pays ${payment === "CARD" ? "by card in the car" : "cash"}.` : " Payment method not discussed: check with the passenger.") +
+          (flight ? " Flight checked when you approve." : ""),
         bookedVia: "PHONE",
         bookedAt: this.c.startedAt,
       },

@@ -65,23 +65,36 @@ function PhoneRequestPanel({ booking, onDone }: { booking: any; onDone: () => vo
   const [showCall, setShowCall] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
+  // Flight couldn't be checked (or the pickup is before landing): shown with "approve anyway".
+  const [flightProblem, setFlightProblem] = useState<{ error: string; earliest: string | null } | null>(null);
+  const qc = useQueryClient();
   const call = booking.voiceCall;
   const waiting = booking.isOnHold && booking.status === "CONFIRMED";
   const act = useMutation({
-    mutationFn: (kind: "approve" | "decline") =>
+    mutationFn: (kind: "approve" | "approve-anyway" | "decline") =>
       api.post(
-        `/admin/bookings/${booking.id}/${kind}-request`,
-        kind === "decline" ? { reason: reason.trim() || undefined } : {}
+        `/admin/bookings/${booking.id}/${kind === "decline" ? "decline" : "approve"}-request`,
+        kind === "decline" ? { reason: reason.trim() || undefined } : kind === "approve-anyway" ? { skipFlightCheck: true } : {}
       ),
     onSuccess: (r, kind) => {
-      const texted = r.data?.data?.texted;
+      const d = r.data?.data ?? {};
       toast.success(
-        `${kind === "approve" ? "Approved" : "Declined"}${texted ? " - passenger texted" : ""}`
+        `${kind === "decline" ? "Declined" : "Approved"}${d.flightTracked ? " - flight tracked" : ""}${d.texted ? " - passenger texted" : ""}`
       );
       setDeclining(false);
+      setFlightProblem(null);
       onDone();
+      qc.invalidateQueries({ queryKey: ["araa-awaiting-count"] });
+      qc.invalidateQueries({ queryKey: ["voice-calls"] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.error ?? "Failed"),
+    onError: (err: any) => {
+      const data = err.response?.data;
+      if (data?.code === "flight_check") {
+        setFlightProblem({ error: data.error, earliest: data.earliestPickupUtc ?? null });
+        return;
+      }
+      toast.error(data?.error ?? "Failed");
+    },
   });
   const lines: any[] = Array.isArray(call.transcript) ? call.transcript : [];
   return (
@@ -116,6 +129,25 @@ function PhoneRequestPanel({ booking, onDone }: { booking: any; onDone: () => vo
           </div>
         )}
       </div>
+      {flightProblem && (
+        <div className="mt-3 p-2.5 rounded-md border border-red-500/30 bg-red-500/10 space-y-2">
+          <p className="text-xs text-red-400">{flightProblem.error}</p>
+          {flightProblem.earliest && (
+            <p className="text-[11px] text-slate-400">
+              Earliest pickup after landing: {format(new Date(flightProblem.earliest), "EEE dd MMM HH:mm")}. Edit the pickup time, or
+              check with the passenger.
+            </p>
+          )}
+          <div className="flex gap-2 flex-wrap">
+            <button disabled={act.isPending} onClick={() => act.mutate("approve-anyway")} className="btn-ghost text-xs px-3 py-1.5">
+              Approve without flight tracking
+            </button>
+            <button onClick={() => setFlightProblem(null)} className="btn-ghost text-xs px-3 py-1.5">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {declining && (
         <div className="mt-3 flex gap-2 flex-wrap">
           <input
@@ -135,7 +167,7 @@ function PhoneRequestPanel({ booking, onDone }: { booking: any; onDone: () => vo
       )}
       {waiting && (
         <p className="text-[10px] text-slate-500 mt-2">
-          Approve puts it on the job board (or keeps it to dispatch if under 2 hours away) and texts the passenger. Check the payment method first.
+          Approve checks the flight (airport pickups), puts it on the job board (or keeps it to dispatch if under 2 hours away) and texts the passenger.
         </p>
       )}
       {lines.length > 0 && (

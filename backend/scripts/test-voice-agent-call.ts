@@ -209,7 +209,7 @@ async function main() {
     r = await modelCalls(w, [{ name: "get_quote", args: { pickup_id: "gatwick_north", destination_id: "p1", date: "2026-10-31", time: "15:30", passengers: 1, suitcases: 2 } }]);
     check("route cached: second quote makes no new Directions call", w.directionsCalls === 1, w.directionsCalls);
 
-    r = await modelCalls(w, [{ name: "create_booking", args: { quote_id: "q1", name: "Kapil Dev", flight_number: "ezy 8004" } }]);
+    r = await modelCalls(w, [{ name: "create_booking", args: { quote_id: "q1", name: "Kapil Dev", flight_number: "ezy 8004", payment: "CARD" } }]);
     const b = w.bookings[0];
     check("booking saved: ref returned", r.outputs[0].saved === true && /^DS/.test(r.outputs[0].reference), r.outputs[0]);
     check("booking waits for approval: CONFIRMED + on hold, no dispatcher", b.status === "CONFIRMED" && b.isOnHold === true && b.dispatchedBy === undefined, b);
@@ -217,6 +217,8 @@ async function main() {
     check("booking: fare = quoted fare, time, pax, existing passenger", b.estimatedFare === 67.42 && b.scheduledAt.toISOString() === "2026-10-31T15:30:00.000Z" && b.passengerCount === 1 && b.passengerId === "p-kapil", b);
     check("booking: TfL fields (booked via phone, when)", b.bookedVia === "PHONE" && b.bookedAt.toISOString() === "2026-10-30T08:41:00.000Z");
     check("booking: flight normalised, suitcases in notes", b.flightNumber === "EZY8004" && b.notes.includes("2 suitcases"), b);
+    check("booking: card in the car noted, still collected by the driver (CASH)", b.paymentMethod === "CASH" && b.notes.includes("card in the car") && b.operatorNotes.includes("Pays by card in the car") && !b.operatorNotes.includes("not discussed"), b);
+    check("booking: luggage type for the flight check", b.luggageType === "CHECKED", b.luggageType);
     check("status history written", w.history[0]?.status === "CONFIRMED");
 
     r = await modelCalls(w, [{ name: "create_booking", args: { quote_id: "q1", name: "Kapil" } }]);

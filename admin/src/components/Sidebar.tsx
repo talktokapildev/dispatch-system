@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Star,
   PlaneLanding,
+  PhoneCall,
 } from "lucide-react";
 import { useAuthStore, api } from "@/lib/api";
 import { useTheme } from "@/app/providers";
@@ -43,6 +44,7 @@ const nav: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dispatch", label: "Live Dispatch", icon: MapPin },
   { href: "/bookings", label: "Bookings", icon: BookOpen },
+  { href: "/calls", label: "Araa calls", icon: PhoneCall, badgeKey: "araa" },
   { href: "/drivers", label: "Drivers", icon: Car },
   { href: "/vehicles", label: "Vehicles", icon: CarFront },
   {
@@ -104,8 +106,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     staleTime: 60_000,
   });
 
+  // Phone bookings taken by Araa that wait for approval
+  const { data: araaWaiting = 0 } = useQuery<number>({
+    queryKey: ["araa-awaiting-count"],
+    queryFn: () =>
+      api
+        .get("/admin/voice-calls", { params: { outcome: "AWAITING", limit: 1 } })
+        .then((r) => r.data.data?.awaitingApproval ?? 0),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   const badges: Record<string, number> = {
     applications: pendingCount,
+    araa: araaWaiting,
     compliance: complianceIssues,
   };
 
