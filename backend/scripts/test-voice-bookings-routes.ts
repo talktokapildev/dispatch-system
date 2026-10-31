@@ -103,6 +103,10 @@ async function main() {
     check(`settings rejected: ${label}`, r.statusCode === 400, r.json());
   }
 
+  r = await app.inject({ method: "PUT", url: "/api/v1/admin/voice-agent/settings", payload: { ...good, faq: "  Child seats: on request.\nPets: small dogs in a carrier.  " } });
+  check("FAQ saved (trimmed) and returned", r.statusCode === 200 && w.settings.get("voiceAgentFaq") === "Child seats: on request.\nPets: small dogs in a carrier." && r.json().data.settings.faq.startsWith("Child seats"), r.json());
+  r = await app.inject({ method: "PUT", url: "/api/v1/admin/voice-agent/settings", payload: { ...good, faq: "x".repeat(3001) } });
+  check("FAQ over 3000 characters rejected", r.statusCode === 400);
   r = await app.inject({ method: "GET", url: "/api/v1/admin/voice-calls?outcome=AWAITING" });
   check("calls list returns items + awaiting count", r.statusCode === 200 && r.json().data.awaitingApproval === 2);
 

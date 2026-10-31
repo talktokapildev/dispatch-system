@@ -15,6 +15,9 @@ const OUTCOMES: Record<string, [string, string]> = {
   TOO_SOON: ["Too soon", "bg-amber-500/15 text-amber-400"],
   OUT_OF_AREA: ["Out of area", "bg-amber-500/15 text-amber-400"],
   MESSAGE: ["Message", "bg-blue-500/15 text-blue-400"],
+  COMPLAINT: ["Complaint", "bg-red-500/15 text-red-400"],
+  LOST_PROPERTY: ["Lost property", "bg-violet-500/15 text-violet-400"],
+  COMPLIMENT: ["Compliment", "bg-green-500/15 text-green-400"],
   NO_BOOKING: ["No booking", "bg-slate-500/15 text-slate-400"],
   REJECTED: ["Not answered", "bg-slate-500/15 text-slate-400"],
   FAILED: ["Dropped", "bg-red-500/15 text-red-400"],
@@ -26,6 +29,7 @@ const FILTERS = [
   { key: "AWAITING", label: "Waiting for approval" },
   { key: "BOOKED", label: "Booking requests" },
   { key: "MESSAGE", label: "Messages" },
+  { key: "REPORTS", label: "Complaints & lost property" },
   { key: "TOO_SOON", label: "Too soon" },
 ] as const;
 
@@ -199,6 +203,11 @@ function CallModal({ id, onClose }: { id: string | null; onClose: () => void }) 
               <span className="font-semibold">Message:</span> {c.message}
             </div>
           )}
+          {["COMPLAINT", "LOST_PROPERTY", "COMPLIMENT"].includes(c.outcome) && (
+            <a href="/alerts" className="inline-block text-xs text-brand-400 hover:underline">
+              Open in Alerts (complaints and lost property registers) →
+            </a>
+          )}
           {c.error && <p className="text-xs text-red-400">Problem: {c.error}</p>}
           <div className="max-h-[50vh] overflow-y-auto space-y-2 text-xs">
             {lines.length === 0 && <p className="text-slate-500">No transcript.</p>}
@@ -224,6 +233,17 @@ function CallModal({ id, onClose }: { id: string | null; onClose: () => void }) 
     </Modal>
   );
 }
+
+// Example only: Kapil checks and edits every line before saving.
+const FAQ_EXAMPLE = `OrangeRide is a TfL-licensed private hire operator (licence 11786), based in Crawley.
+We mainly cover Gatwick Airport, Crawley, Horley and the surrounding area; longer trips on request.
+Cars: [please edit, e.g. Tesla Model Y and similar]. Up to 4 passengers and their luggage.
+Bookings need at least 24 hours' notice.
+Gatwick pickups: we meet you at the terminal car park meeting point and track your flight.
+Payment: cash or card to the driver on the day (card reader in the car).
+Child seats: [yes / no / on request — please edit]
+Pets: [please edit]
+Wheelchairs: [please edit]`;
 
 const MODES = [
   { key: "ALWAYS", label: "On, 24/7", help: "Araa answers every call she gets and takes booking requests." },
@@ -321,6 +341,26 @@ function SettingsForm() {
         <label className={label}>Greeting for new callers</label>
         <textarea className="input min-h-[70px]" maxLength={300} value={form.greeting} onChange={set("greeting")} />
         <p className={help}>Returning passengers are greeted by name instead. Keep "virtual assistant" in it so callers know.</p>
+      </div>
+
+      <div>
+        <label className={label}>Facts Araa can use to answer questions</label>
+        <textarea
+          className="input min-h-[180px] font-mono text-xs"
+          maxLength={3000}
+          value={form.faq ?? ""}
+          onChange={set("faq")}
+          placeholder={FAQ_EXAMPLE}
+        />
+        <p className={help}>
+          One fact per line. Araa answers questions only from these; anything else becomes a message for you. Leave empty and
+          she takes a message for every question. ({(form.faq ?? "").length}/3000)
+        </p>
+        {!form.faq && (
+          <button type="button" className="text-[11px] text-brand-400 hover:underline mt-1" onClick={() => setForm((f: any) => ({ ...f, faq: FAQ_EXAMPLE }))}>
+            Start from the example (then check every line)
+          </button>
+        )}
       </div>
 
       <div>

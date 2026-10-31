@@ -20,7 +20,7 @@ import { sendSms } from "../../services/sms.service";
 import { resolveAirportPickup } from "../../services/airportBooking.service";
 import { normalizePhone } from "../../lib/phone";
 import { loadVoiceSettings } from "../../services/voiceAgent.service";
-import { VOICES, VOICE_KEYS, money, parseHours, ukParts, ukShort } from "../../services/voiceAgentRules";
+import { MAX_FAQ, VOICES, VOICE_KEYS, money, parseHours, ukParts, ukShort } from "../../services/voiceAgentRules";
 
 const declineSchema = z.object({ reason: z.string().max(300).optional() });
 const approveSchema = z.object({ skipFlightCheck: z.boolean().optional() });
@@ -31,6 +31,7 @@ const settingsSchema = z.object({
   greeting: z.string().trim().min(10, "Greeting is too short").max(300),
   minNoticeHours: z.number().min(0).max(168),
   alertPhone: z.string(),
+  faq: z.string().max(MAX_FAQ, `Keep the facts under ${MAX_FAQ} characters`).optional().default(""),
 });
 
 const UK_DAY_MS = 24 * 3_600_000;
@@ -152,9 +153,11 @@ export async function adminVoiceBookingRoutes(fastify: FastifyInstance) {
     const where =
       outcome === "AWAITING"
         ? { booking: { is: { isOnHold: true, status: "CONFIRMED" as const } } }
-        : outcome
-          ? { outcome }
-          : {};
+        : outcome === "REPORTS"
+          ? { outcome: { in: ["COMPLAINT", "LOST_PROPERTY", "COMPLIMENT"] } }
+          : outcome
+            ? { outcome }
+            : {};
     const [items, awaitingApproval] = await Promise.all([
       fastify.prisma.voiceCall.findMany({
         where,
@@ -212,6 +215,7 @@ export async function adminVoiceBookingRoutes(fastify: FastifyInstance) {
       [VOICE_KEYS.greeting]: s.greeting.trim(),
       [VOICE_KEYS.minNoticeHours]: String(s.minNoticeHours),
       [VOICE_KEYS.alertPhone]: phone.e164,
+      [VOICE_KEYS.faq]: s.faq.trim(),
     };
     await fastify.prisma.$transaction(
       Object.entries(values).map(([key, value]) =>

@@ -72,15 +72,24 @@ check("script: Gatwick asks terminal, flight optional", /North or South Terminal
 check("script: notice hours from settings", buildInstructions({ now, settings: custom, caller: null, callerNumber: null, open: true }).includes("2 hours' notice"));
 check("script: withheld number asks for a mobile", buildInstructions({ now, settings: empty, caller: null, callerNumber: null, open: true }).includes("number is withheld"));
 const closed = buildInstructions({ now, settings: empty, caller: null, callerNumber: "+447700900123", open: false });
-check("closed script: no bookings", closed.includes("Don't take bookings") && !closed.includes("get_quote"));
+check("closed script: no bookings", /don't take bookings/.test(closed) && !closed.includes("get_quote"));
 
 // Tools
 const names = (o: boolean) => toolsFor(o).map((t) => t.name).join(",");
-check("open tools", names(true) === "find_place,gatwick_terminal,get_quote,create_booking,take_message,end_call", names(true));
-check("closed tools: message + end only", names(false) === "take_message,end_call");
+check("open tools", names(true) === "find_place,gatwick_terminal,get_quote,create_booking,find_my_trips,report_feedback,report_lost_property,take_message,end_call", names(true));
+check("closed tools: reports + message, no booking", names(false) === "find_my_trips,report_feedback,report_lost_property,take_message,end_call", names(false));
 const cb: any = toolsFor(true).find((t) => t.name === "create_booking");
 check("create_booking requires cash or card", cb.parameters.required.includes("payment") && cb.parameters.properties.payment.enum.join() === "CASH,CARD");
 check("script: asks cash or card, never card details", /cash or card on the day/.test(script) && /never ask for them/.test(script));
+
+// FAQ
+const withFaq = parseVoiceSettings([{ key: VOICE_KEYS.faq, value: "Child seats: on request, free." }]);
+const faqScript = buildInstructions({ now, settings: withFaq, caller: null, callerNumber: "+447911123456", open: true });
+check("FAQ in the script, answer only from it", faqScript.includes("Child seats: on request, free.") && /answer ONLY from/.test(faqScript));
+check("no FAQ: questions become messages", /say you're not sure\s+and offer to take a message/.test(script));
+check("FAQ capped", parseVoiceSettings([{ key: VOICE_KEYS.faq, value: "x".repeat(5000) }]).faq.length === 3000);
+check("script: complaints handled kindly, 999, no promises", /call 999/.test(script) && /promise refunds/.test(script) && /report_feedback/.test(script) && /report_lost_property/.test(script));
+check("closed script still handles complaints", closed.includes("report_feedback") && closed.includes("Don't take bookings") === false && /closed for bookings/.test(closed));
 
 // Speech time
 check("speech time grows with text, capped", speechMs("Bye!") < speechMs("Thank you so much, Kapil. We'll text you shortly to confirm. Have a lovely day, goodbye!") && speechMs("x".repeat(5000)) === 15000);

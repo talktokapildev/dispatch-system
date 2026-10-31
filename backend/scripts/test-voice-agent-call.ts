@@ -38,7 +38,16 @@ function makeWorld(opts: { settings?: { key: string; value: string }[]; knownCal
     history: [] as any[],
     ws: null as FakeWs | null,
     directionsCalls: 0,
+    complaints: [] as any[],
+    lost: [] as any[],
+    notes: [] as any[],
+    alerts: [] as string[],
   };
+  // Kapil's past trips (for find_my_trips / linking reports)
+  const pastTrips = [
+    { id: "trip-old", reference: "DSOLD1", passengerId: "p-kapil", driverId: "d-nasir", vehicleId: "v-lm71", status: "COMPLETED", scheduledAt: new Date("2026-10-28T06:00:00Z"), completedAt: new Date("2026-10-28T06:40:00Z"), createdAt: new Date("2026-10-27T10:00:00Z"), pickupAddress: "Gatwick North Terminal: Car Park 6, Level 4", dropoffAddress: "7 Riverside Walk, Crawley", driver: { user: { firstName: "Nasir", lastName: "Kazmi" } }, vehicle: { licensePlate: "LM71GVW" }, passenger: { user: { firstName: "Kapil", lastName: "Dev", phone: "+447587545986" } } },
+    { id: "trip-older", reference: "DSOLD2", passengerId: "p-kapil", driverId: null, vehicleId: null, status: "CANCELLED", scheduledAt: new Date("2026-10-20T09:00:00Z"), completedAt: null, createdAt: new Date("2026-10-19T10:00:00Z"), pickupAddress: "Crawley", dropoffAddress: "Gatwick South Terminal", driver: null, vehicle: null, passenger: { user: { firstName: "Kapil", lastName: "Dev", phone: "+447587545986" } } },
+  ];
   if (opts.knownCaller !== false)
     w.users.set("+447587545986", { id: "u1", phone: "+447587545986", firstName: "Kapil", lastName: "Dev", passenger: { id: "p-kapil" } });
   const redisStore = new Map<string, string>();
@@ -89,7 +98,29 @@ function makeWorld(opts: { settings?: { key: string; value: string }[]; knownCal
       },
     },
     bookingStatusHistory: { create: async ({ data }: any) => w.history.push(data) },
+    $transaction: async (fn: any) => fn(prisma),
+    $executeRawUnsafe: async () => 1,
+    complaint: {
+      findMany: async () => w.complaints.map((c) => ({ refNo: c.refNo })),
+      create: async ({ data }: any) => {
+        const c = { id: `cc${w.complaints.length + 1}`, ...data };
+        w.complaints.push(c);
+        return c;
+      },
+    },
+    complaintContact: { create: async ({ data }: any) => w.notes.push(data) },
+    lostProperty: {
+      findMany: async () => w.lost.map((c) => ({ refNo: c.refNo })),
+      create: async ({ data }: any) => {
+        const c = { id: `lp${w.lost.length + 1}`, ...data };
+        w.lost.push(c);
+        return c;
+      },
+    },
+    lostPropertyContact: { create: async ({ data }: any) => w.notes.push(data) },
   };
+  prisma.booking.findMany = async ({ where }: any) => pastTrips.filter((t) => t.passengerId === where.passengerId);
+  prisma.booking.findUnique = async ({ where }: any) => pastTrips.find((t) => t.id === where.id || t.reference === where.reference) ?? null;
   const redis: any = {
     get: async (k: string) => redisStore.get(k) ?? null,
     set: async (k: string, v: string) => redisStore.set(k, v),
@@ -183,7 +214,7 @@ async function main() {
     const acc = w.accepted[0];
     check("call accepted with model, voice marin, transcription", acc?.body?.model === "gpt-realtime-2.1" && acc.body.audio.output.voice === "marin" && acc.body.audio.input.transcription.model === "gpt-4o-transcribe", acc?.body);
     check("script personalised for Kapil, with today's date", acc.body.instructions.includes("The caller is Kapil") && /30 October 2026/.test(acc.body.instructions));
-    check("all six tools offered", acc.body.tools.length === 6);
+    check("all nine tools offered", acc.body.tools.length === 9);
     const greet = w.ws!.sent[0];
     check("greets Kapil by name", greet?.type === "response.create" && greet.response.instructions.includes("Hi Kapil, lovely to hear from you again!"), greet);
     check("one active call", activeCallCount() === 1);
@@ -305,7 +336,7 @@ async function main() {
     await handleIncomingCall(deps, { call_id: "rtc_test5", sip_headers: sipFrom("+447587545986") });
     await tick(10);
     const acc = w.accepted[0];
-    check("outside hours (08:41 vs 09:00-17:00): message tools only", acc.body.tools.map((t: any) => t.name).join() === "take_message,end_call" && /closed for bookings/.test(w.ws!.sent[0].response.instructions), acc.body.tools);
+    check("outside hours (08:41 vs 09:00-17:00): message tools only", acc.body.tools.map((t: any) => t.name).join() === "find_my_trips,report_feedback,report_lost_property,take_message,end_call" && /closed for bookings/.test(w.ws!.sent[0].response.instructions), acc.body.tools);
     w.ws!.close();
     await tick(20);
   }
@@ -325,6 +356,84 @@ async function main() {
     await tick(30);
     const call = [...w.calls.values()][0];
     check("withheld caller: no caller SMS to an unknown number, Kapil still texted", !w.sms.some((s) => s.to !== "+447398341839") && w.sms.length === 1 && call.outcome === "BOOKED", w.sms);
+  }
+
+  // ─── 7. Known caller: complaint about a past trip ───
+  {
+    const { w, deps } = makeWorld();
+    await handleIncomingCall(deps, { call_id: "rtc_test7", sip_headers: sipFrom("+447587545986") });
+    await tick(10);
+    const tools = w.accepted[0].body.tools.map((t: any) => t.name).join();
+    check("open call offers report tools too", tools.includes("find_my_trips") && tools.includes("report_feedback") && tools.includes("report_lost_property"), tools);
+    let r = await modelCalls(w, [{ name: "find_my_trips", args: {} }]);
+    const trips = r.outputs[0].trips;
+    check("find_my_trips: caller's own trips with ids, newest first", trips?.length === 2 && trips[0].id === "t1" && trips[0].driver === "Nasir" && trips[0].status === "completed" && trips[1].status === "cancelled", r.outputs[0]);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLAINT", category: "Late arrival", details: "Driver was 25 minutes late at North Terminal on Wednesday morning.", trip_id: "t1", name: "Kapil Dev" } }]);
+    const c = w.complaints[0];
+    check("complaint recorded with ref, spoken ref, 48h", r.outputs[0].saved === true && r.outputs[0].reference === "CC-2026-001" && r.outputs[0].say_reference_as === "C C, 2026, 1" && r.outputs[0].reply_within_hours === 48, r.outputs[0]);
+    check("complaint: PHONE channel, category, linked to the trip, driver and car copied", c.channel === "PHONE" && c.type === "COMPLAINT" && c.category === "Late arrival" && c.bookingId === "trip-old" && c.driverName === "Nasir Kazmi" && c.vehicleReg === "LM71GVW" && c.complainantPhone === "+447587545986", c);
+    check("complaint: no staff handler, history note says Araa took it", c.createdByUserId === undefined && w.notes.some((n) => n.complaintId === c.id && n.staffName.startsWith("Araa")), w.notes);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLAINT", details: "Also rude.", name: "Kapil" } }]);
+    check("one complaint per call", !!r.outputs[0].error && w.complaints.length === 1);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLAINT", details: "x", name: "Kapil" } }]);
+    await modelCalls(w, [{ name: "end_call", args: {} }]);
+    w.ws!.server({ type: "response.output_audio_transcript.done", transcript: "Bye!" });
+    w.ws!.server({ type: "response.done" });
+    await tick(2000);
+    const call = [...w.calls.values()][0];
+    check("call outcome COMPLAINT, ref saved on the call", call.outcome === "COMPLAINT" && call.message.includes("Complaint CC-2026-001"), call);
+    const alert = w.sms.find((s) => s.to === "+447398341839");
+    check("Kapil texted: complaint ref, summary, Alerts link", !!alert && alert.body.includes("complaint CC-2026-001") && alert.body.includes("Late arrival") && alert.body.includes("/alerts"), alert);
+    const toCaller = w.sms.find((s) => s.to === "+447587545986");
+    check("caller texted: sorry, ref, 48 hours", !!toCaller && toCaller.body.includes("CC-2026-001") && toCaller.body.includes("48 hours"), toCaller);
+  }
+
+  // ─── 8. Lost property, then a compliment, on one call ───
+  {
+    const { w, deps } = makeWorld();
+    await handleIncomingCall(deps, { call_id: "rtc_test8", sip_headers: sipFrom("+447587545986") });
+    await tick(10);
+    let r = await modelCalls(w, [{ name: "report_lost_property", args: { item: "Black Samsung phone, back seat", name: "Kapil" } }]);
+    check("lost property without a trip: recorded, REPORTED, phone from caller ID", r.outputs[0].reference === "LP-2026-001" && w.lost[0].status === "REPORTED" && w.lost[0].contactPhone === "+447587545986" && w.lost[0].bookingId === null, w.lost[0]);
+    r = await modelCalls(w, [{ name: "report_lost_property", args: { item: "Umbrella", name: "Kapil" } }]);
+    check("one lost-property report per call", !!r.outputs[0].error && w.lost.length === 1);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLIMENT", details: "Nasir was brilliant and helped with the bags.", name: "Kapil" } }]);
+    check("compliment recorded, no category", r.outputs[0].reference === "CC-2026-001" && w.complaints[0].type === "COMPLIMENT" && w.complaints[0].category === null, w.complaints[0]);
+    w.ws!.close();
+    await tick(30);
+    const call = [...w.calls.values()][0];
+    check("outcome: lost property outranks compliment; both refs saved", call.outcome === "LOST_PROPERTY" && call.message.includes("LP-2026-001") && call.message.includes("Compliment CC-2026-001"), call);
+    const alert = w.sms.find((s) => s.to === "+447398341839")!;
+    check("Kapil's text lists both", alert.body.includes("lost property LP-2026-001") && alert.body.includes("compliment CC-2026-001"), alert);
+    check("caller told the lost item ref", w.sms.some((s) => s.to === "+447587545986" && s.body.includes("LP-2026-001")));
+  }
+
+  // ─── 9. Withheld number: complaint needs a number; unknown caller has no trips ───
+  {
+    const { w, deps } = makeWorld();
+    await handleIncomingCall(deps, { call_id: "rtc_test9", sip_headers: [{ name: "From", value: "<sip:anonymous@anonymous.invalid>" }] });
+    await tick(10);
+    let r = await modelCalls(w, [{ name: "find_my_trips", args: {} }]);
+    check("withheld: no trips, ask when/where", r.outputs[0].trips.length === 0 && /roughly when/.test(r.outputs[0].note));
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLAINT", category: "Overcharged", details: "Charged more than quoted on Friday.", name: "Jo" } }]);
+    check("withheld: complaint asks for a number first", /phone number/.test(r.outputs[0].error ?? "") && w.complaints.length === 0, r.outputs[0]);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLAINT", category: "Overcharged", details: "Charged more than quoted on Friday.", name: "Jo", phone: "07911 123456" } }]);
+    check("withheld: recorded with the number given, unlinked, history says check trip", r.outputs[0].saved === true && w.complaints[0].complainantPhone === "+447911123456" && w.complaints[0].bookingId === undefined && w.notes.some((n) => /No booking linked/.test(n.note)), w.complaints[0]);
+    r = await modelCalls(w, [{ name: "report_feedback", args: { kind: "COMPLIMENT", details: "Lovely driver, thank you.", name: "Jo", trip_id: "t1" } }]);
+    check("a trip id the caller never saw can't link someone else's booking", r.outputs[0].saved === true && w.complaints[1].bookingId === undefined, w.complaints[1]);
+    w.ws!.close();
+    await tick(30);
+  }
+
+  // ─── 10. Closed hours: reports still work, bookings don't ───
+  {
+    const { w, deps } = makeWorld({ settings: [{ key: "voiceAgentMode", value: "HOURS" }, { key: "voiceAgentHours", value: "09:00-17:00" }] });
+    await handleIncomingCall(deps, { call_id: "rtc_test10", sip_headers: sipFrom("+447587545986") });
+    await tick(10);
+    const names = w.accepted[0].body.tools.map((t: any) => t.name).join();
+    check("closed: report tools + message, no booking tools", names === "find_my_trips,report_feedback,report_lost_property,take_message,end_call", names);
+    w.ws!.close();
+    await tick(20);
   }
 
   console.log(`\n${pass} PASS, ${fail} FAIL`);
