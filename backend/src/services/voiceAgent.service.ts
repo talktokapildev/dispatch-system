@@ -24,6 +24,8 @@ import { MAX_PASSENGERS, MAX_TRIP_MILES, checkPickupTime, kmToMiles, nearGatwick
 import { normaliseFlightNumber } from "./flightData.service";
 import { normalizePhone } from "../lib/phone";
 import { sendSms as realSendSms } from "./sms.service";
+import { logFromPhoneAssistant } from "./complaint.service";
+import { reportByPhoneAssistant } from "./lostProperty.service";
 import {
   VOICE_KEYS,
   alertText,
@@ -220,6 +222,8 @@ class CallSession {
   private callerName: string | null = null;
   private message: string | null = null;
   private booking: CallSummary["booking"] = null;
+  private reports: NonNullable<CallSummary["reports"]> = [];
+  private trips = new Map<string, string>(); // t1 → booking id (this caller's trips only)
   private ending = false; // end_call received → goodbye requested
   private goodbyeText = "";
   private finished = false;
@@ -354,6 +358,12 @@ class CallSession {
         return this.createBooking(args);
       case "take_message":
         return this.takeMessage(args);
+      case "find_my_trips":
+        return this.findMyTrips();
+      case "report_feedback":
+        return this.reportFeedback(args);
+      case "report_lost_property":
+        return this.reportLost(args);
       case "end_call":
         return { ok: true };
       default:
@@ -591,6 +601,112 @@ class CallSession {
     return { saved: true };
   }
 
+  // ─── Complaints, compliments, lost property ───
+  private passengerId(): string | null {
+    return this.c.caller?.passengerId ?? null;
+  }
+
+  /** The caller's own recent trips only (matched by their phone number). */
+  private async findMyTrips() {
+    const pid = this.passengerId();
+    if (!pid) return { trips: [], note: "No trips found for this number. Ask roughly when and where the trip was." };
+    const rows = await this.deps.prisma.booking.findMany({
+      where: { passengerId: pid, status: { notIn: ["PENDING"] } },
+      orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+      take: 6,
+      select: {
+        id: true,
+        status: true,
+        scheduledAt: true,
+        completedAt: true,
+        createdAt: true,
+        pickupAddress: true,
+        dropoffAddress: true,
+        driver: { select: { user: { select: { firstName: true } } } },
+      },
+    });
+    const fmt = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const trips = rows.map((b, i) => {
+      const id = `t${i + 1}`;
+      this.trips.set(id, b.id);
+      return {
+        id,
+        when: fmt.format(b.completedAt ?? b.scheduledAt ?? b.createdAt),
+        from: b.pickupAddress,
+        to: b.dropoffAddress,
+        status: b.status === "COMPLETED" ? "completed" : b.status === "CANCELLED" ? "cancelled" : "upcoming",
+        driver: b.driver?.user.firstName ?? null,
+      };
+    });
+    return trips.length ? { trips } : { trips: [], note: "No trips found for this number. Ask roughly when and where the trip was." };
+  }
+
+  /** Saved on the call: the call-back message plus the references Araa recorded. */
+  private dbMessage(): string | null {
+    const label = { COMPLAINT: "Complaint", COMPLIMENT: "Compliment", LOST_PROPERTY: "Lost property" } as const;
+    const parts = [this.message, ...this.reports.map((r) => `${label[r.kind]} ${r.ref}: ${r.summary}`)].filter(Boolean);
+    return parts.length ? parts.join(" · ").slice(0, 2000) : null;
+  }
+
+  private contactPhone(args: any): string | null {
+    return this.c.from ?? normalizePhone(String(args.phone ?? ""))?.e164 ?? null;
+  }
+
+  private bump(o: string) {
+    const rank: Record<string, number> = { IN_PROGRESS: 0, NO_BOOKING: 0, FAILED: 0, COMPLIMENT: 1, OUT_OF_AREA: 2, TOO_SOON: 2, MESSAGE: 2, LOST_PROPERTY: 3, COMPLAINT: 4, BOOKED: 5 };
+    if ((rank[o] ?? 0) > (rank[this.outcome] ?? 0)) this.outcome = o;
+  }
+
+  private async reportFeedback(args: any) {
+    const kind = String(args.kind ?? "").toUpperCase() === "COMPLIMENT" ? "COMPLIMENT" : "COMPLAINT";
+    if (this.reports.some((r) => r.kind === kind)) return { error: `A ${kind.toLowerCase()} was already recorded on this call.` };
+    const details = String(args.details ?? "").trim();
+    if (details.length < 5) return { error: "Ask what happened first." };
+    const name = String(args.name ?? "").trim().slice(0, 120) || this.callerName;
+    if (name) this.callerName = name;
+    const phone = this.contactPhone(args);
+    if (!phone && kind === "COMPLAINT") return { error: "Ask for a phone number so we can get back to them, and read it back." };
+    const bookingId = args.trip_id ? this.trips.get(String(args.trip_id)) ?? null : null;
+    const { complaint } = await logFromPhoneAssistant(
+      { prisma: this.deps.prisma, log: { warn: (m: string) => this.deps.log.warn(m) }, now: this.now() },
+      {
+        type: kind,
+        category: args.category ? String(args.category) : null,
+        details: `${details}\n\n(Taken by phone by Araa${phone ? `, caller ${phone}` : ""}.)`,
+        bookingId,
+        passengerId: this.passengerId(),
+        complainantName: name,
+        complainantPhone: phone,
+      }
+    );
+    this.reports.push({ kind, ref: complaint.refNo, summary: `${complaint.category ? `${complaint.category}: ` : ""}${details.slice(0, 120)}` });
+    this.bump(kind);
+    void this.save();
+    return kind === "COMPLAINT"
+      ? { saved: true, reference: complaint.refNo, say_reference_as: spokenRef(complaint.refNo), reply_within_hours: 48 }
+      : { saved: true, reference: complaint.refNo };
+  }
+
+  private async reportLost(args: any) {
+    if (this.reports.some((r) => r.kind === "LOST_PROPERTY")) return { error: "A lost item was already recorded on this call; mention any other item in the same report next time." };
+    const item = String(args.item ?? "").trim();
+    if (item.length < 3) return { error: "Ask what the item is." };
+    const name = String(args.name ?? "").trim().slice(0, 120) || this.callerName;
+    if (name) this.callerName = name;
+    const phone = this.contactPhone(args);
+    if (!phone) return { error: "Ask for a phone number so we can contact them, and read it back." };
+    const bookingId = args.trip_id ? this.trips.get(String(args.trip_id)) ?? null : null;
+    const whenWhere = !bookingId && args.when_where ? ` Trip: ${String(args.when_where).slice(0, 200)}.` : "";
+    const { report } = await reportByPhoneAssistant(
+      { prisma: this.deps.prisma, log: { warn: (m: string) => this.deps.log.warn(m) }, now: this.now() },
+      { description: `${item}${whenWhere}`, bookingId, passengerId: this.passengerId(), customerName: name, contactPhone: phone }
+    );
+    this.reports.push({ kind: "LOST_PROPERTY", ref: report.refNo, summary: `${item.slice(0, 120)}${whenWhere}` });
+    this.bump("LOST_PROPERTY");
+    void this.save();
+    return { saved: true, reference: report.refNo, say_reference_as: spokenRef(report.refNo) };
+  }
+
   private setOutcome(o: string) {
     if (this.outcome !== "BOOKED" && this.outcome !== "MESSAGE") this.outcome = o;
   }
@@ -608,7 +724,7 @@ class CallSession {
         data: {
           transcript: this.transcript as unknown as Prisma.InputJsonValue,
           callerName: this.callerName,
-          message: this.message,
+          message: this.dbMessage(),
         },
       })
       .catch(() => {});
@@ -639,7 +755,7 @@ class CallSession {
         data: {
           outcome: this.outcome,
           callerName: this.callerName,
-          message: this.message,
+          message: this.dbMessage(),
           transcript: this.transcript as unknown as Prisma.InputJsonValue,
           endedAt,
           durationSeconds,
@@ -655,6 +771,7 @@ class CallSession {
       booking: this.booking,
       quote: this.lastQuote ? { when: this.lastQuote.at, pickup: this.lastQuote.pickup.label, dropoff: this.lastQuote.dropoff.label, fare: this.lastQuote.fare } : null,
       message: this.message,
+      reports: this.reports,
     };
     const sms = this.deps.sendSms ?? realSendSms;
     await sms(this.c.settings.alertPhone, alertText(summary), { purpose: "ADMIN_ALERT", bookingId: this.booking?.id ?? null }).catch(
@@ -679,6 +796,12 @@ class CallSession {
   private quoteDeps() {
     return { prisma: this.deps.prisma, redis: this.deps.redis, maps: this.maps(), now: this.deps.now, log: this.deps.log };
   }
+}
+
+/** "CC-2026-004" → "C C, 2026, 4" (easier to say and hear). */
+export function spokenRef(ref: string): string {
+  const m = /^([A-Z]+)-(\d{4})-0*(\d+)$/.exec(ref);
+  return m ? `${m[1].split("").join(" ")}, ${m[2]}, ${m[3]}` : ref;
 }
 
 /** Same format as other booking references (DS…). */

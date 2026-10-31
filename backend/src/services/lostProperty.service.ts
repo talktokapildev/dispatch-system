@@ -249,6 +249,54 @@ export async function reportByPassenger(
   return { report, booking, passenger };
 }
 
+// ─── Phone: taken by Araa, the AI receptionist ───────────────────────────────
+
+/** A customer reporting something left in a car, taken by Araa on a call (status REPORTED). */
+export async function reportByPhoneAssistant(
+  deps: LpDeps,
+  input: { description: string; bookingId?: string | null; passengerId?: string | null; customerName?: string | null; contactPhone: string }
+) {
+  const { prisma } = deps;
+  const now = deps.now ?? new Date();
+  const description = cleanText(input.description, "Description", MAX.description);
+  if (!description) throw new LostPropertyError("Description is required");
+  const phone = cleanText(input.contactPhone, "Phone number", MAX.phone);
+  if (!phone) throw new LostPropertyError("A phone number is required");
+  const booking = input.bookingId
+    ? await prisma.booking.findUnique({ where: { id: input.bookingId }, select: BOOKING_SELECT })
+    : null;
+
+  const report = await prisma.$transaction(async (tx) => {
+    const refNo = await allocateRef(tx, now);
+    const r = await tx.lostProperty.create({
+      data: {
+        refNo,
+        source: "PASSENGER_REPORT",
+        status: "REPORTED",
+        bookingId: booking?.id ?? null,
+        passengerId: booking?.passengerId ?? input.passengerId ?? null,
+        description,
+        contactPhone: phone,
+        reportedAt: now,
+        bookingDateTime: booking ? bookingDateTime(booking) : null,
+        vehicleId: booking?.vehicleId ?? null,
+        vehicleReg: booking?.vehicle?.licensePlate ?? null,
+        customerName: cleanText(input.customerName, "Customer name", MAX.name) ?? (booking ? personName(booking.passenger?.user) : null),
+      },
+    });
+    await tx.lostPropertyContact.create({
+      data: {
+        lostPropertyId: r.id,
+        at: now,
+        staffName: "Araa (AI phone assistant)",
+        note: `Reported by phone to Araa. The call and its transcript are on the Araa calls page.${booking ? "" : " No booking linked yet: check which trip it was."}`,
+      },
+    });
+    return r;
+  });
+  return { report, booking };
+}
+
 // ─── Staff: log an item ──────────────────────────────────────────────────────
 
 export type LogInput = DetailsInput & {

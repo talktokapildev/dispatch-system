@@ -280,6 +280,60 @@ export async function reportByPassenger(
   return { complaint, booking };
 }
 
+// ─── Phone: taken by Araa, the AI receptionist ───────────────────────────────
+
+export const PHONE_ASSISTANT = "Araa (AI phone assistant)";
+
+/** A complaint or compliment Araa took on a call: channel PHONE, no staff handler yet. */
+export async function logFromPhoneAssistant(
+  deps: ComplaintDeps,
+  input: {
+    type: "COMPLAINT" | "COMPLIMENT";
+    category?: string | null;
+    details: string;
+    bookingId?: string | null;
+    passengerId?: string | null;
+    complainantName?: string | null;
+    complainantPhone?: string | null;
+  }
+) {
+  const { prisma } = deps;
+  const now = deps.now ?? new Date();
+  const details = text(input.details, "Details", MAX.details);
+  if (!details) throw new ComplaintError("Details are required");
+  const category = input.type === "COMPLAINT" ? (CATEGORIES.includes(input.category ?? "") ? input.category! : "Other") : null;
+  const booking = input.bookingId ? await findBooking(prisma, { id: input.bookingId }) : null;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const refNo = await allocateRef(tx, now);
+    const c = await tx.complaint.create({
+      data: {
+        ...(booking ? fromBooking(booking) : { passengerId: input.passengerId ?? null }),
+        // What the caller told Araa wins over the booking copy (e.g. calling for someone else)
+        complainantName: text(input.complainantName, "Name", MAX.name) ?? (booking ? personName(booking.passenger?.user) : null),
+        complainantPhone: text(input.complainantPhone, "Phone number", MAX.phone) ?? booking?.passenger?.user.phone ?? null,
+        refNo,
+        type: input.type,
+        channel: "PHONE",
+        category,
+        details,
+        receivedAt: now,
+      },
+    });
+    await tx.complaintContact.create({
+      data: {
+        complaintId: c.id,
+        at: now,
+        staffName: PHONE_ASSISTANT,
+        note: `Taken by phone by Araa. The call and its transcript are on the Araa calls page.${booking ? "" : " No booking linked yet: check which trip it was."}`,
+      },
+    });
+    return c;
+  });
+  await sendAlert(deps, safetyAlert({ ...created, bookingRef: booking?.reference, name: created.complainantName }));
+  return { complaint: created, booking };
+}
+
 // ─── Staff: log a complaint / compliment ─────────────────────────────────────
 
 export type LogInput = DetailsInput & { note?: string | null };
