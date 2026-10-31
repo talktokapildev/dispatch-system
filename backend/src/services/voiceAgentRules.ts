@@ -152,6 +152,29 @@ export function greetingFor(settings: VoiceSettings, caller: CallerContext | nul
     : settings.greeting;
 }
 
+export type FleetCar = { make: string; model: string; colour: string; seats: number };
+
+/** "Tesla Model Y (white, black; 4 seats), Toyota Corolla (grey; 4 seats)". No plates. */
+export function fleetText(cars: FleetCar[]): string {
+  const groups = new Map<string, { colours: Set<string>; seats: Set<number>; n: number }>();
+  for (const c of cars) {
+    const key = `${c.make.trim()} ${c.model.trim()}`.replace(/\s+/g, " ");
+    const g = groups.get(key) ?? { colours: new Set(), seats: new Set(), n: 0 };
+    if (c.colour?.trim()) g.colours.add(c.colour.trim().toLowerCase());
+    if (c.seats) g.seats.add(c.seats);
+    g.n++;
+    groups.set(key, g);
+  }
+  return [...groups]
+    .sort((a, b) => b[1].n - a[1].n)
+    .map(([name, g]) => {
+      const seats = [...g.seats].sort((a, b) => a - b);
+      const bits = [g.colours.size ? [...g.colours].join(", ") : "", seats.length ? `${seats.join(" or ")} passenger seats` : ""].filter(Boolean);
+      return bits.length ? `${name} (${bits.join("; ")})` : name;
+    })
+    .join(", ");
+}
+
 /** The script for one call. */
 export function buildInstructions(opts: {
   now: Date;
@@ -159,8 +182,13 @@ export function buildInstructions(opts: {
   caller: CallerContext | null;
   callerNumber: string | null;
   open: boolean;
+  /** Active (not retired) vehicles from the Vehicles page. */
+  fleet?: FleetCar[];
 }): string {
   const { now, settings, caller, callerNumber, open } = opts;
+  const fleet = opts.fleet?.length
+    ? `Our cars (from OrangeRide's fleet today): ${fleetText(opts.fleet)}. Which car comes depends on the driver who takes the job, so don't promise a particular car or colour, and never give number plates (the passenger gets the driver and car details by text before pickup).`
+    : "";
   const name = caller?.firstName && !/^unknown$/i.test(caller.firstName) ? caller.firstName : null;
 
   const who = name
@@ -191,12 +219,13 @@ at most once, very briefly, if a lookup takes a moment.
 
 ${who}`.trim();
 
-  const faq = settings.faq.trim()
+  const faqBody = [fleet, settings.faq.trim()].filter(Boolean).join("\n");
+  const faq = faqBody
     ? `Questions about OrangeRide (our cars, services, areas, payment and so on): answer ONLY from
 these facts, written by OrangeRide. If the answer isn't here, say you're not sure and offer to
 take a message so someone can call back. Never guess or invent details, prices or promises.
 --- OrangeRide facts ---
-${settings.faq.trim()}
+${faqBody}
 --- end of facts ---`
     : `Questions about OrangeRide's services that this script doesn't answer: say you're not sure
 and offer to take a message so someone can call back. Never guess or invent details.`;

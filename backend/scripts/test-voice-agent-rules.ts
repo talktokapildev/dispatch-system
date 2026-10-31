@@ -14,6 +14,7 @@ import {
   speechMs,
   toolsFor,
   ukParts,
+  fleetText,
 } from "../src/services/voiceAgentRules";
 
 let pass = 0,
@@ -90,6 +91,17 @@ check("no FAQ: questions become messages", /say you're not sure\s+and offer to t
 check("FAQ capped", parseVoiceSettings([{ key: VOICE_KEYS.faq, value: "x".repeat(5000) }]).faq.length === 3000);
 check("script: complaints handled kindly, 999, no promises", /call 999/.test(script) && /promise refunds/.test(script) && /report_feedback/.test(script) && /report_lost_property/.test(script));
 check("closed script still handles complaints", closed.includes("report_feedback") && closed.includes("Don't take bookings") === false && /closed for bookings/.test(closed));
+
+// Fleet (from Vehicles)
+const cars = [
+  { make: "Tesla", model: "Model Y", colour: "White", seats: 4 },
+  { make: "Tesla", model: "Model Y ", colour: "Black", seats: 4 },
+  { make: "Toyota", model: "Corolla", colour: "Grey", seats: 4 },
+];
+check("fleet grouped by make/model, colours, seats", fleetText(cars) === "Tesla Model Y (white, black; 4 passenger seats), Toyota Corolla (grey; 4 passenger seats)", fleetText(cars));
+const fleetScript = buildInstructions({ now, settings: empty, caller: null, callerNumber: "+447911123456", open: true, fleet: cars });
+check("fleet in the facts even without an FAQ; no plates, no promises", fleetScript.includes("Tesla Model Y (white, black") && /answer ONLY from/.test(fleetScript) && /never give number plates/.test(fleetScript) && /don't promise a particular car/.test(fleetScript));
+check("no fleet, no FAQ: questions become messages", !/Our cars/.test(script));
 
 // Speech time
 check("speech time grows with text, capped", speechMs("Bye!") < speechMs("Thank you so much, Kapil. We'll text you shortly to confirm. Have a lovely day, goodbye!") && speechMs("x".repeat(5000)) === 15000);
