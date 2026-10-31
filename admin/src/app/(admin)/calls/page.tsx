@@ -237,7 +237,7 @@ function CallModal({ id, onClose }: { id: string | null; onClose: () => void }) 
 // Example only: Kapil checks and edits every line before saving.
 const FAQ_EXAMPLE = `OrangeRide is a TfL-licensed private hire operator (licence 11786), based in Crawley.
 We mainly cover Gatwick Airport, Crawley, Horley and the surrounding area; longer trips on request.
-Cars: [please edit, e.g. Tesla Model Y and similar]. Up to 4 passengers and their luggage.
+Up to 4 passengers and their luggage.
 Bookings need at least 24 hours' notice.
 Gatwick pickups: we meet you at the terminal car park meeting point and track your flight.
 Payment: cash or card to the driver on the day (card reader in the car).
@@ -354,7 +354,8 @@ function SettingsForm() {
         />
         <p className={help}>
           One fact per line. Araa answers questions only from these; anything else becomes a message for you. Leave empty and
-          she takes a message for every question. ({(form.faq ?? "").length}/3000)
+          she takes a message for every question. Cars come from the Vehicles page automatically (only vehicles that aren't
+          retired; never number plates), so you don't need to list them here. ({(form.faq ?? "").length}/3000)
         </p>
         {!form.faq && (
           <button type="button" className="text-[11px] text-brand-400 hover:underline mt-1" onClick={() => setForm((f: any) => ({ ...f, faq: FAQ_EXAMPLE }))}>

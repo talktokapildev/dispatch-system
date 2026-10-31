@@ -98,6 +98,7 @@ function makeWorld(opts: { settings?: { key: string; value: string }[]; knownCal
       },
     },
     bookingStatusHistory: { create: async ({ data }: any) => w.history.push(data) },
+    vehicle: { findMany: async ({ where }: any) => (where.archivedAt === null ? [{ make: "Tesla", model: "Model Y", colour: "White", seats: 4 }] : []) },
     $transaction: async (fn: any) => fn(prisma),
     $executeRawUnsafe: async () => 1,
     complaint: {
@@ -215,6 +216,7 @@ async function main() {
     check("call accepted with model, voice marin, transcription", acc?.body?.model === "gpt-realtime-2.1" && acc.body.audio.output.voice === "marin" && acc.body.audio.input.transcription.model === "gpt-4o-transcribe", acc?.body);
     check("script personalised for Kapil, with today's date", acc.body.instructions.includes("The caller is Kapil") && /30 October 2026/.test(acc.body.instructions));
     check("all nine tools offered", acc.body.tools.length === 9);
+    check("script knows the active fleet, without plates", acc.body.instructions.includes("Tesla Model Y (white; 4 passenger seats)") && !/LM71|LC74/.test(acc.body.instructions));
     const greet = w.ws!.sent[0];
     check("greets Kapil by name", greet?.type === "response.create" && greet.response.instructions.includes("Hi Kapil, lovely to hear from you again!"), greet);
     check("one active call", activeCallCount() === 1);

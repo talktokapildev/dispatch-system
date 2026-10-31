@@ -178,7 +178,13 @@ export async function handleIncomingCall(
   }
 
   const open = isOpen(settings, now);
-  const caller = await findCaller(deps.prisma, from).catch(() => null);
+  const [caller, fleet] = await Promise.all([
+    findCaller(deps.prisma, from).catch(() => null),
+    // Active vehicles (not retired) from the Vehicles page; plates are never given to Araa.
+    deps.prisma.vehicle
+      .findMany({ where: { archivedAt: null }, select: { make: true, model: true, colour: true, seats: true } })
+      .catch(() => []),
+  ]);
   const record = await deps.prisma.voiceCall.create({
     data: { callId, fromNumber: from, passengerId: caller?.passengerId, model: MODEL(), voice: settings.voice },
   });
@@ -189,7 +195,7 @@ export async function handleIncomingCall(
     await deps.calls.accept(callId, {
       type: "realtime",
       model: MODEL(),
-      instructions: buildInstructions({ now, settings, caller: caller?.context ?? null, callerNumber: from, open }),
+      instructions: buildInstructions({ now, settings, caller: caller?.context ?? null, callerNumber: from, open, fleet }),
       tools: toolsFor(open),
       audio: {
         // A separate transcript of the caller, for the record. The model itself hears the audio.
